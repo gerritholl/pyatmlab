@@ -1,0 +1,13 @@
+2013-12-12  Gerrit Holl  <gerrit.holl@smhi.se>
+
+	* LICENSE: Fixed name, added e-mail.
+
+	* doc/Makefile, doc/source/conf.py: Added, made by sphinx
+
+	* doc/source/index.rst: Added.  First docs, initiateted by sphinx.
+
+	* pyatmlab/config.py: Added.  Started configuration framework.
+
+	* pyatmlab/io.py: Added.  Copied Chevallier reading from PyARTS.
+
+	* pyatmlab/setup.py: Added, made by setuptools.
