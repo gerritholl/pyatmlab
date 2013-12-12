@@ -1,5 +1,15 @@
 2013-12-12  Gerrit Holl  <gerrit.holl@smhi.se>
 
+	* pyatmlab-0-0-2
+
+	* pyatmlab/io.py: Improve docs
+
+	* setup.py: Automagically obtain version, fix e-mail addy
+
+2013-12-12  Gerrit Holl  <gerrit.holl@smhi.se>
+
+	* pyatmlab-0-0-1
+
 	* LICENSE: Fixed name, added e-mail.
 
 	* doc/Makefile, doc/source/conf.py: Added, made by sphinx

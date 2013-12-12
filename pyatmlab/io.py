@@ -19,12 +19,16 @@ from . import config
 def get_chevalier_path(var):
     """Get path to original Chevallier data.
 
+    Requires that in ~/.pyatmlabrc, the configuration variable `cheval` in
+    the section [main] is set to a directory where the Chevallier data are
+    contained.
+
     :param var: What variable the Chevallier-data is maximised on.
 
     :returns: A string with the path to the Chevallier data file.
     """
 
-    return os.path.join(config.get_config("cheval_orig"),
+    return os.path.join(config.get_config("cheval"),
                         "nwp_saf_%s_sampled.atm" % var.lower())
 
 # Obtained from FORTRAN-routine coming with Chevallier data
@@ -73,7 +77,7 @@ chev_dtype = zip(chev_dtype_names, chev_dtype_types,
                       chev_dtype_sizes)
 
 def read_chevalier(f):
-    """Read Chevallier data file
+    """Read Chevallier data file.
 
     :param f: Path to Chevallier data file.  Can be obtained with
     :func:`get_chevalier_path`

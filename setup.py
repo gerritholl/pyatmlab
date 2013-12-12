@@ -8,11 +8,22 @@ from setuptools import setup
 def read(fname):
     return open(os.path.join(os.path.dirname(__file__), fname)).read()
 
+def get_version():
+    """Obtain version number from latest ChangeLog entry
+    """
+
+    with open(os.path.join(os.path.dirname(__file__), "ChangeLog"), 'r') as f:
+        # should be on third line
+        f.readline()
+        f.readline()
+        line = f.readline()
+        return line[line.find("pyatmlab")+9:].strip().replace('-', '.')
+
 setup(
     name = "pyatmlab",
-    version = "0.0.0",
+    version = get_version(),
     author = "Gerrit Holl",
-    author_email = "gerritholl@gmail.com",
+    author_email = "gerrit.holl@gmail.com",
     description = ("Diverse collection of tools for working with "
                    "atmospheric data from remote sensing, modelling, "
                    "and related applications."),
