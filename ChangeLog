@@ -1,5 +1,17 @@
 2013-12-12  Gerrit Holl  <gerrit.holl@smhi.se>
 
+	* pyatmlab-0-0-3
+
+	* doc/source/conf.py: Automagically obtain version
+
+	* pyatmlab/io.py: Fix syntax error in docstring
+
+	* pyatmlab/tools.py: Added.  Contains various functions.
+
+	* setup.py: Moved function to read ChangeLog to tools, call from there
+
+2013-12-12  Gerrit Holl  <gerrit.holl@smhi.se>
+
 	* pyatmlab-0-0-2
 
 	* pyatmlab/io.py: Improve docs

@@ -80,6 +80,6 @@ def read_chevalier(f):
     """Read Chevallier data file.
 
     :param f: Path to Chevallier data file.  Can be obtained with
-    :func:`get_chevalier_path`
+        :func:`get_chevalier_path`
     """
     return numpy.loadtxt(f, dtype=chev_dtype)

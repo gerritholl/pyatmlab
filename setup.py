@@ -11,13 +11,8 @@ def read(fname):
 def get_version():
     """Obtain version number from latest ChangeLog entry
     """
-
-    with open(os.path.join(os.path.dirname(__file__), "ChangeLog"), 'r') as f:
-        # should be on third line
-        f.readline()
-        f.readline()
-        line = f.readline()
-        return line[line.find("pyatmlab")+9:].strip().replace('-', '.')
+    from pyatmlab.tools import get_version as get_v
+    return get_v(os.path.join(os.path.dirname(__file__), "ChangeLog"))
 
 setup(
     name = "pyatmlab",
