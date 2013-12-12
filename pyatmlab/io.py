@@ -16,7 +16,7 @@ import os.path
 import numpy
 from . import config
 
-def get_chevalier_path(var):
+def get_chevallier_path(var, tp):
     """Get path to original Chevallier data.
 
     Requires that in ~/.pyatmlabrc, the configuration variable `cheval` in
@@ -24,14 +24,18 @@ def get_chevalier_path(var):
     contained.
 
     :param var: What variable the Chevallier-data is maximised on.
+    :param tp: Get atmosphere ('atm') or surface ('sfc')
 
     :returns: A string with the path to the Chevallier data file.
     """
 
-    return os.path.join(config.get_config("cheval"),
-                        "nwp_saf_%s_sampled.atm" % var.lower())
+    bd = config.get_config("cheval")
+    return os.path.join(bd, "nwp_saf_{}_sampled.{}".format(var, tp))
 
-# Obtained from FORTRAN-routine coming with Chevallier data
+
+# Obtained from FORTRAN-routine coming with Chevallier data.
+#
+# Atmospheric files:
 #
 #     temp(:),     &! 1) Temperature [K]                          (1-91)
 #     hum(:),      &! 2) Humidity [kg/kg]                         (92-182)
@@ -73,13 +77,16 @@ chev_dtype_types[23] = numpy.uint16
 for i in (24, 25, 26, 28):
     chev_dtype_types[i] = numpy.uint16
 chev_dtype_types[27] = numpy.uint32
-chev_dtype = zip(chev_dtype_names, chev_dtype_types,
-                      chev_dtype_sizes)
+chev_dtype_atm = list(zip(chev_dtype_names, chev_dtype_types,
+                      chev_dtype_sizes))
 
-def read_chevalier(f):
+def read_chevallier(tp):
     """Read Chevallier data file.
 
-    :param f: Path to Chevallier data file.  Can be obtained with
-        :func:`get_chevalier_path`
+    So far, reads only the atmospheric file.
+
+    :param tp: variable that Chevallier is maximised upon
+    :returns: An nd-array with a complicated dtype
     """
-    return numpy.loadtxt(f, dtype=chev_dtype)
+    f_atm = get_chevallier_path(tp, "atm")
+    return numpy.loadtxt(f_atm, dtype=chev_dtype_atm)

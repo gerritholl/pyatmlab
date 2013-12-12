@@ -7,6 +7,7 @@ Configuration is handled with a `.pyatmlabrc` file with a
 :mod:`configparser` syntax.
 """
 
+import os.path
 import configparser
 
 class _Configurator(object):

@@ -1,5 +1,13 @@
 2013-12-12  Gerrit Holl  <gerrit.holl@smhi.se>
 
+	* pyatmlab-0-0-4
+
+	* pyatmlab/config.py: Forgot to import os.path
+
+	* pyatmlab/io.py: Rearrange function behaviours
+
+2013-12-12  Gerrit Holl  <gerrit.holl@smhi.se>
+
 	* pyatmlab-0-0-3
 
 	* doc/source/conf.py: Automagically obtain version
