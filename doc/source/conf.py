@@ -55,7 +55,7 @@ copyright = '2013, Gerrit Holl'
 # |version| and |release|, also used in various other places throughout the
 # built documents.
 #
-from pyatmlab.tools import get_version
+from pyatmlab.meta import get_version
 # The short X.Y version.
 version = get_version(os.path.join(os.path.dirname(__file__), os.pardir, os.pardir, 'ChangeLog'))
 # The full version, including alpha/beta/rc tags.

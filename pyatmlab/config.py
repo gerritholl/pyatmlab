@@ -23,7 +23,6 @@ class _Configurator(object):
             self.init()
         return self.config.get("main", arg)
 
-_get_config = _Configurator()
 
 def get_config(arg):
     """Get value for configuration variable.
@@ -32,5 +31,6 @@ def get_config(arg):
     :type arg: String-like
     :returns: Value for configuration variable
     """
+    confer = _Configurator()
 
-    return _get_config(arg)
+    return confer(arg)

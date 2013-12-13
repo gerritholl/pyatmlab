@@ -1,3 +1,23 @@
+2013-12-13  Gerrit Holl  <gerrit.holl@smhi.se>
+
+	* pyatmlab-0-0-5
+
+	* pyatmlab/__init__.py: Add docstring
+
+	* pyatmlab/arts.py: Added, but effectively empty, use PyARTS for now
+
+	* pyatmlab/config.py: Reread configuration every time, don't cache
+
+	* pyatmlab/graphics.py: Copy some utility functions from my private trove
+
+	* pyatmlab/tools.py -> pyatmlab/meta.py: Rename
+
+	* pyatmlab/stats.py: Added, utility statistical thingies
+
+	* setup.py, doc/source/conf.py: Adapt for renaming tools -> meta
+
+	* doc/source/index.rst: Add meta module
+
 2013-12-12  Gerrit Holl  <gerrit.holl@smhi.se>
 
 	* pyatmlab-0-0-4

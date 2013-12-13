@@ -26,3 +26,9 @@ config module
 
 .. automodule:: pyatmlab.config
    :members:
+
+meta module
+-----------
+
+.. automodule:: pyatmlab.meta
+   :members:

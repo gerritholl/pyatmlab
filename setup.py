@@ -11,7 +11,7 @@ def read(fname):
 def get_version():
     """Obtain version number from latest ChangeLog entry
     """
-    from pyatmlab.tools import get_version as get_v
+    from pyatmlab.meta import get_version as get_v
     return get_v(os.path.join(os.path.dirname(__file__), "ChangeLog"))
 
 setup(

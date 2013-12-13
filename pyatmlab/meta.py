@@ -1,7 +1,7 @@
 #!/usr/bin/python
 # coding: utf-8
 
-"""Various little tools that don't fit elsewhere.
+"""Functions related to pyatmlab itself
 """
 
 def get_version(path_to_changelog):
