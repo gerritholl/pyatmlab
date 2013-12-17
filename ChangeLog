@@ -1,3 +1,24 @@
+2013-12-17  Gerrit Holl  <gerrit.holl@smhi.se>
+
+	* pyatmlab-0-0-6
+
+	* doc/source/index.rst: Add new modules
+
+	* pyatmlab/constants.py: Added.  Various constants.
+
+	* pyatmlab/io.py(get_chevallier_arts_path):  Added.  Return path to
+	Chevallier-formatted-for-ARTS data.  Does not add any dependency.
+
+	* pyatmlab/math.py: Added.  Small maths utilities.
+
+	* pyatmlab/meta.py(expanddoc): Added.  Docstring decorator helper.
+
+	* pyatmlab/physics.py: Added.  Small physics utilities.
+
+	* pyatmlab/stats.py(bin_nd): Recursive n-dimensional bucketing.
+
+	* pyatmlab/tools.py: Added switch-class-recipe.
+
 2013-12-13  Gerrit Holl  <gerrit.holl@smhi.se>
 
 	* pyatmlab-0-0-5

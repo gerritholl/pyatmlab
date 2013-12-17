@@ -15,11 +15,14 @@ This is pyatmlab.  You can find the code on github_.
 
 .. _github: https://github.com/gerritholl/pyatmlab
 
-io module
----------
-
-.. automodule:: pyatmlab.io
+.. automodule:: pyatmlab
    :members:
+
+arts module
+-----------
+
+.. automodule:: pyatmlab.arts
+   :members
 
 config module
 -------------
@@ -27,8 +30,50 @@ config module
 .. automodule:: pyatmlab.config
    :members:
 
+constants module
+----------------
+
+.. automodule:: pyatmlab.constants
+   :members:
+
+graphics module
+---------------
+
+.. automodule:: pyatmlab.graphics
+   :members:
+
+io module
+---------
+
+.. automodule:: pyatmlab.io
+   :members:
+
+math module
+-----------
+
+.. automodule:: pyatmlab.math
+   :members:
+
 meta module
 -----------
 
 .. automodule:: pyatmlab.meta
+   :members:
+
+physics module
+--------------
+
+.. automodule:: pyatmlab.physics
+   :members:
+
+stats module
+------------
+
+.. automodule:: pyatmlab.stats
+   :members:
+
+tools module
+------------
+
+.. automodule:: pyatmlab.tools
    :members:

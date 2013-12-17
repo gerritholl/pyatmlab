@@ -32,6 +32,18 @@ def get_chevallier_path(var, tp):
     bd = config.get_config("cheval")
     return os.path.join(bd, "nwp_saf_{}_sampled.{}".format(var, tp))
 
+def get_chevallier_arts_path(var, tp="all"):
+    """Get path to ArtsXML Chevallier data extract.
+
+    Require configuration variable `cheval_arts` set.
+    See also :function get_chevallier_path:.
+
+    :param var: What variable it is maximised on.
+    :returns: A string with the path to the Chevallier data file.
+    """
+
+    bd = config.get_config("cheval_arts")
+    return os.path.join(bd, "chevallierl91_{}_{}.xml.gz".format(tp, var))
 
 # Obtained from FORTRAN-routine coming with Chevallier data.
 #
