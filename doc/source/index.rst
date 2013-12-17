@@ -18,12 +18,6 @@ This is pyatmlab.  You can find the code on github_.
 .. automodule:: pyatmlab
    :members:
 
-arts module
------------
-
-.. automodule:: pyatmlab.arts
-   :members
-
 config module
 -------------
 
