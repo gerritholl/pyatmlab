@@ -19,14 +19,6 @@ def plotdir():
     """
     return datetime.date.today().strftime(config.get_config('plotdir'))
 
-def datadir():
-    """Returns todays datadir.
-
-    Configuration 'datadir' must be set.  Value is expanded with strftime.
-    """
-
-    return datetime.date.today().strftime(config.get_config('datadir'))
-
 def print_or_show(fig, show, outfile, in_plotdir=True, tikz=None, data=None):
     """Either print or save figure, or both, depending on arguments.
 
@@ -73,5 +65,7 @@ def print_or_show(fig, show, outfile, in_plotdir=True, tikz=None, data=None):
         print(now(), "Writing also to:", os.path.join(plotdir(), tikz))
         matplotlib2tikz.save(os.path.join(plotdir(), tikz))
     if data is not None:
-        outf = os.path.join(plotdir(), os.path.splitext(outfiles[0])[0]+".dat")
-        numpy.savetxt(outf, data)
+        outf = os.path.join(plotdir(),
+                            os.path.splitext(outfiles[0])[0]+".dat",)
+        numpy.savetxt(outf, data,
+            fmt="%d" if issubclass(data.dtype.type, numpy.integer) else '%.18e')

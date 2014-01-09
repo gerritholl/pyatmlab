@@ -8,7 +8,7 @@ Mostly obtained from PyARTS
 """
 
 import numpy
-from .constants import (h, k, R_d, R_v)
+from .constants import (h, k, R_d, R_v, c)
 from . import math as pymath
 
 def mixingratio2density(mixingratio, p, T):
@@ -82,3 +82,38 @@ def calculate_iwv(z, q):
 
     mixing_ratio = specific2mixingratio(q)
     return pymath.integrate_with_height(z, mixing_ratio)
+
+def wavelength2frequency(wavelength):
+    """Converts wavelength (in meters) to frequency (in Hertz)
+
+    :param wavelength: Wavelength [m]
+    :returns: Frequency [Hz]
+    """
+
+    return c/wavelength
+
+def wavenumber2frequency(wavenumber):
+    """Converts wavenumber (in m^-1) to frequency (in Hz)
+
+    :param wavenumber: Wave number [m^-1]
+    :returns: Frequency [Hz]
+    """
+
+    return c*wavenumber
+
+def frequency2wavelength(frequency):
+    """Converts frequency [Hz] to wave length [m]
+
+    :param frequency: Frequency [Hz]
+    :returns: Wave length [m]
+    """
+
+    return c/frequency
+
+def frequency2wavenumber(frequency):
+    """Converts frequency [Hz] to wave number [m^-1]
+
+    :param frequency: Frequency [Hz]
+    :returns: Wave number [m^-1]
+    """
+    return frequency/c

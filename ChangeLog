@@ -1,3 +1,35 @@
+2014-01-09  Gerrit Holl  <gerrit.holl@smhi.se>
+
+	* pyatmlab-0-0-7
+
+	* pyatmlab/graphics.py:
+	
+	(print_or_show): Write ints as ints
+
+	(datadir): Move to io.py
+
+	* pyatmlab/instruments.py: Added.  Contains classes to describe
+	instruments, channels, write out SRFs, and more.  Mostly copied from
+	PyARTS.  Also contains some channel definitions.
+
+	* pyatmlab/io.py:
+
+	(write_matrix_as_latex_table): Added.  Somewhat inflexible code to
+	write out a 2-D array as a LaTeX table.
+
+	(datadir): Moved from graphics.py
+
+	* pyatmlab/physics.py:
+
+	(wavelength2frequency) (wavenumber2frequency) (frequency2wavelength)
+	(frequency2wavenumber): Added.  Mostly copied from PyARTS.
+
+	* pyatmlab/tools.py:
+
+	(validate): Validate function with arguments, using annotations.
+
+	(validator): Decorator to do the same
+
 2013-12-17  Gerrit Holl  <gerrit.holl@smhi.se>
 
 	* pyatmlab-0-0-6

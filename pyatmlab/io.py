@@ -12,6 +12,7 @@ and others.
 # PyARTS.io.
 
 import os.path
+import datetime
 
 import numpy
 from . import config
@@ -102,3 +103,54 @@ def read_chevallier(tp):
     """
     f_atm = get_chevallier_path(tp, "atm")
     return numpy.loadtxt(f_atm, dtype=chev_dtype_atm)
+
+def write_matrix_as_latex_table(x, y, M, outfile, xlabel=None, ylabel=None):
+    """Write Matrix as LaTeX table.
+
+    This is currently very inflexible, but may become more flexible in the
+    future.  It's currently hardcoded for use with siunitx and booktabs.
+
+    Needs packages booktabs, siunitx, multirow
+
+    :param array x: Horizonal dimension
+    :param array y: Vertical dimension
+    :param 2d-array M: Matrix to write
+    :param str outfile: Output file
+    :param str xlabel: Label corresponding x-data
+    :param str ylabel: Label corresponding to y-data
+    """
+
+    (rows, cols) = M.shape
+
+    with open(outfile, 'w') as fp:
+        fp.write(r'\footnotesize'"\n")
+        fp.write(r"\setlength{\tabcolsep}{1mm}""\n")
+        fp.write(r"\begin{tabular}{" + r"cc@{\hskip 5mm}" + "c"*cols + "}\n")
+#        fp.write(r"\toprule" "\n")
+#        fp.write(r"\midrule" "\n")
+        if ylabel is not None:
+            fp.write(r"\multirow{{{count:d}}}".format(count=rows) +
+                      "{*}" +
+                     r"{{\rotatebox{{90}}{{\large {ylabel}}}}}".format(ylabel=ylabel) +
+                      "\n")
+        for (i, row) in enumerate(M):
+            fp.write(' & {:.5g} & '.format(y[i]) +
+                     ' & '.join('{}'.format(c) for c in row) +
+                     r"\\""\n")
+#        fp.write(r"\bottomrule" "\n")
+        fp.write(r"\addlinespace[5mm]""\n")
+        fp.write(" & & " + ' & '.join('{:.5g}'.format(c) for c in x) + r"\\""\n")
+        if xlabel is not None:
+            fp.write(r" & \multicolumn{{{count:.5g}}}".format(count=cols+1) +
+                      r"{{c}}{{\large {xlabel}}}\\".format(xlabel=xlabel)+"\n")
+        fp.write(r"\end{tabular}" "\n")
+        
+def datadir():
+    """Returns todays datadir.
+
+    Configuration 'datadir' must be set.  Value is expanded with strftime.
+    """
+
+    return datetime.date.today().strftime(config.get_config('datadir'))
+
+
