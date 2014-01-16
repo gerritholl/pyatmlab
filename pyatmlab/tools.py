@@ -63,11 +63,11 @@ def validator(func):
     """Decorator to automagically validate a function with arguments.
 
     Uses functionality in 'validate', required types/values determined
-    from decorations.  Example:
+    from decorations.  Example::
 
-    @validator
-    def f(x: numbers.Number, y: numbers.Number, mode: str):
-        return x+y
+        @validator
+        def f(x: numbers.Number, y: numbers.Number, mode: str):
+            return x+y
     """
 
     @functools.wraps(func)

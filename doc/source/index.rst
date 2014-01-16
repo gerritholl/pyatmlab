@@ -30,10 +30,22 @@ constants module
 .. automodule:: pyatmlab.constants
    :members:
 
+db module
+---------
+
+.. automodule:: pyatmlab.db
+   :members:
+
 graphics module
 ---------------
 
 .. automodule:: pyatmlab.graphics
+   :members:
+
+instruments module
+------------------
+
+.. automodule:: pyatmlab.instruments
    :members:
 
 io module

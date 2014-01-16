@@ -9,10 +9,12 @@ Mostly obtained from PyARTS
 
 import numpy
 from .constants import (h, k, R_d, R_v, c)
-from . import math as pymath
+from . import math as pyatmmath
 
 def mixingratio2density(mixingratio, p, T):
-    """Converts mixing ratio (e.g. kg/kg) to density (kg/m^3) for dry air
+    """Converts mixing ratio (e.g. kg/kg) to density (kg/m^3) for dry air.
+
+    Uses the ideal gas law and the effective molar mass of Earth air.
 
     :param mixingratio: Mixing ratio [1]
     :param p: Pressure [Pa]
@@ -42,6 +44,19 @@ def mixingratio2rh(w, p, T):
     e_s = vapour_P(T)
     return e/e_s # Wallace and Hobbs, 3.64
 
+def rh2mixingratio(rh, p, T):
+    """Convert relative humidity to water vapour mixing ratio
+
+    Based on atmlabs h2o/thermodynomics/relhum_to_vmr.m.
+
+    :param rh: Relative humidity [1]
+    :param p: Pressure [Pa]
+    :param T: Temperature [K]
+    :returns: Water vapour mixing ratio [1]
+    """
+
+    return rh * vapour_P(T) / p
+
 def specific2mixingratio(q):
     """Convert specific humidity [kg/kg] to volume mixing ratio
     """
@@ -57,6 +72,8 @@ def vapour_P(T):
 
     Calculates the saturated vapour pressure (Pa)
     of water using the Hyland-Wexler eqns (ASHRAE Handbook).
+
+    (Originally in PyARTS)
     
     :param T: Temperature [K]
     :returns: Vapour pressure [Pa]
@@ -72,16 +89,40 @@ def vapour_P(T):
     Pvs = numpy.exp(A/T + B + C*T + D*T**2 + E*T**3 + F*numpy.log(T))
     return Pvs
 
-def calculate_iwv(z, q):
+def specific2iwv(z, q):
     """Calculate integrated water vapour [kg/m^2] from z, q
 
     :param z: Height profile [m]
     :param q: specific humidity profile [kg/kg]
-    :returns: Integrated water vapour scalar [kg/m^2]
+    :returns: Integrated water vapour [kg/m^2]
     """
 
     mixing_ratio = specific2mixingratio(q)
-    return pymath.integrate_with_height(z, mixing_ratio)
+    return pyatmmath.integrate_with_height(z, mixing_ratio)
+
+def rh2iwv(z, rh, p, T):
+    """Calculate integrated water vapour [kg/m^2] from z, rh
+
+    :param z: Height profile [m]
+    :param rh: Relative humidity profile [1]
+    :param p: Pressure profile [Pa]
+    :param T: Temperature profile [T]
+    :returns: Integrated water vapour [kg/m^2]
+    """
+    mixing_ratio = rh2mixingratio(rh, p, T)
+    return pyatmmath.integrate_with_height(z, mixingratio2density(mixing_ratio, p, T))
+
+def mixingratio2iwv(z, r, p, T):
+    """Calculate integrated water vapour [kg/m^2] from z, r
+
+    :param z: Height profile [m]
+    :param r: mixing ratio profile [kg/kg]
+    :param p: Pressure profile [Pa]
+    :param T: Temperature profile [T]
+    :returns: Integrated water vapour [kg/m^2]
+    """
+
+    return pyatmmath.integrate_with_height(z, mixingratio2density(r, p, T))
 
 def wavelength2frequency(wavelength):
     """Converts wavelength (in meters) to frequency (in Hertz)
@@ -117,3 +158,6 @@ def frequency2wavenumber(frequency):
     :returns: Wave number [m^-1]
     """
     return frequency/c
+
+
+

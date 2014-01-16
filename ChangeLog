@@ -1,3 +1,29 @@
+2014-01-10  Gerrit Holl  <gerrit.holl@smhi.se>
+
+	* pyatmlab-0-0-8
+
+	* pyatmlab/physics.py:
+
+	(mixingratio2density): Expand doc
+
+	(rh2mixingratio): added
+
+	(specific2iwv): Fix doc
+
+	(rh2iwv): added
+
+	(mixingratio2iwv): added
+
+	* pyatmlab/arts.py: Removed, unused
+
+	* pyatmlab/{graphics,instruments}: Do not expose 'now'
+
+	* pyatmlab/tools.py: Fix sphinx-syntax-error in docstring
+
+	* doc/source/index.rst:
+
+	Added db, instruments
+
 2014-01-09  Gerrit Holl  <gerrit.holl@smhi.se>
 
 	* pyatmlab-0-0-7

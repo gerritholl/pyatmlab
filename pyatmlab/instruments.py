@@ -230,3 +230,5 @@ ici = Radiometer([
     Channel("664e9", 1.5, "5.000e9", "4.2e9"),
     ],
         name="ici")
+
+del now
