@@ -22,7 +22,7 @@ import scipy.io
 #import matplotlib.cm
 
 #from . import arts_math
-#from . import tools
+from . import tools
 
 class AtmosphericDatabase:
     """Represents an atmospheric database
@@ -265,6 +265,35 @@ class AtmosphericDatabase:
         return cls(data=data_alt, instrument=instrument,
                    name="colorado2012", ice_axis=ice_axis)
 
+
+    @tools.validator
+    def __getitem__(self, key: str):
+        """Get field from data.
+
+        :param str key: Field name (from self.data["dtype"]).
+        :returns: ndarray, view from self.data
+        """
+        return self.data[key]
+
+    @tools.validator
+    def __setitem__(self, key: str, val: numpy.ndarray):
+        """Add field to data or set existing field to data.
+
+        :param str key: Field name
+        :param ndarray val: Field value.  Must match dimensions of
+            self.data.  Note that this will be added with dtype([key,
+            val.dtype]).
+        """
+
+        if key in self.data.dtype.names:
+            self.data[key] = val
+        else:
+            prim = self.data
+            sec = val.view(dtype=[(key, val.dtype)])
+            self.data = numpy.lib.recfunctions.merge_arrays(
+                (prim, sec)).view(dtype=(prim.dtype.descr + sec.dtype.descr))
+            
+
     # calculating different statistics
 
 #     def stats_IWP_Dme(self, func, minlen=20, *args, **kwargs):
@@ -489,5 +518,3 @@ class AtmosphericDatabase:
                                   ice_axis=self.ice_axis),
                          appendmat=False,
                          do_compression=True, oned_as="column")
-
-del now

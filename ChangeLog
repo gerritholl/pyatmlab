@@ -1,3 +1,16 @@
+2014-02-12  Gerrit Holl  <gerrit.holl@ltu.se>
+
+	* pyatmlab-0-0-9
+
+	* pyatmlab/db.py(AtmosphericDatabase):
+
+	- Added __getitem__ and __setitem__ ability to set new fields, i.e.
+	db["IWV"] = some_calculation(db.data).
+
+	* pyatmlab/instruments.py:
+
+	- Fix some small buggies
+
 2014-01-10  Gerrit Holl  <gerrit.holl@smhi.se>
 
 	* pyatmlab-0-0-8

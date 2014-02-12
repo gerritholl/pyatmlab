@@ -54,16 +54,17 @@ class Channel(object):
             centres = [self.centre_frequency-self.sideband,
                        self.centre_frequency+self.sideband]
         if self.shape == "rectangular":
-            edges = [(float(c-self.width), float(c+self.width)) for c in centres]
+            edges = [(float(c-self.width), float(c+self.width)) 
+                        for c in centres]
             pp = [numpy.arange(e[0], e[1]+step/2, step) for e in edges]
             f_grid = numpy.concatenate(pp)
             y = numpy.ones(f_grid.size)/f_grid.size
             return (f_grid, y)
         else:
-            raise NotImplementedError("Unknown shape: {}".format(rectangular))
+            raise NotImplementedError("Unknown shape: {}".format(self.shape))
 
     @tools.validator
-    def write_srf(self, to, quantity="frequency", factor:numbers.Number=1.0):
+    def write_srf(self, to, quantity="frequency", factor: numbers.Number=1.0):
         """Write SRF to file.
 
         :param to: Output file.  Can be an open file, a string containing
@@ -90,7 +91,7 @@ class Channel(object):
                                            self.get_chanstr(full=True) +
                                            ".dat"),
                           'wb')
-                
+
         (x, y) = self.srf()
         if quantity == "frequency":
             pass
@@ -103,7 +104,6 @@ class Channel(object):
 
         print(now(), "Writing to", to.name)
         numpy.savetxt(to, numpy.c_[x*factor, y])
-
 
             
     def get_chanstr(self, full=False):

@@ -69,5 +69,3 @@ def print_or_show(fig, show, outfile, in_plotdir=True, tikz=None, data=None):
                             os.path.splitext(outfiles[0])[0]+".dat",)
         numpy.savetxt(outf, data,
             fmt="%d" if issubclass(data.dtype.type, numpy.integer) else '%.18e')
-
-del now
