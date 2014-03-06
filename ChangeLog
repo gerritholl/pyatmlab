@@ -1,3 +1,14 @@
+2014-03-06  Gerrit Holl  <gerrit.holl@utoronto.ca>
+
+	* pyatmlab-0-0-11
+
+	* pyatmlab/dataset.py:
+
+	- Fixed syntax for metaclass
+	- Don't use ugly wanted attribute, rather just insist attributes exist
+	in class, dynamically adding is asking for bugs imnsho
+	- Fixed syntax for abstract methods
+
 2014-03-05  Gerrit Holl  <gerrit.holl@utoronto.ca>
 
 	* pyatmlab-0-0-10

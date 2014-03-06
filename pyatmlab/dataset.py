@@ -2,30 +2,24 @@
 """
 
 import abc
+import datetime
 
-@abc.ABCMeta
-class Dataset:
+class Dataset(metaclass=abc.ABCMeta):
     """Represents a dataset.
 
     """
 
-    wanted = set()
-    wanted_all = set()
-
-    def __init__(self):
-        super().__init__()
-        for obj in self.__class__.mro():
-            if hasattr(obj, "wanted"):
-                self.wanted_all &= self.wanted
+    def __init__(self, **kwargs):
+        for (k, v) in kwargs.items():
+            setattr(self, k, v)
 
     def __setattr__(self, k, v):
-        if k in self.wanted_all:
+        if hasattr(self, k):
             object.__setattr__(self, k, v)
         else:
-            raise AttributeError(("Unknown attribute: {}. " +
-                "Known attributes: {}.").format(k, ", ".join(self.wanted_all)))
+            raise AttributeError("Unknown attribute: {}. ".format(k))
 
-    @abstractmethod
+    @abc.abstractmethod
     def granules_for_period(self, start=datetime.datetime.min,
                                   end=datetime.datetime.max):
         """Loop through all granules for indicated period.
@@ -50,8 +44,8 @@ class Dataset:
         return numpy.concatenate(list(
             self.read_granule(f) for f in self.granules_for_period(start, end)))
             
-    @abstractmethod
-    def read_granule(self, f):
+    @abc.abstractmethod
+    def read(self, f):
         """Read granule in file.
 
         :param str f: Path to file
@@ -60,9 +54,12 @@ class Dataset:
         raise NotImplementedError()
 
 class SingleFileDataset(Dataset):
-    wanted = {"start_date", "end_date", "srcfile"}
+    start_date = datetime.datetime.min
+    end_date = datetime.datetime.max
+    srcfile = None
 
     def granules_for_period(self, start=datetime.datetime.min,
                             end=datetime.datetime.max):
         if start < self.end_date and end > self.start_date:
             yield self.srcfile
+
