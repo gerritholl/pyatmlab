@@ -1,3 +1,26 @@
+2014-03-12  Gerrit Holl  <gerrit.holl@utoronto.ca>
+
+	* pyatmlab-0-0-12
+
+	* pyatmlab/collocations.py:
+
+	- Added, started CollocatedDataset definition.  Most of the work is in
+	the method .collocate and ._collocate_bucket, which collocates two
+	ndarrays in lat/lon/time.  To be tested!
+
+	* pyatmlab/dataset.py:
+
+	- Added a .read_all() method.  Now and here an alias of read_period()
+	without arguments.  Also added a HomemadeDataset class, currently
+	empty.
+
+	* pyatmlab/local/:
+
+	- New directory, will contain stuff actually localised for my place,
+	but can be adapted by users on other sites.
+
+	* setup.py: Also include pyatmlab.local
+
 2014-03-06  Gerrit Holl  <gerrit.holl@utoronto.ca>
 
 	* pyatmlab-0-0-11

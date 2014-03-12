@@ -3,6 +3,7 @@
 
 import abc
 import datetime
+import numpy
 
 class Dataset(metaclass=abc.ABCMeta):
     """Represents a dataset.
@@ -39,10 +40,19 @@ class Dataset(metaclass=abc.ABCMeta):
 
         :param datetime start: Starting time, None for any time
         :param datetime end: Ending time, None for any time
+        :returns: Masked array with all data in period.
         """
 
-        return numpy.concatenate(list(
-            self.read_granule(f) for f in self.granules_for_period(start, end)))
+        return numpy.ma.concatenate(list(
+            self.read(f) for f in self.granules_for_period(start, end)))
+
+    def read_all(self):
+        """Read all data in one go.
+
+        Warning: for some datasets, this may cause memory problems.
+        """
+
+        return self.read_period()
             
     @abc.abstractmethod
     def read(self, f):
@@ -63,3 +73,10 @@ class SingleFileDataset(Dataset):
         if start < self.end_date and end > self.start_date:
             yield self.srcfile
 
+
+class HomemadeDataset(Dataset):
+    """For any dataset created by pyatmlab.
+
+    No content yet.
+    """
+    pass
