@@ -18,8 +18,8 @@ class CollocatedDataset(dataset.HomemadeDataset):
 
     primary
     secondary
-    distance
-    interval
+    max_distance    Maximum distance in m
+    max_interval    Maximum time interval in s.
 
     The following attributes may be changed at your own risk.  Changing
     should not affect results, but may affect performance.  Optimise based
@@ -33,8 +33,23 @@ class CollocatedDataset(dataset.HomemadeDataset):
     primary = None
     secondary = None
     projection = "WGS84"
+    ellipsoid = None
+
     max_distance = 0.0 # distance in m
-    max_interval = 0.0 # interval in s
+
+    _max_interval = numpy.timedelta64(0, 's')
+    @property
+    def max_interval(self):
+        """Maximum interval time.
+
+        Can be set as a number, interpreted in seconds, or as a
+        timedelta64 object.
+        """
+        return self._max_interval
+
+    @max_interval.setter
+    def max_interval(self, value):
+        self._max_interval = numpy.timedelta64(value, 's')
 
     bin_interval_time = numpy.timedelta64(1, 'D')
     bin_interval_lat = 1.0 # degree
@@ -46,6 +61,7 @@ class CollocatedDataset(dataset.HomemadeDataset):
         if "projection" in kwargs:
             self.projection = kwargs.pop("projection")
         self.ellipsoid = pyproj.Geod(ellps=self.projection)
+        self.max_interval = 0
 
         super().__init__(**kwargs)
 
@@ -89,7 +105,7 @@ class CollocatedDataset(dataset.HomemadeDataset):
 
         lat_bins = numpy.arange(
             numpy.floor(min(lat.min() for lat in lats)),
-            numpy.ceil(max(lat.max() for lat in lats+1)),
+            numpy.ceil(max(lat.max() for lat in lats)+1),
             self.bin_interval_lat)
 
         # Note: this will be too large if longitudes cross (anti)meridian,
@@ -101,48 +117,74 @@ class CollocatedDataset(dataset.HomemadeDataset):
 
         binned = [stats.bin_nd(
             [times_int[i], lats[i], lons[i]],
-            [time_bins, lat_bins, lon_bins])
+            [time_bins.astype(numpy.int64), lat_bins, lon_bins])
             for i in (0, 1)]
+
+        bin_no = numpy.array([numpy.array([b.size for b in bb.flat]).reshape(bb.shape)
+                for bb in binned])
 
         # number of neighbouring bins to look into
         binrange_time = math.ceil(self.max_interval/self.bin_interval_time)
-        cell_width = 2 * math.pi * pyproj.Geod(ellps="sphere") / 360
-        cell_height = 2 * math.pi * numpy.cos(numpy.deg2rad(lat_bins))
-        binrange_lat = math.ceil(self.max_distance/
-            (self.bin_interval_lat*cell_width))
-        binrange_lon = math.ceil(self.max_distance/
-            (self.bin_interval_lon*cell_height))
+        cell_height = 2 * math.pi * self.ellipsoid.b / 360
+        cell_width = (2 * math.pi * numpy.cos(numpy.deg2rad(lat_bins)) *
+                      self.ellipsoid.b / 360)
+
+        binrange_lat = numpy.ceil(self.max_distance/
+            (self.bin_interval_lat*cell_height))
+        binrange_lon = numpy.ceil(self.max_distance/
+            (self.bin_interval_lon*cell_width))
 
         all_p_met = []
         all_s_met = []
 
         for time_i in range(len(time_bins)):
             # range of secondary time bins
-            t_s_min = time_i - binrange_time
-            t_s_max = time_i + binrange_time + 1
+            t_s_min = max(0, time_i - binrange_time)
+            t_s_max = min(time_bins.size-1, time_i + binrange_time + 1)
+
+            # potentially skip lat & lon loops
+            if (bin_no[0, time_i, :, :].max() == 0 or
+                    bin_no[1, t_s_min:t_s_max, :, :].max() == 0):
+                continue
 
             for lat_i in range(len(lat_bins)):
                 # range of secondary lat bins
-                lat_s_min = lat_i - binrange_lat
-                lat_s_max = lat_i + binrange_lat + 1
+                lat_s_min = max(0, lat_i - binrange_lat)
+                lat_s_max = min(lat_bins.size-1, lat_i + binrange_lat + 1)
+
+                # potentially skip lon loop
+                if (bin_no[0, time_i, lat_i, :].max() == 0 or
+                        bin_no[1, t_s_min:t_s_max, lat_s_min:lat_s_max, :].max() == 0):
+                    continue
 
                 for lon_i in range(len(lon_bins)):
                     # range of secondary lon bins
-                    lon_s_min = lon_i - binrange_lon[lat_i]
-                    lon_s_max = lon_i + binrange_lon[lat_i] + 1
+                    # FIXME: consider wrap-around
 
-                    primary = binned[0][time_i, lat_i, lon_i]
-                    secondary = numpy.concatenate(tuple(binned[0][
+                    # for width of lons consider polemost relevant
+                    # latitude bin
+                    max_lon_range = max(binrange_lon[lat_s_min:lat_s_max])
+                    lon_s_min = max(0, lon_i - max_lon_range)
+                    lon_s_max = min(lon_bins.size-1, lon_i + max_lon_range + 1)
+
+                    if (bin_no[0, time_i, lat_i, lon_i].max() == 0 or
+                            bin_no[1, t_s_min:t_s_max,
+                            lat_s_min:lat_s_max,
+                            lon_s_min:lon_s_max].max() == 0):
+                        continue
+
+                    primary = arr1[binned[0][time_i, lat_i, lon_i]]
+                    secondary = arr2[numpy.concatenate(binned[1][
                         t_s_min:t_s_max,
                         lat_s_min:lat_s_max,
-                        lon_s_min:lon_s_max]))
+                        lon_s_min:lon_s_max].ravel().tolist())]
 
                     (p_met, s_met) = self._collocate_bucket(primary, secondary)
 
                     all_p_met.append(p_met)
                     all_s_met.append(s_met)
 
-        return numpy.concatenate(tuple(all_p_met), tuple(all_s_met))
+        return numpy.concatenate((tuple(all_p_met), tuple(all_s_met)))
 
     def _collocate_bucket(self, primary, secondary):
         """Collocate a single bucket.  Internal function used by
@@ -153,7 +195,8 @@ class CollocatedDataset(dataset.HomemadeDataset):
         """
 
         if primary.size == 0 or secondary.size == 0:
-            return numpy.empty(shape=(0, 2), dtype=numpy.int64)
+            return (numpy.empty(shape=(0,), dtype=numpy.int64),
+                    numpy.empty(shape=(0,), dtype=numpy.int64))
 
         # find pairs meeting time criterion
         intervals = (primary[:, numpy.newaxis] -

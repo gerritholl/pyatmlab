@@ -69,7 +69,7 @@ class NDACCGainesBruker(dataset.SingleFileDataset):
             (("ts", "ts_e") if spec in {"O3", "N2O", "CO", "CH4"} else ()) +
             ("n",)]
     dtype = (
-        [("time", numpy.float32)] +
+        [("time_yearfrac", numpy.float32)] +
         [("doy", numpy.uint16), ("year", numpy.uint16), 
          ("month", numpy.uint8), ("day", numpy.uint8),
          ("lat", numpy.float32), ("lon", numpy.float32),
@@ -120,14 +120,21 @@ class NDACCGainesBruker(dataset.SingleFileDataset):
             L = []
             while True:
                 try:
-                    L.append(collect_values(fp, 1+nauxv+nv, 
-                        self.dtype))
+                    v = collect_values(fp, 1+nauxv+nv, self.dtype)
                 except EOFError:
                     break
+                else:
+                    dt = numpy.datetime64(datetime.date(v["year"],
+                        v["month"], v["day"]), 'D').astype("<M8[us]")
+                    new = numpy.empty(dtype=[("time",
+                        dt.dtype)]+v.dtype.descr, shape=())
+                    new["time"] = dt
+                    for field in v.dtype.names:
+                        new[field] = v[field]
+                    L.append(new)
 
         # now I have an array with fractional years as the time-axis.
         # I want to have datetime64
-        # actually, don't bother, I have year and doy in metadata
         A = numpy.array(L)
         #dts = [datetime.datetime(numpy.floor(d), 1, 1, 0, 0, 0) +
         #       datetime.timedelta(days=(365+calendar.isleap(2010))*(d-numpy.floor(d)))
@@ -145,6 +152,10 @@ class NDACCGainesBruker(dataset.SingleFileDataset):
         for (i, field) in enumerate(self.type_core):
             M.mask[field[0]] = A[field[0]] == vmiss[i]
             A[field[0]] *= vscal[i]
+
+        # lats are secretly wrongly typed
+        M["lat"] /= 100
+        M["lon"] /= 100
         return M
 
 

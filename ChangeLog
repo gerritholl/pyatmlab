@@ -1,3 +1,40 @@
+2014-03-13  Gerrit Holl  <gerrit.holl@utoronto.ca>
+
+	* pyatmlab-0-0-13
+
+	* pyatmlab/collocations.py(CollocatedDataset):
+
+	- Renamed some attributes
+
+	- Added property for max_interval, which is always a timedelta64
+	object
+
+	- Fixed the implementation of collocate and _collocate_bucket.  Seems
+	correct now.
+
+	* pyatmlab/dataset.py:
+	
+	(Dataset):
+
+	- Fixed __setattr__ for properties
+	- Added dummy implementation for abstract methods
+
+	(NDACCGainesBruker.read):
+
+	- Correctly add datetime64 to time field
+	- Hard-coded fix for lat/lon
+
+	* pyatmlab/stats.py(bin_nd):
+
+	- Added some checks that bins are correct
+
+	- Don't .pop() off bins/binners, just take the last value and pass
+	all-but-one on; passed on value should in any case be a *copy*, not a
+	reference!
+
+	- It didn't work at all for >2 dimensions.  Now it seems correct.
+
+
 2014-03-12  Gerrit Holl  <gerrit.holl@utoronto.ca>
 
 	* pyatmlab-0-0-12

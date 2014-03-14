@@ -15,7 +15,7 @@ class Dataset(metaclass=abc.ABCMeta):
             setattr(self, k, v)
 
     def __setattr__(self, k, v):
-        if hasattr(self, k):
+        if hasattr(self, k) or hasattr(type(self), k):
             object.__setattr__(self, k, v)
         else:
             raise AttributeError("Unknown attribute: {}. ".format(k))
@@ -79,4 +79,11 @@ class HomemadeDataset(Dataset):
 
     No content yet.
     """
-    pass
+    # dummy implementation for abstract methods, so that I can test other
+    # things
+
+    def read(self, f):
+        raise NotImplementedError()
+
+    def granules_for_period(self, start, end):
+        raise StopIteration()
