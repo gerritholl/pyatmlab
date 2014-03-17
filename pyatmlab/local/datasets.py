@@ -16,6 +16,7 @@ class TansoFTS(dataset.SingleFileDataset):
     end_date = datetime.datetime(2010, 10, 31, 20, 34, 50, 814)
     srcfile = ("/home/gerrit/sshfs/glacier/data/1/gholl/data/1403050001/"
                "GOSATTFTS20100316_02P02TV0001R14030500010.h5")
+    name = "GOSAT Tanso FTS"
 
     # implementation of abstract methods
 
@@ -57,6 +58,7 @@ class NDACCGainesBruker(dataset.SingleFileDataset):
     end_date = datetime.datetime(2010, 10, 16, 0, 0, 0)
     srcfile = ("/home/gerrit/sshfs/glacier/data/1/gholl/data"
                "/BrukerIFS/eutc1001.sgf")
+    name = "PEARL Bruker IFS"
 
 #    dtype = [("time", "datetime64[us]", 1),
 #             ("aux", numpy.uint32, 7),

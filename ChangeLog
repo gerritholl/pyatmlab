@@ -1,3 +1,19 @@
+2014-03-14  Gerrit Holl  <gerrit.holl@utoronto.ca>:
+
+	* pyatmlab-0-0-14
+
+	* pyatmlab/collocations.py(CollocatedDataset):
+
+	- fix remaining bugs.  It works now.
+
+	* pyatmlab/local/datasets.py:
+
+	- Add name field to both classes
+
+	* pyatmlab/stats.py:
+
+	- Bugfix (was a hard find)
+
 2014-03-13  Gerrit Holl  <gerrit.holl@utoronto.ca>
 
 	* pyatmlab-0-0-13

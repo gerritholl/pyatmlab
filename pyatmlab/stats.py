@@ -81,7 +81,9 @@ def bin_nd(binners, bins, data=None):
         innerbinned = bin(binners[-1], indices, bins[-1])
         outerbinned = []
         for (i, ib) in enumerate(innerbinned):
-            outerbinned.append(bin_nd([x[ib] for x in binners[:-1]], bins[:-1], ib))
+            obinners = [x[ib] for x in binners[:-1]]
+            ob = bin_nd(obinners, bins[:-1], data[ib])
+            outerbinned.append(ob)
 
         # go through some effort to make sure v[i, j, ...] is always
         # numpy.uint64, whereas v is numpy.object_

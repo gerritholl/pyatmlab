@@ -157,34 +157,35 @@ class CollocatedDataset(dataset.HomemadeDataset):
                         bin_no[1, t_s_min:t_s_max, lat_s_min:lat_s_max, :].max() == 0):
                     continue
 
+                max_lon_range = max(binrange_lon[lat_s_min:lat_s_max])
                 for lon_i in range(len(lon_bins)):
                     # range of secondary lon bins
-                    # FIXME: consider wrap-around
 
                     # for width of lons consider polemost relevant
                     # latitude bin
-                    max_lon_range = max(binrange_lon[lat_s_min:lat_s_max])
-                    lon_s_min = max(0, lon_i - max_lon_range)
-                    lon_s_max = min(lon_bins.size-1, lon_i + max_lon_range + 1)
+                    lon_is = numpy.mod(numpy.arange(lon_i - max_lon_range,
+                            lon_i+max_lon_range), lon_bins.size).astype('uint64')
+                    #lon_s_min = max(0, lon_i - max_lon_range)
+                    #lon_s_max = min(lon_bins.size-1, lon_i + max_lon_range + 1)
 
                     if (bin_no[0, time_i, lat_i, lon_i].max() == 0 or
                             bin_no[1, t_s_min:t_s_max,
                             lat_s_min:lat_s_max,
-                            lon_s_min:lon_s_max].max() == 0):
+                            lon_is].sum() == 0):
                         continue
 
                     primary = arr1[binned[0][time_i, lat_i, lon_i]]
                     secondary = arr2[numpy.concatenate(binned[1][
                         t_s_min:t_s_max,
                         lat_s_min:lat_s_max,
-                        lon_s_min:lon_s_max].ravel().tolist())]
+                        lon_is].ravel().tolist())]
 
                     (p_met, s_met) = self._collocate_bucket(primary, secondary)
 
                     all_p_met.append(p_met)
                     all_s_met.append(s_met)
 
-        return numpy.concatenate((tuple(all_p_met), tuple(all_s_met)))
+        return (numpy.concatenate(all_p_met), numpy.concatenate(all_s_met))
 
     def _collocate_bucket(self, primary, secondary):
         """Collocate a single bucket.  Internal function used by
@@ -199,8 +200,8 @@ class CollocatedDataset(dataset.HomemadeDataset):
                     numpy.empty(shape=(0,), dtype=numpy.int64))
 
         # find pairs meeting time criterion
-        intervals = (primary[:, numpy.newaxis] -
-                     secondary[numpy.newaxis, :])
+        intervals = (primary[:, numpy.newaxis]["time"] -
+                     secondary[numpy.newaxis, :]["time"])
         time_met = abs(intervals) < self.max_interval
         (time_met_i1, time_met_i2) = time_met.nonzero()
 
