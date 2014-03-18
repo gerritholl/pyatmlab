@@ -18,6 +18,11 @@ class TansoFTS(dataset.SingleFileDataset):
                "GOSATTFTS20100316_02P02TV0001R14030500010.h5")
     name = "GOSAT Tanso FTS"
 
+    p_for_T_profile = numpy.array([1000, 975, 950, 925, 900, 850, 800,
+        700, 600, 500, 400, 300, 250, 200, 150, 100, 70, 50, 30, 20,
+        10])*100 # hPa -> Pa
+    p_for_interp_profile = None
+
     # implementation of abstract methods
 
     def read(self, path=None):
@@ -35,17 +40,25 @@ class TansoFTS(dataset.SingleFileDataset):
                 for i in range(time_raw.size)], dtype="datetime64[us]")
             D["lat"] = h5f["Data"]["geolocation"]["latitude"]
             D["lon"] = h5f["Data"]["geolocation"]["longitude"]
-            D["p"] = h5f["Data"]["originalProfile"]["pressure"]
-            D["ch4_profile"] = h5f["Data"]["originalProfile"]["CH4Profile"]
+            p = h5f["Data"]["interpolatedProfile"]["pressure"][:]
+            p *= 100 # Pa -> hPa
+            if self.p_for_interp_profile is not None:
+                if not (self.p_for_interp_profile == p).all():
+                    raise ValueError("Found inconsistent pressure"
+                            " profiles!")
+            else:
+                self.p_for_interp_profile = p
+            #D["p"] = h5f["Data"]["originalProfile"]["pressure"]
+            D["ch4_profile"] = h5f["Data"]["interpolatedProfile"]["CH4Profile"]
+            D["T"] = h5f["scanAttribute"]["referenceData"]["temperatureProfile"]
 
 
             A = numpy.empty(shape=time_raw.size,
                 dtype=[(k, D[k].dtype, D[k].shape[1:]) for k in D.keys()])
             for k in D.keys():
-                A[k] = D[k]
+                A[k] = D[k][:]
             A = A.view(numpy.ma.MaskedArray)
-            for field in ("p", "ch4_profile"):
-                A.mask[field][A.data[field]<0] = True
+            A.mask["ch4_profile"][A.data["ch4_profile"]<0] = True
         return A
 
 class NDACCGainesBruker(dataset.SingleFileDataset):

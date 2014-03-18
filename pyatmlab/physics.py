@@ -8,7 +8,8 @@ Mostly obtained from PyARTS
 """
 
 import numpy
-from .constants import (h, k, R_d, R_v, c)
+#from .constants import (h, k, R_d, R_v, c)
+from . import constants as c
 from . import math as pyatmmath
 
 def mixingratio2density(mixingratio, p, T):
@@ -26,8 +27,7 @@ def mixingratio2density(mixingratio, p, T):
     #
     # ρ = p/(R*T)
 
-    R_d = 287.0 # J K^-1 kg^-1
-    m_air = p/(R_d*T)
+    m_air = p/(c.R_d*T)
     return mixingratio * m_air
 
 def mixingratio2rh(w, p, T):
@@ -39,7 +39,7 @@ def mixingratio2rh(w, p, T):
     :returns: relative humidity [1]
     """
 
-    eps = R_d/R_v # Wallace and Hobbs, 3.14
+    eps = c.R_d/c.R_v # Wallace and Hobbs, 3.14
     e = w/(w+eps)*p # Wallace and Hobbs, 3.59
     e_s = vapour_P(T)
     return e/e_s # Wallace and Hobbs, 3.64
@@ -63,7 +63,7 @@ def specific2mixingratio(q):
 
     # Source: extract_arts_1.f90
 
-    eps = R_d/R_v
+    eps = c.R_d/c.R_v
     return q / ( q + eps*(1-q) )
 
 
@@ -131,7 +131,7 @@ def wavelength2frequency(wavelength):
     :returns: Frequency [Hz]
     """
 
-    return c/wavelength
+    return c.c/wavelength
 
 def wavenumber2frequency(wavenumber):
     """Converts wavenumber (in m^-1) to frequency (in Hz)
@@ -140,7 +140,7 @@ def wavenumber2frequency(wavenumber):
     :returns: Frequency [Hz]
     """
 
-    return c*wavenumber
+    return c.c*wavenumber
 
 def frequency2wavelength(frequency):
     """Converts frequency [Hz] to wave length [m]
@@ -149,7 +149,7 @@ def frequency2wavelength(frequency):
     :returns: Wave length [m]
     """
 
-    return c/frequency
+    return c.c/frequency
 
 def frequency2wavenumber(frequency):
     """Converts frequency [Hz] to wave number [m^-1]
@@ -157,7 +157,31 @@ def frequency2wavenumber(frequency):
     :param frequency: Frequency [Hz]
     :returns: Wave number [m^-1]
     """
-    return frequency/c
+    return frequency/c.c
 
+def vmr2nd(vmr, T, p):
+    """Convert volume mixing ratio [] to number density
 
+    :param vmr: Volume mixing ratio or volume fraction.  For example,
+        taking methane density in ppmv, first multiply by `constants.ppm`,
+        then pass here.
+    :param T: Temperature [K]
+    :param p: Pressure [Pa]
+    :returns: Number density in molecules per m^3
+    """
 
+    # ideal gas law: p = n_0 * k * T
+    return  vmr * p / (c.k * T)
+
+def p2z_oversimplified(p):
+    """Convert pressure to altitude with oversimplified assumptions.
+
+    Neglects the virtual temperature correction, assumes isothermal
+    atmosphere with pressure dropping factor 10 for each 16 km.  Use a
+    better function...
+
+    :param p: Pressure [Pa]
+    :returns: Altitude [m]
+    """
+
+    return 16e3 * (5 - numpy.log10(p) )

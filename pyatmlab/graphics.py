@@ -10,6 +10,7 @@ import datetime
 now = datetime.datetime.now
 
 import numpy
+import matplotlib
 from . import config
 
 def plotdir():

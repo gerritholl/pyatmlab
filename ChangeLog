@@ -1,3 +1,28 @@
+2014-03-18  Gerrit Holl  <gerrit.holl@utoronto.ca>:
+
+	* pyatmlab-0-0-15
+
+	* pyatmlab/constants.py:
+
+	- Added ppm, ppb, ppt
+
+	* pyatmlab/graphics.py:
+
+	- Added missing import
+
+	* pyatmlab/local/datasets.py(TansoFTS):
+
+	- Revert to interpolated profiles, easier to deal with
+	- Added fields holding pressure profiles for temperature, ch4
+
+	* pyatmlab/physics.py(vmr2nd):
+
+	- Added conversion function
+
+	(p2z_oversimplified):
+
+	- Added oversimplified p2z function
+
 2014-03-14  Gerrit Holl  <gerrit.holl@utoronto.ca>:
 
 	* pyatmlab-0-0-14
