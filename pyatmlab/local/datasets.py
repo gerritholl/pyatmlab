@@ -6,9 +6,15 @@ import itertools
 import calendar
 
 import numpy
+import scipy.interpolate
 
 import h5py
 from .. import dataset
+from .. import physics
+from .. import math
+from ..constants import ppm as PPM
+
+HECTO = 100
 
 class TansoFTS(dataset.SingleFileDataset):
 
@@ -20,8 +26,53 @@ class TansoFTS(dataset.SingleFileDataset):
 
     p_for_T_profile = numpy.array([1000, 975, 950, 925, 900, 850, 800,
         700, 600, 500, 400, 300, 250, 200, 150, 100, 70, 50, 30, 20,
-        10])*100 # hPa -> Pa
+        10])*HECTO # hPa -> Pa
     p_for_interp_profile = None
+
+    @classmethod
+    def vmr_to_column_density(cls, data):
+        """Convert VMR to column density
+
+        Currently hardcoded to CH4 profiles and the dtype by this classes'
+        read method.
+
+        Returns number column density and its error
+        """
+        # temperature interpolated on each pressure grid
+        ncd = numpy.empty(shape=data.shape, dtype="f8")
+        ncd_e = numpy.empty_like(ncd)
+
+        for n in range(data.size):
+            if data["T"].mask.size == 1:
+                T = data["T"][n, ::-1].data
+            else:
+                T = data["T"][n, ::-1].data[~data["T"][n, ::-1].mask]
+
+            interpolator = scipy.interpolate.interp1d(
+                cls.p_for_T_profile[::-1], T)# should be increasing
+            
+            p = data["p_raw"][n, :].data[~data["p_raw"][n, :].mask]*HECTO
+
+            T_interp = interpolator(p)
+
+            nd = physics.vmr2nd(
+                data["ch4_profile_raw"][n, :].data[
+                    ~data["ch4_profile_raw"][n, :].mask]*PPM,
+                T_interp, p)
+
+            nd_e = physics.vmr2nd(
+                data["ch4_profile_raw_e"][n, :].data[
+                    ~data["ch4_profile_raw_e"][n, :].mask]*PPM,
+                T_interp, p)
+
+            z = physics.p2z_oversimplified(p)
+
+            ncd[n] = math.integrate_with_height(z, nd)
+            ncd_e[n] = math.integrate_with_height(z, nd_e)
+
+        return (ncd, ncd_e)
+
+
 
     # implementation of abstract methods
 
@@ -41,7 +92,7 @@ class TansoFTS(dataset.SingleFileDataset):
             D["lat"] = h5f["Data"]["geolocation"]["latitude"]
             D["lon"] = h5f["Data"]["geolocation"]["longitude"]
             p = h5f["Data"]["interpolatedProfile"]["pressure"][:]
-            p *= 100 # Pa -> hPa
+            p *= HECTO # Pa -> hPa
             if self.p_for_interp_profile is not None:
                 if not (self.p_for_interp_profile == p).all():
                     raise ValueError("Found inconsistent pressure"
@@ -49,7 +100,10 @@ class TansoFTS(dataset.SingleFileDataset):
             else:
                 self.p_for_interp_profile = p
             #D["p"] = h5f["Data"]["originalProfile"]["pressure"]
-            D["ch4_profile"] = h5f["Data"]["interpolatedProfile"]["CH4Profile"]
+            D["ch4_profile_interp"] = h5f["Data"]["interpolatedProfile"]["CH4Profile"]
+            D["ch4_profile_raw"] = h5f["Data"]["originalProfile"]["CH4Profile"]
+            D["ch4_profile_raw_e"] = h5f["Data"]["originalProfile"]["CH4ProfileError"]
+            D["p_raw"] = h5f["Data"]["originalProfile"]["pressure"]
             D["T"] = h5f["scanAttribute"]["referenceData"]["temperatureProfile"]
 
 
@@ -58,7 +112,9 @@ class TansoFTS(dataset.SingleFileDataset):
             for k in D.keys():
                 A[k] = D[k][:]
             A = A.view(numpy.ma.MaskedArray)
-            A.mask["ch4_profile"][A.data["ch4_profile"]<0] = True
+            for k in {"ch4_profile_interp", "ch4_profile_raw",
+                      "ch4_profile_raw_e", "p_raw", "T"}:
+                A.mask[k][A.data[k]<0] = True
         return A
 
 class NDACCGainesBruker(dataset.SingleFileDataset):

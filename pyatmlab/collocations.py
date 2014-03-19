@@ -4,7 +4,7 @@
 
 import math
 import numpy
-
+import numpy.ma
 
 import pyproj
 
@@ -175,7 +175,7 @@ class CollocatedDataset(dataset.HomemadeDataset):
                         continue
 
                     primary = arr1[binned[0][time_i, lat_i, lon_i]]
-                    secondary = arr2[numpy.concatenate(binned[1][
+                    secondary = arr2[numpy.ma.concatenate(binned[1][
                         t_s_min:t_s_max,
                         lat_s_min:lat_s_max,
                         lon_is].ravel().tolist())]
@@ -185,7 +185,7 @@ class CollocatedDataset(dataset.HomemadeDataset):
                     all_p_met.append(p_met)
                     all_s_met.append(s_met)
 
-        return (numpy.concatenate(all_p_met), numpy.concatenate(all_s_met))
+        return (numpy.ma.concatenate(all_p_met), numpy.ma.concatenate(all_s_met))
 
     def _collocate_bucket(self, primary, secondary):
         """Collocate a single bucket.  Internal function used by

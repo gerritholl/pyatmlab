@@ -11,6 +11,7 @@ now = datetime.datetime.now
 
 import numpy
 import matplotlib
+import matplotlib.pyplot
 from . import config
 
 def plotdir():

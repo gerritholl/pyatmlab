@@ -1,3 +1,29 @@
+2014-03-19  Gerrit Holl  <gerrit.holl@utoronto.ca>:
+
+	* pyatmlab-0-0-16
+
+	* pyatmlab/collocations.py:
+
+	- Added missing import
+
+	(CollocatedDataset):
+
+	- Preserve masked array when concatenating collocs
+
+	* pyatmlab/graphics.py:
+
+	- Added missing import
+
+	* pyatmlab/local/datasets.py:
+
+	(TansoFTS):
+
+	- Added method vmr_to_column_density
+
+	(TansoFTS.read):
+
+	- Add both raw *and* interpolated profiles
+
 2014-03-18  Gerrit Holl  <gerrit.holl@utoronto.ca>:
 
 	* pyatmlab-0-0-15
