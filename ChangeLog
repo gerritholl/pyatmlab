@@ -1,3 +1,41 @@
+2014-04-04  Gerrit Holl  <gerrit.holl@utoronto.ca>:
+
+	* pyatlmlab-0-0-17
+
+	* pyatmlab/dataset.py:
+
+	(Dataset):
+
+	- Masked arrays don't play well together with datetime64.  Retreat to
+	unmasked arrays when needed.
+
+	(MultiFileDataset):
+
+	- New class containing functionality for any dataset spread over
+	multiple files.
+
+	(SingleMeasurementPerFileDataset):
+
+	- Special case of MultiFileDataset
+
+	* pyatmlab/local/datasets.py:
+
+	(ACEFTS):
+
+	- First implementation for a SingleMeasurementPerFileDataset
+
+	* pyatmlab/math.py:
+
+	- Added function to calculate average position on a sphere
+
+	* pyatmlab/tools.py:
+
+	- Added warning that validator doesn't work with *args, **kwargs
+
+	* setup.py:
+
+	- Needs Python 3.4 (sorry)
+
 2014-03-19  Gerrit Holl  <gerrit.holl@utoronto.ca>:
 
 	* pyatmlab-0-0-16

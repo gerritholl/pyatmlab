@@ -68,6 +68,8 @@ def validator(func):
         @validator
         def f(x: numbers.Number, y: numbers.Number, mode: str):
             return x+y
+
+    Does not currently work for *args and **kwargs style arguments.
     """
 
     @functools.wraps(func)

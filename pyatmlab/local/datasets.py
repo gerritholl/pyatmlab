@@ -230,6 +230,75 @@ class NDACCGainesBruker(dataset.SingleFileDataset):
         return M
 
 
+class ACEFTS(dataset.SingleMeasurementPerFileDataset):
+    """SCISAT Atmospheric Chemistry Experiment FTS
+    """
+    basedir = "/home/gerrit/sshfs/glacier/data/1/gholl/data/ACE"
+    subdir = "{year:04d}-{month:02d}"
+    re = r"(?P<type>s[sr])(?P<orbit>\d{5})v3\.0\.asc"
+    _time_format = "%Y-%m-%d %H:%M:%S"
+
+    @staticmethod
+    def read_header(fp):
+        """Read header from open file
+
+        Should be opened at the beginning.  Will advance location from
+        start of header to end of header.
+
+        :param fp: File open at beginning of header
+        :returns: Dictionary with header information
+        """
+        head = {}
+        isempty = lambda line: not line.isspace()
+        for line in itertools.takewhile(isempty, fp):
+            k, v = line.split("|")
+            head[k.strip()] = v.strip()
+        return head
+
+    def read_single(self, f):
+        with open(f) as fp:
+            head = self.read_header(fp)
+
+            line = fp.readline()
+            while line.isspace():
+                line = fp.readline()
+
+            names = line.replace("P (atm)", "P_atm").split()
+            # numpy.ma.empty fails with datetime dtype
+            # https://github.com/numpy/numpy/issues/4583
+            #D = numpy.ma.empty((150,),
+            D = numpy.empty((150,),
+                list(zip(names, ["f8"]*len(names))))
+
+            for (n, line) in enumerate(fp):
+                # why does this not work?
+                # http://stackoverflow.com/q/22865877/974555
+                #D[names][n] = tuple(float(f) for f in line.split())
+                vals = tuple(float(f) for f in line.split())
+                for (i, name) in enumerate(names):
+                    D[name][n] = vals[i]
+        head["lat"] = float(head["latitude"])
+        head["lon"] = float(head["longitude"])
+        # for time, strip off both incomplete timezone designation and
+        # decimal part (truncating it to the nearest second)
+        head["time"] = datetime.datetime.strptime(
+            head["date"].split(".")[0].split("+")[0], self._time_format)
+        return (head, D)
+        
+    def get_time_from_granule_contents(self, p):
+        """Get time from granule contents.
+
+        Takes path-object, returns two datetimes
+        """
+        with p.open() as f:
+            head = self.read_header(f)
+            # cut of "+00" part, datetime defaults to UTC and having only
+            # hours is contrary to any standard, so strptime cannot handle
+            # it
+        return tuple(datetime.datetime.strptime(
+            head[m + "_time"][:-3], self._time_format)
+            for m in ("start", "end"))
+            
 
 def collect_values(fp, N, dtp):
     """Collect N values from stream
