@@ -56,6 +56,8 @@ class CollocatedDataset(dataset.HomemadeDataset):
     bin_interval_lon = 1.0 # degree
 
     def __init__(self, primary, secondary, **kwargs):
+        """Initialize with Dataset objects
+        """
         self.primary = primary
         self.secondary = secondary
         if "projection" in kwargs:
@@ -80,8 +82,15 @@ class CollocatedDataset(dataset.HomemadeDataset):
         to call a higher level method such as collocate_all.
         """
 
+        # This algorithm can be optimised in a number of different ways:
+        #
+        # - Use quadtrees on a spherical grid instead of guessing grid
+        # sizes
+        # - Process only time that is in common
+        # - For memory, loop through time and collocate bit by bit
+
         if self.max_interval == 0 or self.max_distance == 0:
-            return None
+            return None # FIXME: should always give ndarray
 
         # all binning should be by truncation, not rounding; i.e.
         # 2010-01-01 23:00:00 is binned on 2010-01-01.
@@ -90,6 +99,13 @@ class CollocatedDataset(dataset.HomemadeDataset):
         # numpy.digitize, on which pyatmlab.stats.bin_nd relies, does not
         # support it; so we need to truncate both time series to a common
         # format, then use ints for the binning
+
+        # FIXME: this can be optimized by doing only further processing
+        # for common time interval
+
+        if (arr1["time"].max() + self.max_interval < arr2["time"].min() or
+            arr2["time"].max() + self.max_interval < arr1["time"].min()):
+            return None # FIXME: should always give ndarray
 
         # truncate time series to resultion of self.bin_interval_time
         newtype = "<M8[{}]".format(self.bin_interval_time.dtype.str[-2])
@@ -185,7 +201,10 @@ class CollocatedDataset(dataset.HomemadeDataset):
                     all_p_met.append(p_met)
                     all_s_met.append(s_met)
 
-        return (numpy.ma.concatenate(all_p_met), numpy.ma.concatenate(all_s_met))
+        return tuple((numpy.ma.concatenate 
+            if isinstance(x, numpy.ma.MaskedArray)
+            else numpy.concatenate)(x)
+                for x in (all_p_met, all_s_met))
 
     def _collocate_bucket(self, primary, secondary):
         """Collocate a single bucket.  Internal function used by

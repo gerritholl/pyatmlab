@@ -1,3 +1,44 @@
+2014-04-07  Gerrit Holl  <gerrit.holl@utoronto.ca>:
+
+	* pyatmlab-0-0-18
+
+	* pyatmlab/collocations.py(CollocatedDataset):
+
+	- Added some notes on essential TODO-optimisations in collocation
+	algorithm.
+
+	- Return same type (masked or not) as input
+
+	* pyatmlab/dataset.py:
+
+	(Dataset):
+
+	- Read robustly, when reading many files, don't fail if a single one
+	has a problem (optionally)
+
+	(MultiFileDataset):
+
+	- Have datefields and refields as attributes
+
+	- Helper method _getyear
+
+	- More appropriate implementation in _get_times_for_granule
+
+	* pyatmlab/datasets.py:
+
+	- Moved from pyatmlab/local/datasets.py
+
+	- Renamed NDACCGainesBruker to NDACCAmes
+
+	* pyatmlab/geo.py:
+
+	- Started file, small utility to shift longitudes to common grid,
+	should be used for collocation grid estimation
+
+	* pyatmlab/local/datasets.py:
+
+	- Moved all content that is not really local to its own file, keep
+	only skeleton here
 2014-04-04  Gerrit Holl  <gerrit.holl@utoronto.ca>:
 
 	* pyatlmlab-0-0-17
