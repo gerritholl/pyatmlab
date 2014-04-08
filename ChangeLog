@@ -1,5 +1,28 @@
 2014-04-08  Gerrit Holl  <gerrit.holl@utoronto.ca>:
 
+	* pyatmlab-0-0-20
+
+	* pyatmlab/collocations.py:
+
+	- Add method find_granule_pairs that will yield all pairs of granules
+	with potential time-overlap
+
+	* pyatmlab/dataset{,s}.py:
+
+	- Rename granules_for_period -> find_granules
+
+	- Pass read through functools.lru_cache, do actual work in _read
+
+	(MultiFileDataset):
+
+	- pass time-hints as dict not sequence
+
+	* pyatmlab/local/datasets.py:
+
+	- Use granule_cache_file
+
+2014-04-08  Gerrit Holl  <gerrit.holl@utoronto.ca>:
+
 	* pyatmlab-0-0-19
 
 	* pyatmlab/dataset.py:

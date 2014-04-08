@@ -76,7 +76,7 @@ class TansoFTS(dataset.SingleFileDataset):
 
     # implementation of abstract methods
 
-    def read(self, path=None):
+    def _read(self, path=None):
         """Read Tanso FTP granule.  Currently hardcoded for CH4 raw profiles.
         
         """
@@ -148,7 +148,7 @@ class NDACCAmes(dataset.MultiFileDataset):
         return (datetime.datetime(y1, m1, d1, 0, 0, 0),
                 datetime.datetime(y2, m2, d2, 23, 59, 59))
              
-    def read(self, path):
+    def _read(self, path):
         """Read Bruker data in NDACC Gaines format
 
         Returns a masked array
@@ -286,9 +286,9 @@ class ACEFTS(dataset.SingleMeasurementPerFileDataset):
     def get_time_from_granule_contents(self, p):
         """Get time from granule contents.
 
-        Takes path-object, returns two datetimes
+        Takes str with path, returns two datetimes
         """
-        with p.open() as f:
+        with open(p) as f:
             head = self.read_header(f)
             # cut of "+00" part, datetime defaults to UTC and having only
             # hours is contrary to any standard, so strptime cannot handle

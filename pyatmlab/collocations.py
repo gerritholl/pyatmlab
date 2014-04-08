@@ -20,10 +20,11 @@ class CollocatedDataset(dataset.HomemadeDataset):
     secondary
     max_distance    Maximum distance in m
     max_interval    Maximum time interval in s.
+    projection      projection to use in calculations
 
     The following attributes may be changed at your own risk.  Changing
     should not affect results, but may affect performance.  Optimise based
-    on application.
+    on application.  Subject to change.
 
     bin_interval_time
     bin_interval_lat
@@ -66,6 +67,27 @@ class CollocatedDataset(dataset.HomemadeDataset):
         self.max_interval = 0
 
         super().__init__(**kwargs)
+
+    def find_granule_pairs(self, start_date=None, end_date=None):
+        """Iterate through all (prim, sec) co-time granule pairs
+
+        Can optionally pass in start_date and end_date, that will be passed
+        on to the primary find_granules.
+        """
+
+        if start_date is None:
+            start_date = max([self.primary.start_date,
+                self.secondary.start_date])
+
+        if end_date is None:
+            end_date = min([self.primary.end_date,
+                self.secondary.end_date])
+
+        for gran_prim in self.primary.find_granules_sorted(start_date, end_date):
+            for gran_sec in self.secondary.find_granules_sorted(
+                *self.primary.get_times_for_granule(gran_prim)):
+                yield (gran_prim, gran_sec)
+
 
     def collocate_all(self, distance=0, interval=numpy.timedelta64(1, 's')):
         """Collocate all available data.

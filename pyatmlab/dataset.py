@@ -2,6 +2,7 @@
 """
 
 import abc
+import functools
 import itertools
 import pathlib
 import re
@@ -46,14 +47,14 @@ class Dataset(metaclass=abc.ABCMeta):
             raise AttributeError("Unknown attribute: {}. ".format(k))
 
     @abc.abstractmethod
-    def granules_for_period(self, start=datetime.datetime.min,
+    def find_granules(self, start=datetime.datetime.min,
                                   end=datetime.datetime.max):
         """Loop through all granules for indicated period.
 
         This is a generator that will loop through all granules from
         `start` to `end`, inclusive.
 
-        See also: `granules_for_period_sorted`
+        See also: `find_granules_sorted`
 
         :param datetime start: Starting datetime, defaults to any
         :param datetime end: Ending datetime, defaults to any
@@ -62,10 +63,10 @@ class Dataset(metaclass=abc.ABCMeta):
         raise NotImplementedError()
 
     @abc.abstractmethod
-    def granules_for_period_sorted(self, start=None, end=None):
+    def find_granules_sorted(self, start=None, end=None):
         """Yield all granules sorted by starting time then ending time.
 
-        For details, see `granules_for_period`.
+        For details, see `find_granules`.
         """
         raise NotImplementedError()
 
@@ -82,7 +83,7 @@ class Dataset(metaclass=abc.ABCMeta):
         """
 
         contents = []
-        for gran in self.granules_for_period(start, end):
+        for gran in self.find_granules(start, end):
             try:
                 cont = self.read(str(gran))
             except ValueError as exc:
@@ -99,7 +100,7 @@ class Dataset(metaclass=abc.ABCMeta):
             if isinstance(contents[0], numpy.ma.MaskedArray)
             else numpy.concatenate)(contents)
 #        return numpy.ma.concatenate(list(
-#            self.read(f) for f in self.granules_for_period(start, end)))
+#            self.read(f) for f in self.find_granules(start, end)))
 
     def read_all(self):
         """Read all data in one go.
@@ -110,8 +111,8 @@ class Dataset(metaclass=abc.ABCMeta):
         return self.read_period()
             
     @abc.abstractmethod
-    def read(self, f):
-        """Read granule in file.
+    def _read(self, f):
+        """Read granule in file, low-level
 
         Shall return an ndarray with at least the fields lat, lon, time.
 
@@ -119,6 +120,17 @@ class Dataset(metaclass=abc.ABCMeta):
         """
 
         raise NotImplementedError()
+
+    @functools.lru_cache(maxsize=10)
+    def read(self, f):
+        """Read granule in file and do some other fixes
+
+        Uses self._read.  Do not override, override _read instead.
+
+        :param str f: Path to file
+        """
+        return self._read(f)
+
 
 class SingleFileDataset(Dataset):
     """Represents a dataset where all measurements are in one file.
@@ -128,14 +140,14 @@ class SingleFileDataset(Dataset):
     end_date = datetime.datetime.max
     srcfile = None
 
-    def granules_for_period(self, start=datetime.datetime.min,
+    def find_granules(self, start=datetime.datetime.min,
                             end=datetime.datetime.max):
         if start < self.end_date and end > self.start_date:
             yield self.srcfile
 
-    def granules_for_period_sorted(self, start=datetime.datetime.min,
+    def find_granules_sorted(self, start=datetime.datetime.min,
                                    end=datetime.datetime.max):
-        yield from self.granules_for_period(start, end)
+        yield from self.find_granules(start, end)
 
 class MultiFileDataset(Dataset):
     """Represents a dataset where measurements are spread over multiple
@@ -259,13 +271,15 @@ class MultiFileDataset(Dataset):
         if res == "year":
             year = d.year
             while datetime.date(year, 1, 1) < d_end:
-                yield ((year,), pathlib.Path(str(self.basedir / self.subdir).format(year=year)))
+                yield (dict(year=year),
+                    pathlib.Path(str(self.basedir / self.subdir).format(year=year)))
                 year += 1
         elif res == "month":
             year = d.year
             month = d.month
             while datetime.date(year, month, 1) < d_end:
-                yield ((year, month), pathlib.Path(str(self.basedir / self.subdir).format(year=year, month=month)))
+                yield (dict(year=year, month=month),
+                    pathlib.Path(str(self.basedir / self.subdir).format(year=year, month=month)))
                 if month == 12:
                     year += 1
                     month = 1
@@ -273,13 +287,14 @@ class MultiFileDataset(Dataset):
                     month += 1
         elif res == "day":
             while d < d_end:
-                yield (year, month, day), pathlib.Path(str(self.basedir / self.subdir.format(
+                yield (dict(year=year, month=month, day=day),
+                    pathlib.Path(str(self.basedir / self.subdir).format(
                     year=d.year, month=d.month, day=d.day)))
                 d = d + datetime.timedelta(days=1)
         else:
-            yield ((), self.basedir)
+            yield ({}, self.basedir)
           
-    def granules_for_period(self, dt_start=None, dt_end=None):
+    def find_granules(self, dt_start=None, dt_end=None):
         """Yield all granules/measurementfiles in period
         """
 
@@ -300,15 +315,16 @@ class MultiFileDataset(Dataset):
                 for child in subdir.iterdir():
                     m = self._re.fullmatch(child.name)
                     if m is not None:
-                        (g_start, g_end) = self.get_times_for_granule(child, *timeinfo)
+                        (g_start, g_end) = self.get_times_for_granule(child,
+                            **timeinfo)
                         if g_end > dt_start and g_start < dt_end:
                             yield child
             
-    def granules_for_period_sorted(self, dt_start=None, dt_end=None):
+    def find_granules_sorted(self, dt_start=None, dt_end=None):
         """Yield all granules, sorted by times
         """
 
-        allgran = list(self.granules_for_period(dt_start, dt_end))
+        allgran = list(self.find_granules(dt_start, dt_end))
 
         # I've been through all granules at least once, so all should be
         # cached now; no need for additional hints when granule timeinfo
@@ -351,8 +367,8 @@ class MultiFileDataset(Dataset):
         May take hints for year, month, day, hour, minute, second, and
         their endings, according to self.date_fields
         """
-        if p in self._granule_start_times.keys():
-            (start, end) = self._granule_start_times[p]
+        if str(p) in self._granule_start_times.keys():
+            (start, end) = self._granule_start_times[str(p)]
         else:
             m = self._re.fullmatch(p.name)
             gd = m.groupdict()
@@ -380,7 +396,7 @@ class MultiFileDataset(Dataset):
             else:
                 # implementation depends on dataset
                 (start, end) = self.get_time_from_granule_contents(str(p))
-                self._granule_start_times[p] = (start, end)
+                self._granule_start_times[str(p)] = (start, end)
         return (start, end)
 
     # not an abstract method because subclasses need to implement it /if
@@ -409,7 +425,7 @@ class SingleMeasurementPerFileDataset(MultiFileDataset):
         latitude, longitude, time.
         """
 
-    def read(self, p):
+    def _read(self, p):
         """Reads a single measurement converted to ndarray
         """
 
@@ -429,7 +445,7 @@ class SingleMeasurementPerFileDataset(MultiFileDataset):
 
         return D
 
-class HomemadeDataset(Dataset):
+class HomemadeDataset(MultiFileDataset):
     """For any dataset created by pyatmlab.
 
     No content yet.
@@ -437,8 +453,8 @@ class HomemadeDataset(Dataset):
     # dummy implementation for abstract methods, so that I can test other
     # things
 
-    def read(self, f):
+    def _read(self, f):
         raise NotImplementedError()
 
-    def granules_for_period(self, start, end):
+    def find_granules(self, start, end):
         raise StopIteration()

@@ -15,6 +15,10 @@ tanso = TansoFTS(
 
 ndacc_ames_eureka = NDACCAmes(basedir=datadir / "BrukerIFS",
     start_date = datetime.datetime(2006, 8, 1, 0, 0, 0),
-    end_date = datetime.datetime(2010, 10, 1, 0, 0, 0))
+    end_date = datetime.datetime(2010, 10, 1, 0, 0, 0),
+    granule_cache_file = "times.dat")
 
-acefts = ACEFTS(basedir=datadir / "ACE")
+acefts = ACEFTS(basedir=datadir / "ACE",
+    start_date = datetime.datetime(2006, 1, 1, 0, 0, 0),
+    end_date = datetime.datetime(2012, 10, 1, 0, 0, 0),
+    granule_cache_file = "times.dat")
