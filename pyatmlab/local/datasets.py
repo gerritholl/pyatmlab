@@ -13,6 +13,8 @@ tanso = TansoFTS(
     srcfile = (datadir /
                "GOSATTFTS20100316_02P02TV0001R14030500010.h5"))
 
-ndacc_ames_eureka = NDACCAmes(basedir=datadir / "BrukerIFS")
+ndacc_ames_eureka = NDACCAmes(basedir=datadir / "BrukerIFS",
+    start_date = datetime.datetime(2006, 8, 1, 0, 0, 0),
+    end_date = datetime.datetime(2010, 10, 1, 0, 0, 0))
 
 acefts = ACEFTS(basedir=datadir / "ACE")

@@ -18,7 +18,22 @@ class Dataset(metaclass=abc.ABCMeta):
     This is an abstract class.  More specific subclasses are
     SingleFileDataset and MultiFileDataset.  Do not subclass Dataset
     directly.
+
+    Attributes defined here::
+
+    - start_date::
+
+        Starting date for dataset.  May be used to search through ALL
+        granules.
+
+    - end_date::
+
+        Similar to start_date, but for ending.
+
     """
+
+    start_date = None
+    end_date = None
 
     def __init__(self, **kwargs):
         for (k, v) in kwargs.items():
@@ -38,11 +53,21 @@ class Dataset(metaclass=abc.ABCMeta):
         This is a generator that will loop through all granules from
         `start` to `end`, inclusive.
 
+        See also: `granules_for_period_sorted`
+
         :param datetime start: Starting datetime, defaults to any
         :param datetime end: Ending datetime, defaults to any
+        :yields: `pathlib.Path` objects for all granules
         """
         raise NotImplementedError()
 
+    @abc.abstractmethod
+    def granules_for_period_sorted(self, start=None, end=None):
+        """Yield all granules sorted by starting time then ending time.
+
+        For details, see `granules_for_period`.
+        """
+        raise NotImplementedError()
 
     def read_period(self, start=datetime.datetime.min,
                           end=datetime.datetime.max,
@@ -59,7 +84,7 @@ class Dataset(metaclass=abc.ABCMeta):
         contents = []
         for gran in self.granules_for_period(start, end):
             try:
-                cont = self.read(gran)
+                cont = self.read(str(gran))
             except ValueError as exc:
                 if onerror == "skip":
                     print("Could not read file {}: {}".format(
@@ -107,6 +132,10 @@ class SingleFileDataset(Dataset):
                             end=datetime.datetime.max):
         if start < self.end_date and end > self.start_date:
             yield self.srcfile
+
+    def granules_for_period_sorted(self, start=datetime.datetime.min,
+                                   end=datetime.datetime.max):
+        yield from self.granules_for_period(start, end)
 
 class MultiFileDataset(Dataset):
     """Represents a dataset where measurements are spread over multiple
@@ -250,9 +279,15 @@ class MultiFileDataset(Dataset):
         else:
             yield ((), self.basedir)
           
-    def granules_for_period(self, dt_start, dt_end):
+    def granules_for_period(self, dt_start=None, dt_end=None):
         """Yield all granules/measurementfiles in period
         """
+
+        if dt_start is None:
+            dt_start = self.start_date
+
+        if dt_end is None:
+            dt_end = self.end_date
 
         d_start = (dt_start.date()
                 if isinstance(dt_start, datetime.datetime) 
@@ -267,8 +302,20 @@ class MultiFileDataset(Dataset):
                     if m is not None:
                         (g_start, g_end) = self.get_times_for_granule(child, *timeinfo)
                         if g_end > dt_start and g_start < dt_end:
-                            yield str(child)
+                            yield child
             
+    def granules_for_period_sorted(self, dt_start=None, dt_end=None):
+        """Yield all granules, sorted by times
+        """
+
+        allgran = list(self.granules_for_period(dt_start, dt_end))
+
+        # I've been through all granules at least once, so all should be
+        # cached now; no need for additional hints when granule timeinfo
+        # obtainable only with hints from subdir, which is not included in
+        # the re-matching method
+        yield from sorted(allgran, key=self.get_times_for_granule)
+
     def _getyear(self, gd, s, alt):
         """Extract year info from group-dict
 
@@ -304,42 +351,48 @@ class MultiFileDataset(Dataset):
         May take hints for year, month, day, hour, minute, second, and
         their endings, according to self.date_fields
         """
-        m = self._re.fullmatch(p.name)
-        gd = m.groupdict()
-        if (any(f in gd.keys() for f in self.datefields) and
-            (any(f in gd.keys() for f in {x+"end" for x in self.datefields})
-                    or self.granule_duration is not None)):
-            st_date = [int(gd.get(p, kwargs.get(p, "0"))) for p in self.datefields]
-            # month and day can't be 0...
-            st_date[1] = st_date[1] or 1
-            st_date[2] = st_date[2] or 1
-            # maybe it's a two-year notation
-            st_date[0] = self._getyear(gd, "year", kwargs.get("year", "0"))
+        if p in self._granule_start_times.keys():
+            (start, end) = self._granule_start_times[p]
+        else:
+            m = self._re.fullmatch(p.name)
+            gd = m.groupdict()
+            if (any(f in gd.keys() for f in self.datefields) and
+                (any(f in gd.keys() for f in {x+"end" for x in self.datefields})
+                        or self.granule_duration is not None)):
+                st_date = [int(gd.get(p, kwargs.get(p, "0"))) for p in self.datefields]
+                # month and day can't be 0...
+                st_date[1] = st_date[1] or 1
+                st_date[2] = st_date[2] or 1
+                # maybe it's a two-year notation
+                st_date[0] = self._getyear(gd, "year", kwargs.get("year", "0"))
 
-            start = datetime.datetime(*st_date)
-            if any(k.endswith("_end") for k in gd.keys()):
-                end_date = [int(gd.get(
-                    p+"_end",
-                    kwargs.get(p+"_end", None))) for p in self.datefields]
-                end_date[0] = self._getyear(gd, "year_end", year)
-                end = datetime.datetime(**end_date)
-            elif self.granule_duration is not None:
-                end = start + self.granule_duration
+                start = datetime.datetime(*st_date)
+                if any(k.endswith("_end") for k in gd.keys()):
+                    end_date = [int(gd.get(
+                        p+"_end",
+                        kwargs.get(p+"_end", None))) for p in self.datefields]
+                    end_date[0] = self._getyear(gd, "year_end", year)
+                    end = datetime.datetime(**end_date)
+                elif self.granule_duration is not None:
+                    end = start + self.granule_duration
+                else:
+                    raise RuntimeError("This code should never execute")
             else:
-                raise RuntimeError("This code should never execute")
-        else: # need to read file or get from cache
-            # implementation depends on dataset
-            if p in self._granule_start_times.keys():
-                (start, end) = self._granule_start_times[p]
-            else:
-                (start, end) = self.get_time_from_granule_contents(p)
+                # implementation depends on dataset
+                (start, end) = self.get_time_from_granule_contents(str(p))
                 self._granule_start_times[p] = (start, end)
         return (start, end)
 
     # not an abstract method because subclasses need to implement it /if
     # and only if starting/ending times cannot be determined from the filename
     def get_time_from_granule_contents(self, p):
-        raise NotImplementedError("Subclass must implement me!")
+        """Get datetime objects for beginning and end of granule
+        """
+        raise ValueError(
+            ("To determine starting and end-times for a {0} dataset, "
+             "I need to read the file.  However, {0} has not implemented the "
+             "get_time_from_granule_contents method.".format(
+                type(self).__name__)))
 
 class SingleMeasurementPerFileDataset(MultiFileDataset):
     """Represents datasets where each file contains one measurement.

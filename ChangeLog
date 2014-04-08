@@ -1,3 +1,23 @@
+2014-04-08  Gerrit Holl  <gerrit.holl@utoronto.ca>:
+
+	* pyatmlab-0-0-19
+
+	* pyatmlab/dataset.py:
+
+	- Added new method granules_for_period_sorted
+
+	(MultiFileDataset):
+
+	- Always cache granule time results
+
+	* pyatmlab/datasets.py:
+
+	(NDACCAmes): Implemented get_time_from_granule_contents
+
+	* pyatmlab/local/datasets.py:
+
+	- Added start and end dates for ndacc_ames_eureka
+
 2014-04-07  Gerrit Holl  <gerrit.holl@utoronto.ca>:
 
 	* pyatmlab-0-0-18

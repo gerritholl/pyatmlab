@@ -123,19 +123,9 @@ class NDACCAmes(dataset.MultiFileDataset):
     Documented at http://www.ndsc.ncep.noaa.gov/data/formats/
     """
 
-#    start_date = datetime.datetime(2010, 2, 24, 0, 0, 0)
-#    end_date = datetime.datetime(2010, 10, 16, 0, 0, 0)
-#    basedir = "/home/gerrit/sshfs/glacier/data/1/gholl/data/BrukerIFS"
     re = r"eutc(?P<year>\d{2})(?P<month>\d{2})\.sgf"
-#    srcfile = ("/home/gerrit/sshfs/glacier/data/1/gholl/data"
-#               "/BrukerIFS/eutc1001.sgf")
     name = "PEARL Bruker IFS"
 
-#    dtype = [("time", "datetime64[us]", 1),
-#             ("aux", numpy.uint32, 7),
-#             ("var", numpy.uint32, 48)]))
-#
-    
     type_core = [(spec + "_" + tp, numpy.uint16 if tp=="n" else numpy.float32)
         for spec in ("O3", "HCL", "HF", "HNO3", "CLONO2", "N2O", "CO", "CH4")
         for tp in ("total", "total_e", "ss", "ss_e") +
@@ -148,15 +138,21 @@ class NDACCAmes(dataset.MultiFileDataset):
          ("lat", numpy.float32), ("lon", numpy.float32),
          ("elev", numpy.float32)] +
         type_core)
+
+    def get_time_from_granule_contents(self, path):
+        with open(path, 'rt', encoding="ascii") as fp:
+            for _ in range(7):
+                fp.readline()
+            y1, m1, d1, y2, m2, d2 = tuple(
+                int(d) for d in fp.readline().split())
+        return (datetime.datetime(y1, m1, d1, 0, 0, 0),
+                datetime.datetime(y2, m2, d2, 23, 59, 59))
              
-    def read(self, path=None):
+    def read(self, path):
         """Read Bruker data in NDACC Gaines format
 
         Returns a masked array
         """
-
-        if path is None:
-            path = self.srcfile
 
         with open(path, 'rt', encoding='ascii') as fp:
             # first 10 lines not relevant for now
