@@ -12,6 +12,7 @@ import h5py
 from . import dataset
 from . import physics
 from . import math
+from . import geo
 from .constants import ppm as PPM
 
 HECTO = 100
@@ -140,13 +141,17 @@ class NDACCAmes(dataset.MultiFileDataset):
         type_core)
 
     def get_time_from_granule_contents(self, path):
-        with open(path, 'rt', encoding="ascii") as fp:
-            for _ in range(7):
-                fp.readline()
-            y1, m1, d1, y2, m2, d2 = tuple(
-                int(d) for d in fp.readline().split())
-        return (datetime.datetime(y1, m1, d1, 0, 0, 0),
-                datetime.datetime(y2, m2, d2, 23, 59, 59))
+        # Read the entire granule, as the end information is sometimes
+        # incorrect
+        M = self.read(path)
+        return (min(M["time"]).item(), max(M["time"]).item())
+#        with open(path, 'rt', encoding="ascii") as fp:
+#            for _ in range(7):
+#                fp.readline()
+#            y1, m1, d1, y2, m2, d2 = tuple(
+#                int(d) for d in fp.readline().split())
+#        return (datetime.datetime(y1, m1, d1, 0, 0, 0),
+#                datetime.datetime(y2, m2, d2, 23, 59, 59))
              
     def _read(self, path):
         """Read Bruker data in NDACC Gaines format
@@ -225,6 +230,9 @@ class NDACCAmes(dataset.MultiFileDataset):
         # lats are secretly wrongly typed
         M["lat"] /= 100
         M["lon"] /= 100
+
+        # and lons want to be in -180, 180
+        M["lon"] = geo.shift_longitudes(M["lon"], (-180, 180))
         return M
 
 
@@ -275,8 +283,15 @@ class ACEFTS(dataset.SingleMeasurementPerFileDataset):
                 vals = tuple(float(f) for f in line.split())
                 for (i, name) in enumerate(names):
                     D[name][n] = vals[i]
+
         head["lat"] = float(head["latitude"])
         head["lon"] = float(head["longitude"])
+        # make sure lons are in (-180, 180)
+        if head["lon"] < -180:
+            head["lon"] += 360
+        if head["lon"] > 180:
+            head["lon"] -= 360
+
         # for time, strip off both incomplete timezone designation and
         # decimal part (truncating it to the nearest second)
         head["time"] = datetime.datetime.strptime(

@@ -5,11 +5,14 @@
 import math
 import numpy
 import numpy.ma
+import logging
 
 import pyproj
 
 from . import dataset
 from . import stats
+from . import geo
+from . import tools
 
 class CollocatedDataset(dataset.HomemadeDataset):
     """Holds collocations.
@@ -88,13 +91,88 @@ class CollocatedDataset(dataset.HomemadeDataset):
                 *self.primary.get_times_for_granule(gran_prim)):
                 yield (gran_prim, gran_sec)
 
+    def read_aggregated_pairs(self, start_date=None, end_date=None):
+        """Iterate and read aggregated co-time granule pairs
+
+        Collect and read all secondary granules sharing the same primary.
+        """
+        old_prim = old_sec = None
+        prim = None
+        sec = []
+        logging.info("Searching granule pairs")
+        for (gran_prim, gran_sec) in self.find_granule_pairs(
+            start_date, end_date):
+#            logging.debug("Next pair: {} vs. {}".format(
+#                gran_prim, gran_sec))
+            if gran_prim != old_prim: # new primary
+                logging.debug("New primary: {!s}".format(gran_prim))
+                if prim is not None: # if not first time, yield pair
+                    logging.debug("Yielding!")
+                    yield (prim, numpy.concatenate(sec))
+                prim = self.primary.read(gran_prim)
+                old_prim = gran_prim
+
+            if gran_sec != old_sec:
+                logging.debug("New secondary: {!s}".format(gran_sec))
+                try:
+                    sec.append(self.secondary.read(gran_sec))
+                except ValueError as msg:
+                    logging.error("Could not read {}: {}".format(
+                        gran_sec, msg.args[0]))
+                    continue
+                old_sec = gran_sec
+
+        yield (prim, numpy.concatenate(sec))
+
+                
+
+    def collocate_period(self, start_date=None, end_date=None):
+        """Collocate period from start_date to end_date
+
+        And return results
+        """
+        #all_p_col = []
+        #all_s_col = []
+        all_p_ind = []
+
+        # FIXME: aggregate multiple granules before collocating, in
+        # particular for cases with only one measurement per file
+#        for (gran_prim, gran_sec) in self.find_granule_pairs(
+#                start_date, end_date):
+#            logging.info("Collocating {0!s} with {1!s}".format(
+#                ran_prim, gran_sec))
+#            prim = self.primary.read(gran_prim)
+#            sec = self.secondary.read(gran_sec)
+        logging.info(("Searching collocations {!s} vs. {!s}, distance {:.1f} km, "
+                      "interval {!s}, period {!s} - {!s}").format(
+                        self.primary.name, self.secondary.name,
+                        self.max_distance/1e3, self.max_interval,
+                        start_date, end_date))
+        for (prim, sec) in self.read_aggregated_pairs(
+                start_date, end_date):
+            logging.info(("{} {:d} measurements spanning {!s} - {!s}, "
+                          "{} {:d} measurements spanning {!s} - {!s}").format(
+                    self.primary.name, prim.size, min(prim["time"]),
+                    max(prim["time"]),
+                    self.secondary.name, sec.size, min(sec["time"]),
+                    max(sec["time"])))
+            #(p_col, s_col) = self.collocate(prim, sec)
+            logging.info("Collocating...")
+            p_ind = self.collocate(prim, sec)
+            logging.info("Found {0:d} collocations".format(p_ind.size))
+            all_p_ind.append(p_ind) # FIXME: get more useful than indices
+            #all_p_col.append(p_col)
+            #all_s_col.append(s_col)
+        return numpy.concatenate(all_p_ind)
+        #return (numpy.concatenate(all_p_col), numpy.concatenate(all_s_col))
 
     def collocate_all(self, distance=0, interval=numpy.timedelta64(1, 's')):
         """Collocate all available data.
         """
         raise NotImplementedError("Not implemented yet")
 
-    def collocate(self, arr1, arr2):
+    @tools.validator
+    def collocate(self, arr1:geo.valid_geo, arr2:geo.valid_geo):
         """Collocate arrays in time, late, lon.
 
         Each of `arr1` and `arr2` must have ["time"] (datetime64),
@@ -102,6 +180,8 @@ class CollocatedDataset(dataset.HomemadeDataset):
 
         Note that this is a low-level function, and you will likely want
         to call a higher level method such as collocate_all.
+
+        :returns: N x 2 array with primary and secondary indices
         """
 
         # This algorithm can be optimised in a number of different ways:
@@ -112,7 +192,7 @@ class CollocatedDataset(dataset.HomemadeDataset):
         # - For memory, loop through time and collocate bit by bit
 
         if self.max_interval == 0 or self.max_distance == 0:
-            return None # FIXME: should always give ndarray
+            return numpy.empty(shape=(0, 2), dtype=numpy.uint64)
 
         # all binning should be by truncation, not rounding; i.e.
         # 2010-01-01 23:00:00 is binned on 2010-01-01.
@@ -127,44 +207,74 @@ class CollocatedDataset(dataset.HomemadeDataset):
 
         if (arr1["time"].max() + self.max_interval < arr2["time"].min() or
             arr2["time"].max() + self.max_interval < arr1["time"].min()):
-            return None # FIXME: should always give ndarray
+            return numpy.empty(shape=(0, 2), dtype=numpy.uint64)
 
-        # truncate time series to resultion of self.bin_interval_time
+        # will finally want to return indices rather than copying actual
+        # data, keep track of those
+        ind1 = numpy.arange(arr1.size)
+        ind2 = numpy.arange(arr2.size)
+
+        # truncate time series to resolution of self.bin_interval_time
         newtype = "<M8[{}]".format(self.bin_interval_time.dtype.str[-2])
         times_trunc = [arr["time"].astype(newtype) for arr in (arr1, arr2)]
         times_int = [time.astype(numpy.int64) for time in times_trunc]
-        time_bins = numpy.arange(
-            min(t.min() for t in times_trunc),
-            max(t.max() for t in times_trunc),
-            self.bin_interval_time)
+#        time_bins = numpy.arange(
+#            min(t.min() for t in times_trunc),
+#            max(t.max() for t in times_trunc),
+#            self.bin_interval_time)
 
         lats = [arr1["lat"], arr2["lat"]]
         lons = [arr1["lon"], arr2["lon"]]
 
-        lat_bins = numpy.arange(
-            numpy.floor(min(lat.min() for lat in lats)),
-            numpy.ceil(max(lat.max() for lat in lats)+1),
-            self.bin_interval_lat)
+        bins = {}
+        bin_intervals = dict(lat=self.bin_interval_lat,
+            lon=self.bin_interval_lon, time=self.bin_interval_time)
+        for k in ("lat", "lon"):
+            kmax = max(v.max() for v in (arr1[k], arr2[k]))
+            kmin = min(v.min() for v in (arr1[k], arr2[k]))
+            bins[k] = numpy.linspace(
+                kmin-1, kmax+1, ((kmax+1)-(kmin-1))/bin_intervals[k])
 
-        # Note: this will be too large if longitudes cross (anti)meridian,
-        # but that's no big deal
-        lon_bins = numpy.arange(
-            numpy.floor(min(lon.min() for lon in lons)),
-            numpy.ceil(max(lon.max() for lon in lons)+1),
-            self.bin_interval_lon)
+        tmin = min(t.min() for t in times_trunc).astype(numpy.int64)
+        tmax = max(t.max() for t in times_trunc).astype(numpy.int64)
+        bins["time"] = numpy.linspace(
+            tmin-1, tmax+1, ((tmax+1)-(tmin-1)) /
+                bin_intervals["time"].astype(numpy.int64)).astype(newtype)
+                    
+#        lat_bins = numpy.linspace(
+#            numpy.floor(min(lat.min() for lat in lats)-1),
+#            numpy.ceil(max(lat.max() for lat in lats)+1),
+#        lat_bins = numpy.arange(
+#            numpy.floor(min(lat.min() for lat in lats)),
+#            numpy.ceil(max(lat.max() for lat in lats)+1),
+#            self.bin_interval_lat)
 
+        # Note: this will be too large if longitudes cross (anti)meridian
+#        lon_bins = numpy.arange(
+#            numpy.floor(min(lon.min() for lon in lons)),
+#            numpy.ceil(max(lon.max() for lon in lons)+1),
+#            self.bin_interval_lon)
+
+        # Perform the actual binning for primary, secondary.  This part
+        # could be optimised a lot, ideally using quadtrees or at least by
+        # guessing a more appropriate grid size.
         binned = [stats.bin_nd(
             [times_int[i], lats[i], lons[i]],
-            [time_bins.astype(numpy.int64), lat_bins, lon_bins])
+            [bins["time"].astype(numpy.int64), bins["lat"], bins["lon"]])
             for i in (0, 1)]
 
+        # count the number of entries per bin
         bin_no = numpy.array([numpy.array([b.size for b in bb.flat]).reshape(bb.shape)
                 for bb in binned])
+
+        # some intermediate checking to verify all got binned
+        if bin_no[0, ...].sum() != arr1.size or bin_no[1, ...].sum() != arr2.size:
+            raise RuntimeError("Some data remained unbinned!")
 
         # number of neighbouring bins to look into
         binrange_time = math.ceil(self.max_interval/self.bin_interval_time)
         cell_height = 2 * math.pi * self.ellipsoid.b / 360
-        cell_width = (2 * math.pi * numpy.cos(numpy.deg2rad(lat_bins)) *
+        cell_width = (2 * math.pi * numpy.cos(numpy.deg2rad(bins["lat"])) *
                       self.ellipsoid.b / 360)
 
         binrange_lat = numpy.ceil(self.max_distance/
@@ -172,23 +282,24 @@ class CollocatedDataset(dataset.HomemadeDataset):
         binrange_lon = numpy.ceil(self.max_distance/
             (self.bin_interval_lon*cell_width))
 
-        all_p_met = []
-        all_s_met = []
+        #all_p_met = []
+        #all_s_met = []
+        all_ind_met = []
 
-        for time_i in range(len(time_bins)):
+        for time_i in range(len(bins["time"])):
             # range of secondary time bins
             t_s_min = max(0, time_i - binrange_time)
-            t_s_max = min(time_bins.size-1, time_i + binrange_time + 1)
+            t_s_max = min(bins["time"].size-1, time_i + binrange_time + 1)
 
             # potentially skip lat & lon loops
             if (bin_no[0, time_i, :, :].max() == 0 or
                     bin_no[1, t_s_min:t_s_max, :, :].max() == 0):
                 continue
 
-            for lat_i in range(len(lat_bins)):
+            for lat_i in range(len(bins["lat"])):
                 # range of secondary lat bins
                 lat_s_min = max(0, lat_i - binrange_lat)
-                lat_s_max = min(lat_bins.size-1, lat_i + binrange_lat + 1)
+                lat_s_max = min(bins["lat"].size-1, lat_i + binrange_lat + 1)
 
                 # potentially skip lon loop
                 if (bin_no[0, time_i, lat_i, :].max() == 0 or
@@ -196,13 +307,13 @@ class CollocatedDataset(dataset.HomemadeDataset):
                     continue
 
                 max_lon_range = max(binrange_lon[lat_s_min:lat_s_max])
-                for lon_i in range(len(lon_bins)):
+                for lon_i in range(len(bins["lon"])):
                     # range of secondary lon bins
 
                     # for width of lons consider polemost relevant
                     # latitude bin
                     lon_is = numpy.mod(numpy.arange(lon_i - max_lon_range,
-                            lon_i+max_lon_range), lon_bins.size).astype('uint64')
+                            lon_i+max_lon_range), bins["lon"].size).astype('uint64')
                     #lon_s_min = max(0, lon_i - max_lon_range)
                     #lon_s_max = min(lon_bins.size-1, lon_i + max_lon_range + 1)
 
@@ -212,28 +323,44 @@ class CollocatedDataset(dataset.HomemadeDataset):
                             lon_is].sum() == 0):
                         continue
 
-                    primary = arr1[binned[0][time_i, lat_i, lon_i]]
-                    secondary = arr2[numpy.ma.concatenate(binned[1][
+                    selec1 = binned[0][time_i, lat_i, lon_i]
+                    selec2 = numpy.ma.concatenate(binned[1][
                         t_s_min:t_s_max,
                         lat_s_min:lat_s_max,
-                        lon_is].ravel().tolist())]
+                        lon_is].ravel().tolist())
 
-                    (p_met, s_met) = self._collocate_bucket(primary, secondary)
+                    primary = arr1[selec1]
+                    secondary = arr2[selec2]
 
-                    all_p_met.append(p_met)
-                    all_s_met.append(s_met)
+                    prim_ind = ind1[selec1]
+                    sec_ind = ind2[selec2]
 
-        return tuple((numpy.ma.concatenate 
-            if isinstance(x, numpy.ma.MaskedArray)
-            else numpy.concatenate)(x)
-                for x in (all_p_met, all_s_met))
+                    ind_met = self._collocate_bucket(
+                        primary, secondary, prim_ind, sec_ind)
 
-    def _collocate_bucket(self, primary, secondary):
+                    all_ind_met.append(ind_met)
+                    #all_p_met.append(p_met)
+                    #all_s_met.append(s_met)
+
+        if len(all_ind_met) > 0:
+            return numpy.concatenate(all_ind_met)
+        else:
+            return numpy.empty(shape=(0, 2), dtype=numpy.uint64)
+            
+#        return tuple((numpy.ma.concatenate 
+#            if isinstance(x, numpy.ma.MaskedArray)
+#            else numpy.concatenate)(x)
+#                for x in (all_p_met, all_s_met))
+
+    def _collocate_bucket(self, primary, secondary, prim_ind, sec_ind):
         """Collocate a single bucket.  Internal function used by
         collocate.
 
         Expects two buckets containing measurements that will be
-        brute-forced against each other.
+        brute-forced against each other, as well as corresponding indices.
+
+        Returns an N x 2 ndarray with indices selected from prim_ind,
+        sec_ind.
         """
 
         if primary.size == 0 or secondary.size == 0:
@@ -250,15 +377,21 @@ class CollocatedDataset(dataset.HomemadeDataset):
         p_time_met = primary[time_met_i1]
         s_time_met = secondary[time_met_i2]
 
+        p_ind_time_met = prim_ind[time_met_i1]
+        s_ind_time_met = sec_ind[time_met_i2]
+
         (_, _, dist) = self.ellipsoid.inv(
             p_time_met["lon"], p_time_met["lat"],
             s_time_met["lon"], s_time_met["lat"],
             radians=False)
 
         dist_met = dist < self.max_distance
-        p_met = p_time_met[dist_met]
-        s_met = s_time_met[dist_met]
+        #p_met = p_time_met[dist_met]
+        p_ind_met = p_ind_time_met[dist_met]
+        #s_met = s_time_met[dist_met]
+        s_ind_met = s_ind_time_met[dist_met]
 
-        return p_met, s_met
+        #return p_met, s_met
+        return numpy.array([p_ind_met, s_ind_met], dtype=numpy.uint64).T
 
 

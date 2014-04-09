@@ -54,8 +54,9 @@ def validate(func, locals):
         elif callable(test):
             if not test(value):
                 raise TypeError(("Failed test for argument '{0}'.  "
-                                 "Value: {1}.  Test {2.__name__}"
-                                 "failed.").format(var, value, test))
+                                 "Value: {1}.  Test {2.__name__} "
+                                 "failed.").format(
+                    var, value if len(repr(value)) < 10000 else "(too long)", test))
         else:
             raise RuntimeError("I don't know how to validate test {}!".format(test))
 

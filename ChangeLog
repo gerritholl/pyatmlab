@@ -1,3 +1,64 @@
+2014-04-09  Gerrit Holl  <gerrit.holl@utoronto.ca>:
+
+	* pyatmlab-0-0-21
+
+	* pyatmlab/collocations.py:
+
+	- Add logging
+
+	(CollocatedDataset.read_aggregated_pairs):
+
+	- Iterate through aggregated pairs of granules
+
+	(CollocatedDataset.collocate_period):
+
+	- Collocate a longer period of time
+
+	(CollocatedDataset.collocate):
+
+	- Always return ndarray
+	- Fix bug, now using linspace rather than arange to create bins, to
+	make sure all data are always contained by the bins.  Verify this
+	explicitly, RuntimeError if it isn't.
+	- Work with indices instead of copying data
+
+	(CollocatedDataset._collocate_bucket):
+
+	- Work with indices and always return ndarray
+
+	* pyatmlab/dataset.py:
+
+	- Add name attribute
+
+	(Dataset.read):
+
+	- Also accept pathlib.Path object
+
+	* pyatmlab/datasets.py:
+
+	(NDACCAmes.get_time_from_granule_contents):
+
+	- Need to read entire granule for times, discovered that I can't trust
+	the header
+
+	(NDACCAmes._read), (ACEFTS._read):
+
+	- Fix lons outside (-180, 80)
+
+	* pyatmlab/geo.py:
+
+	(shift_longitudes): Be more liberal in accepted data
+
+	(valid_geo): Check if geo-data (lat/lon) are valid
+
+	* pyatmlab/local/datasets.py:
+
+	- Use name for all datasets
+
+	* pyatmlab/tools.py:
+
+	(validate): Don't write out value if it's too long
+
 2014-04-08  Gerrit Holl  <gerrit.holl@utoronto.ca>:
 
 	* pyatmlab-0-0-20

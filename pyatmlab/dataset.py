@@ -31,10 +31,15 @@ class Dataset(metaclass=abc.ABCMeta):
 
         Similar to start_date, but for ending.
 
+    - name::
+        
+        Name for the dataset.  May be used for logging purposes and so.
+
     """
 
     start_date = None
     end_date = None
+    name = ""
 
     def __init__(self, **kwargs):
         for (k, v) in kwargs.items():
@@ -129,6 +134,8 @@ class Dataset(metaclass=abc.ABCMeta):
 
         :param str f: Path to file
         """
+        if isinstance(f, pathlib.PurePath):
+            f = str(f)
         return self._read(f)
 
 
