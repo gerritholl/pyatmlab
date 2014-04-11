@@ -131,9 +131,15 @@ class CollocatedDataset(dataset.HomemadeDataset):
 
         And return results
         """
-        #all_p_col = []
-        #all_s_col = []
-        all_p_ind = []
+        all_p_col = []
+        all_s_col = []
+#        all_p_ind = []
+
+        # construct dtype
+#        L = [[("i"+s, "i4"), ("lat"+s, "f8"), ("lon"+s, "f8"),
+#            ("time"+s, "M8[s]")] for s in "12"]
+        
+#        dtp = L[0] + L[1]
 
         # FIXME: aggregate multiple granules before collocating, in
         # particular for cases with only one measurement per file
@@ -152,19 +158,20 @@ class CollocatedDataset(dataset.HomemadeDataset):
                 start_date, end_date):
             logging.info(("{} {:d} measurements spanning {!s} - {!s}, "
                           "{} {:d} measurements spanning {!s} - {!s}").format(
-                    self.primary.name, prim.size, min(prim["time"]),
+                    self.primary.name, prim.shape[0], min(prim["time"]),
                     max(prim["time"]),
-                    self.secondary.name, sec.size, min(sec["time"]),
+                    self.secondary.name, sec.shape[0], min(sec["time"]),
                     max(sec["time"])))
             #(p_col, s_col) = self.collocate(prim, sec)
             logging.info("Collocating...")
             p_ind = self.collocate(prim, sec)
-            logging.info("Found {0:d} collocations".format(p_ind.size))
-            all_p_ind.append(p_ind) # FIXME: get more useful than indices
-            #all_p_col.append(p_col)
+            logging.info("Found {0:d} collocations".format(p_ind.shape[0]))
+            #all_p_ind.append(p_ind) # FIXME: get more useful than indices
+            all_p_col.append(prim[p_ind[:, 0]])
+            all_s_col.append(sec[p_ind[:, 1]])
             #all_s_col.append(s_col)
-        return numpy.concatenate(all_p_ind)
-        #return (numpy.concatenate(all_p_col), numpy.concatenate(all_s_col))
+        #return numpy.concatenate(all_p_ind)
+        return (numpy.concatenate(all_p_col), numpy.concatenate(all_s_col))
 
     def collocate_all(self, distance=0, interval=numpy.timedelta64(1, 's')):
         """Collocate all available data.
@@ -211,8 +218,8 @@ class CollocatedDataset(dataset.HomemadeDataset):
 
         # will finally want to return indices rather than copying actual
         # data, keep track of those
-        ind1 = numpy.arange(arr1.size)
-        ind2 = numpy.arange(arr2.size)
+        ind1 = numpy.arange(arr1.shape[0])
+        ind2 = numpy.arange(arr2.shape[0])
 
         # truncate time series to resolution of self.bin_interval_time
         newtype = "<M8[{}]".format(self.bin_interval_time.dtype.str[-2])

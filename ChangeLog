@@ -1,3 +1,15 @@
+2014-04-11  Gerrit Holl  <gerrit.holl@utoronto.ca>:
+
+	* pyatmlab-0-0-22
+
+	* pyatmlab/collocations.py:
+
+	- Some small changes and bugfixes
+
+	* pyatmlab/tools.py:
+
+	- Added generic cat function for numpy.array or numpy.ma.array
+
 2014-04-09  Gerrit Holl  <gerrit.holl@utoronto.ca>:
 
 	* pyatmlab-0-0-21

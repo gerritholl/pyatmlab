@@ -85,3 +85,15 @@ def validator(func):
         return func(*args, **kwargs)
 
     return inner
+
+def cat(*args):
+    """Concatenate either ndarray or ma.MaskedArray
+
+    Arguments as for numpy.concatenate or numpy.ma.concatenate.
+    First argument determines type.
+    """
+
+    if isinstance(args[0][0], numpy.ma.MaskedArray):
+        return numpy.ma.concatenate(*args)
+    else:
+        return numpy.concatenate(*args)
