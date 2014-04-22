@@ -240,7 +240,8 @@ class CollocatedDataset(dataset.HomemadeDataset):
             kmax = max(v.max() for v in (arr1[k], arr2[k]))
             kmin = min(v.min() for v in (arr1[k], arr2[k]))
             bins[k] = numpy.linspace(
-                kmin-1, kmax+1, ((kmax+1)-(kmin-1))/bin_intervals[k])
+                kmin-1, kmax+1,
+                max((((kmax+1)-(kmin-1))/bin_intervals[k], 2)))
 
         tmin = min(t.min() for t in times_trunc).astype(numpy.int64)
         tmax = max(t.max() for t in times_trunc).astype(numpy.int64)
@@ -296,7 +297,7 @@ class CollocatedDataset(dataset.HomemadeDataset):
         for time_i in range(len(bins["time"])):
             # range of secondary time bins
             t_s_min = max(0, time_i - binrange_time)
-            t_s_max = min(bins["time"].size-1, time_i + binrange_time + 1)
+            t_s_max = min(bins["time"].size, time_i + binrange_time + 1)
 
             # potentially skip lat & lon loops
             if (bin_no[0, time_i, :, :].max() == 0 or
@@ -306,7 +307,7 @@ class CollocatedDataset(dataset.HomemadeDataset):
             for lat_i in range(len(bins["lat"])):
                 # range of secondary lat bins
                 lat_s_min = max(0, lat_i - binrange_lat)
-                lat_s_max = min(bins["lat"].size-1, lat_i + binrange_lat + 1)
+                lat_s_max = min(bins["lat"].size, lat_i + binrange_lat + 1)
 
                 # potentially skip lon loop
                 if (bin_no[0, time_i, lat_i, :].max() == 0 or

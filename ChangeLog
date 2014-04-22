@@ -1,3 +1,34 @@
+2014-04-22  Gerrit Holl  <gerrit.holl@utoronto.ca>:
+
+	* pyatmlab-0-0-23
+
+	* pyatmlab/collocations.py(CollocatedDataset.collocate):
+
+	- Fix bug causing collocations to be missed if in the last time or
+	latitude bin
+	- Make sure there are always at least two bins or binning will be
+	problematic
+
+	* pyatmlab/constants.py:
+
+	- Added R, M_d, M_w
+
+	* pyatmlab/datasets.py(TansoFTS):
+
+	- More accurate pressure-to-elevation conversion
+	
+	* pyatmlab/local/datasets.py:
+
+	- Fix TANSO path
+
+	* pyatmlab/physics.py:
+
+	- Add more accurate p2z-conversion, mostly stolen from atmlab
+
+	* pyatmlab/tools.py:
+
+	- For the validator, allow multiple validations
+
 2014-04-11  Gerrit Holl  <gerrit.holl@utoronto.ca>:
 
 	* pyatmlab-0-0-22

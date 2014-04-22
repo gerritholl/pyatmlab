@@ -38,6 +38,13 @@ class TansoFTS(dataset.SingleFileDataset):
         read method.
 
         Returns number column density and its error
+
+        Note that a small error may be introduced if profiles do not go
+        down to the reference provided by (z0, p0), because the p2z
+        function needs a reference inside the p-profile.  This is
+        mitigated by adding a dummy level with a dummy temperature, then
+        removing this after the z-profile is calculated.  This has a minor
+        (<0.1%) effect on the remaining levels.
         """
         # temperature interpolated on each pressure grid
         ncd = numpy.empty(shape=data.shape, dtype="f8")
@@ -49,12 +56,21 @@ class TansoFTS(dataset.SingleFileDataset):
             else:
                 T = data["T"][n, ::-1].data[~data["T"][n, ::-1].mask]
 
-            interpolator = scipy.interpolate.interp1d(
+            if data["h2o"].mask.size == 1:
+                h2o = data["h2o"][n, ::-1].data
+            else:
+                h2o = data["h2o"][n, ::-1].data[~data["h2o"][n, ::-1].mask]
+
+            T_interpolator = scipy.interpolate.interp1d(
                 cls.p_for_T_profile[::-1], T)# should be increasing
+
+            h2o_interpolator = scipy.interpolate.interp1d(
+                cls.p_for_T_profile[::-1], h2o)
             
             p = data["p_raw"][n, :].data[~data["p_raw"][n, :].mask]*HECTO
 
-            T_interp = interpolator(p)
+            T_interp = T_interpolator(p)
+            h2o_interp = h2o_interpolator(p)
 
             nd = physics.vmr2nd(
                 data["ch4_profile_raw"][n, :].data[
@@ -66,7 +82,28 @@ class TansoFTS(dataset.SingleFileDataset):
                     ~data["ch4_profile_raw_e"][n, :].mask]*PPM,
                 T_interp, p)
 
-            z = physics.p2z_oversimplified(p)
+            #z = physics.p2z_oversimplified(p)
+            if data["p0"][n] > p[0]:
+                # need to add dummy p[0] < p to satisfy p2z
+                #
+                # this is inaccurate, but has little effect on the
+                # *relative* location of other levels (<1 m), so it is an
+                # acceptable source of error
+                dummy = True
+                pp = numpy.r_[data["p0"][n], p]
+                Tp = numpy.r_[287, T_interp]
+                # although putting h2o-surface to 0 is an EXTREMELY
+                # bad approximation, it /still/ doesn't matter for the
+                # relative thicknesses higher up
+                h2op = numpy.r_[h2o_interp[0], h2o_interp]
+            else:
+                dummy = False
+                (pp, Tp, h2op) = (p, T_interp, h2o_interp)
+            #z = physics.p2z_hydrostatic(p, T_interp, h2o_interp,
+            z = physics.p2z_hydrostatic(pp, Tp, h2op*PPM,
+                p0=data["p0"][n],
+                z0=data["z0"][n],
+                lat=data["lat"][n])[dummy:]
 
             ncd[n] = math.integrate_with_height(z, nd)
             ncd_e[n] = math.integrate_with_height(z, nd_e)
@@ -92,6 +129,7 @@ class TansoFTS(dataset.SingleFileDataset):
                 for i in range(time_raw.size)], dtype="datetime64[us]")
             D["lat"] = h5f["Data"]["geolocation"]["latitude"]
             D["lon"] = h5f["Data"]["geolocation"]["longitude"]
+            D["z0"] = h5f["Data"]["geolocation"]["height"]
             p = h5f["Data"]["interpolatedProfile"]["pressure"][:]
             p *= HECTO # Pa -> hPa
             if self.p_for_interp_profile is not None:
@@ -106,6 +144,8 @@ class TansoFTS(dataset.SingleFileDataset):
             D["ch4_profile_raw_e"] = h5f["Data"]["originalProfile"]["CH4ProfileError"]
             D["p_raw"] = h5f["Data"]["originalProfile"]["pressure"]
             D["T"] = h5f["scanAttribute"]["referenceData"]["temperatureProfile"]
+            D["h2o"] = h5f["scanAttribute"]["referenceData"]["waterVaporProfile"]
+            D["p0"] = h5f["scanAttribute"]["referenceData"]["surfacePressure"]
 
 
             A = numpy.empty(shape=time_raw.size,
@@ -116,6 +156,8 @@ class TansoFTS(dataset.SingleFileDataset):
             for k in {"ch4_profile_interp", "ch4_profile_raw",
                       "ch4_profile_raw_e", "p_raw", "T"}:
                 A.mask[k][A.data[k]<0] = True
+        A["p0"] *= HECTO
+
         return A
 
 class NDACCAmes(dataset.MultiFileDataset):

@@ -3,6 +3,7 @@
 """Contains functionality that doesn't fit elsewhere
 """
 
+import collections.abc
 import inspect
 import functools
 
@@ -43,22 +44,46 @@ def validate(func, locals):
         validate(f, locals())
         ... # proceed
 
+    or use the validator annotation:
+    @validator
+    def f(x: str, b: int):
+        ... # proceed
     """
     for var, test in func.__annotations__.items():
         value = locals[var]
-        if isinstance(test, type): # check for subclass
-            if not isinstance(value, test):
-                raise TypeError(("Wrong type for argument '{}'.  "
-                       "Expected: {}.  Got: {}.").format(
-                            var, test, type(value)))
-        elif callable(test):
-            if not test(value):
-                raise TypeError(("Failed test for argument '{0}'.  "
-                                 "Value: {1}.  Test {2.__name__} "
-                                 "failed.").format(
-                    var, value if len(repr(value)) < 10000 else "(too long)", test))
-        else:
-            raise RuntimeError("I don't know how to validate test {}!".format(test))
+        _validate_one(var, test, value)
+
+def _validate_one(var, test, value):
+    """Verify that var=value passes test
+
+    Internal function for validate
+    """
+    if isinstance(test, type): # check for subclass
+        if not isinstance(value, test):
+            raise TypeError(("Wrong type for argument '{}'.  "
+                   "Expected: {}.  Got: {}.").format(
+                        var, test, type(value)))
+    elif callable(test):
+        if not test(value):
+            raise TypeError(("Failed test for argument '{0}'.  "
+                             "Value: {1}.  Test {2.__name__} "
+                             "failed.").format(
+                var, value if len(repr(value)) < 10000 else "(too long)", test))
+    elif isinstance(test, collections.abc.Sequence): # at least one should be true
+        passed = False
+        for t in test:
+            try:
+                _validate_one(var, t, value)
+            except TypeError:
+                pass
+            else:
+                passed = True
+        if not passed:
+            raise TypeError(("All tests failed for argument '{0}'. "
+                             "Value: {1}.  Tests: {2!s}").format(
+                var, value, test))
+    else:
+        raise RuntimeError("I don't know how to validate test {}!".format(test))
 
 def validator(func):
     """Decorator to automagically validate a function with arguments.
