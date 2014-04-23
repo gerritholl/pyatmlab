@@ -1,3 +1,13 @@
+2014-04-23  Gerrit Holl  <gerrit.holl@utoronto.ca>:
+
+	* pyatmlab-0-0-24
+
+	* pyatmlab/collocations.py(CollocationDescriber):
+
+	- Added new class for describing, visualising, etc. collocations.
+	Currently contains lots of hardcoded stuff, but that should improve
+	later on.
+
 2014-04-22  Gerrit Holl  <gerrit.holl@utoronto.ca>:
 
 	* pyatmlab-0-0-23

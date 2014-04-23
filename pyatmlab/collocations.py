@@ -7,12 +7,16 @@ import numpy
 import numpy.ma
 import logging
 
+import matplotlib.pyplot
 import pyproj
+import mpl_toolkits.basemap
 
 from . import dataset
 from . import stats
 from . import geo
 from . import tools
+from . import graphics
+from . import math as pamath
 
 class CollocatedDataset(dataset.HomemadeDataset):
     """Holds collocations.
@@ -403,3 +407,162 @@ class CollocatedDataset(dataset.HomemadeDataset):
         return numpy.array([p_ind_met, s_ind_met], dtype=numpy.uint64).T
 
 
+
+# visualisations
+
+class CollocationDescriber:
+    """Collects various functions to describe a set of collocations
+
+    Initialise with a CollocatedDataset object as well as
+    sets of measurements already collocated through
+    CollocatedDataset.collocate
+    """
+
+    def __init__(self, cd, p_col, s_col):
+        self.cd = cd
+        self.p_col = p_col
+        self.s_col = s_col
+
+    def plot_scatter_dist_int(self, time_unit="h",
+            plot_name=None):
+        """Scatter plot of distance [km] and interval.
+
+        Will write to plotdir.
+
+        :param str time_unit:  Single argument time_unit, defaults to
+            "h" = hour, can be any valid code for numpy.timedelta64.
+        :param str plot_name:  Output filename for plot.  Defaults to
+            colloc_scatter_dist_time_PRIMARY_SECONDARY.
+        """
+
+        (_, _, dist_m) = self.cd.ellipsoid.inv(
+            self.p_col["lon"], self.p_col["lat"],
+            self.s_col["lon"], self.s_col["lat"])
+        interval = (self.p_col["time"] - self.s_col["time"]).astype(
+            "m8[{}]".format(time_unit)).astype("i")
+        max_i = self.cd.max_interval.astype(
+            "m8[{}]".format(time_unit)).astype("i")
+
+        f = matplotlib.pyplot.figure()
+        ax = f.add_subplot(1, 1, 1)
+        ax.plot(dist_m/1e3, interval, ".")
+        ax.set_xlabel("Distance [km]")
+        ax.set_ylabel("Interval [{}]".format(time_unit))
+        ax.set_title("Collocations {} {}".format(
+            self.cd.primary.name, self.cd.secondary.name))
+        ax.set_xlim(0, self.cd.max_distance/1e3)
+        ax.set_ylim(-max_i, +max_i)
+
+        graphics.print_or_show(f, False,
+            "colloc_scatter_dist_time_{}_{}.".format(
+                self.cd.primary.__class__.__name__,
+                self.cd.secondary.__class__.__name__))
+
+    def map_collocs(self, **kwargs):
+        """Display collocations on a map.
+
+        Currently hardcoded to be around Eureka, Nunavut.
+        """
+
+        # check if either is stationary (like a ground station such as
+        # Eureka)
+        if ((self.p_col["lat"][1:] == self.p_col["lat"][:-1]).all() and
+            (self.p_col["lon"][1:] == self.p_col["lon"][:-1]).all()):
+            lon = self.p_col["lon"][0]
+            lat = self.p_col["lat"][0]
+            station = True
+            other = self.s_col
+            other_ds = self.cd.secondary
+        elif ((self.s_col["lat"][1:] == self.s_col["lat"][:-1]).all() and
+              (self.s_col["lon"][1:] == self.s_col["lon"][:-1]).all()):
+            lon = self.s_col["lon"][0]
+            lat = self.s_col["lat"][0]
+            station = True
+            other = self.p_col
+            other_ds = self.cd.primary
+        else:
+            station = False
+            other = None
+            other_ds = None
+            (lat, lon) = (80, -86) # arbitrary? ;-)
+
+        f = matplotlib.pyplot.figure()
+        ax = f.add_subplot(1, 1, 1)
+        m = mpl_toolkits.basemap.Basemap(projection="laea",
+            lat_0=lat, lon_0=lon, width=1500e3, height=1500e3,
+            ax=ax, resolution="h")
+        m.drawcoastlines(linewidth=0.3, color="0.5")
+        m.etopo()
+        (sb_lon, sb_lat) = m(m.urcrnrx, m.llcrnry, inverse=True)
+        m.drawmapscale(sb_lon-7, sb_lat+2, sb_lon-7, sb_lat+2,
+            length=500, units="km")
+        m.drawparallels(numpy.arange(70., 89., 2.), zorder=2,
+            linewidth=0.3, labels=[1, 0, 1, 0])
+        m.drawmeridians(numpy.arange(-120., -41., 10.), latmax=88,
+            linewidth=0.3, zorder=2, labels=[0, 1, 0, 1])
+
+        if station:
+            m.plot(lon, lat, latlon=True, markersize=15,
+                marker='o', markerfacecolor="white",
+                markeredgecolor="red", markeredgewidth=2, zorder=4,
+                label="Eureka", linestyle="None")
+            m.scatter(other["lon"], other["lat"], 50, marker='o',
+                edgecolor="black", #edgewidth=4,
+                facecolor="white", latlon=True, zorder=3,
+                label=other_ds.name)
+            ax.text(0.5, 1.08,
+                "Collocations Eureka-{:s}".format(other_ds.name),
+                 horizontalalignment='center',
+                 fontsize=20,
+                 transform = ax.transAxes)
+            #ax.set_title("Collocations Eureka-{:s}".format(other_ds.name))
+
+            ax.legend(loc="upper left", numpoints=1)
+        else:
+            raise NotImplementedError("To be implemented")
+            
+        graphics.print_or_show(f, False,
+            "map_collocs_{}_{}.".format(
+                self.cd.primary.__class__.__name__,
+                self.cd.secondary.__class__.__name__))
+
+    def write_statistics(self):
+        """Write a bunch of collocation statistics to the screen
+        """
+        print("Found {:d} collocations".format(self.p_col.shape[0]))
+
+        (_, _, dists) = self.cd.ellipsoid.inv(
+            self.p_col["lon"], self.p_col["lat"],
+            self.s_col["lon"], self.s_col["lat"])
+        dists /= 1e3 # m -> km
+
+        means = {}
+        for c in ("p", "s"):
+            means[c] = numpy.rad2deg(
+                pamath.average_position_sphere(
+                    numpy.deg2rad(getattr(self, c+"_col")["lat"]),
+                    numpy.deg2rad(getattr(self, c+"_col")["lon"])))
+
+        (mean_dir, _, mean_dist) = self.cd.ellipsoid.inv(
+            means["p"][1], means["p"][0],
+            means["s"][1], means["s"][0])
+        mean_dist /= 1e3 # m -> km
+
+        for (i, label) in ((0, "first"), (-1, "last")):
+            print(("{} collocation: ({!s}, {!s}) at "
+               "({:.2f}, {:.2f}), ({:.2f}, {:.2f}) ({:.2f} km)").format(
+                   label.capitalize(),
+                   self.p_col["time"][i], self.s_col["time"][i],
+                   self.p_col["lat"][i], self.p_col["lon"][i],
+                   self.s_col["lat"][i], self.s_col["lon"][i],
+                   dists[i]))
+
+        print(("Min/mean/median/max distance: " +
+            " / ".join(("{:.2f} km",)*4)).format(
+            dists.min(), dists.mean(), numpy.median(dists), dists.max()))
+
+        print("Mean positions: ({:.2f}, {:.2f}), ({:.2f}, {:.2f})".format(
+            means["p"][0], means["p"][1], means["s"][0], means["s"][1]))
+
+        print(("Distance, direction between mean positions: "
+               "{:.2f} km, {:.0f}°").format(mean_dist, mean_dir))
