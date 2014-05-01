@@ -4,6 +4,7 @@
 import abc
 import functools
 import itertools
+import logging
 import pathlib
 import re
 import shelve
@@ -12,6 +13,10 @@ import sys
 
 import datetime
 import numpy
+
+class InvalidFileError(Exception):
+    """Raised when the requested information cannot be obtained from the file
+    """
 
 class Dataset(metaclass=abc.ABCMeta):
     """Represents a dataset.
@@ -75,8 +80,8 @@ class Dataset(metaclass=abc.ABCMeta):
         """
         raise NotImplementedError()
 
-    def read_period(self, start=datetime.datetime.min,
-                          end=datetime.datetime.max,
+    def read_period(self, start=None,
+                          end=None,
                           onerror="skip"):
         """Read all granules between start and end, in bulk.
 
@@ -87,9 +92,13 @@ class Dataset(metaclass=abc.ABCMeta):
         :returns: Masked array with all data in period.
         """
 
+        start = start or self.start_date
+        end = end or self.end_date
+
         contents = []
         for gran in self.find_granules(start, end):
             try:
+                logging.info("Reading {!s}".format(gran))
                 cont = self.read(str(gran))
             except ValueError as exc:
                 if onerror == "skip":
@@ -127,7 +136,7 @@ class Dataset(metaclass=abc.ABCMeta):
         raise NotImplementedError()
 
     @functools.lru_cache(maxsize=10)
-    def read(self, f):
+    def read(self, f=None):
         """Read granule in file and do some other fixes
 
         Uses self._read.  Do not override, override _read instead.
@@ -136,7 +145,7 @@ class Dataset(metaclass=abc.ABCMeta):
         """
         if isinstance(f, pathlib.PurePath):
             f = str(f)
-        return self._read(f)
+        return self._read(f) if f is not None else self._read()
 
 
 class SingleFileDataset(Dataset):
@@ -155,6 +164,9 @@ class SingleFileDataset(Dataset):
     def find_granules_sorted(self, start=datetime.datetime.min,
                                    end=datetime.datetime.max):
         yield from self.find_granules(start, end)
+
+    def get_times_for_granule(self, gran=None):
+        return (self.start_date, self.end_date)
 
 class MultiFileDataset(Dataset):
     """Represents a dataset where measurements are spread over multiple
@@ -317,13 +329,22 @@ class MultiFileDataset(Dataset):
         d_end = (dt_end.date()
                 if isinstance(dt_end, datetime.datetime) 
                 else dt_end)
+        logging.info(("Searching for granules between {!s} and {!s}"
+                      "for {}").format(dt_start, dt_end, self.name))
         for (timeinfo, subdir) in self.iterate_subdirs(d_start, d_end):
             if subdir.exists() and subdir.is_dir():
+                logging.debug("Searching directory {!s}".format(subdir))
                 for child in subdir.iterdir():
                     m = self._re.fullmatch(child.name)
                     if m is not None:
-                        (g_start, g_end) = self.get_times_for_granule(child,
-                            **timeinfo)
+                        try:
+                            (g_start, g_end) = self.get_times_for_granule(child,
+                                **timeinfo)
+                        except InvalidFileError as e:
+                            logging.error(
+                                "Skipping {!s}.  Problem: {}".format(
+                                    child, e.args[0]))
+                            continue
                         if g_end > dt_start and g_start < dt_end:
                             yield child
             

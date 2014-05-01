@@ -6,6 +6,9 @@
 import collections.abc
 import inspect
 import functools
+import shelve
+import struct
+import logging
 
 class switch(object):
     """Simulate a switch-case statement.
@@ -122,3 +125,36 @@ def cat(*args):
         return numpy.ma.concatenate(*args)
     else:
         return numpy.concatenate(*args)
+
+def disk_lru_cache(path):
+    """Like functools.lru_cache, but stored on disk
+
+    Returns a decorator.
+
+    :param str path: File to use for caching.
+    :returns function: Decorator
+    """
+
+    sentinel = object()
+    make_key = functools._make_key
+    def decorating_function(user_function):
+        cache = shelve.open(path, protocol=4, writeback=True)
+        cache_get = cache.get
+
+        def wrapper(*args, **kwds):
+            key = str(make_key(args, kwds, False, kwd_mark=(42,)))
+            result = cache_get(key, sentinel)
+            if result is not sentinel:
+                logging.debug("Getting result from cache")
+                return result
+            logging.debug("No result in cache")
+            result = user_function(*args, **kwds)
+            logging.debug("Storing result in cache")
+            cache[key] = result
+            cache.sync()
+            return result
+
+        return functools.update_wrapper(wrapper, user_function)
+
+    return decorating_function
+

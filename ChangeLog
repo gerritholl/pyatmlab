@@ -1,3 +1,47 @@
+2014-05-01  Gerrit Holl  <gerrit.holl@utoronto.ca>:
+
+	* pyatmlab-0-0-26
+
+	* pyatmlab/collocations.py:
+
+	(CollocatedDataset):
+
+	- Be less verbose
+
+	(CollocationDescriber):
+
+	- Plot sat-sat collocations in a good way
+
+2014-04-30  Gerrit Holl  <gerrit.holl@utoronto.ca>:
+
+	* pyatmlab-0-0-25
+
+	* pyatlmab/dataset.py:
+
+	- Add homegrown exception for any invalid file stuff
+
+	(Dataset):
+
+	- Don't try to read eternity
+	- Log when reading granule
+
+	(MultiFileDataset):
+
+	- Catch error when start/end times not available
+
+	* pyatlmab/datasets.py(ACEFTS):
+
+	- Properly report error if file seems empty
+
+	* pyatmlab/tools.py:
+
+	(disk_lru_cache): Like lru_cache but stored on disk, and simpler
+
+	
+	* setup.py: Remove local/
+
+	* local/: Deleted
+
 2014-04-23  Gerrit Holl  <gerrit.holl@utoronto.ca>:
 
 	* pyatmlab-0-0-24

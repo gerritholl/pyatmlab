@@ -301,6 +301,9 @@ class ACEFTS(dataset.SingleMeasurementPerFileDataset):
         for line in itertools.takewhile(isempty, fp):
             k, v = line.split("|")
             head[k.strip()] = v.strip()
+        if head == {}:
+            raise dataset.InvalidFileError(
+                "Unable to extract header from {0.name}.  Empty?".format(fp))
         return head
 
     def read_single(self, f):

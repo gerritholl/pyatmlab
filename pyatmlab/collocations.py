@@ -109,15 +109,15 @@ class CollocatedDataset(dataset.HomemadeDataset):
 #            logging.debug("Next pair: {} vs. {}".format(
 #                gran_prim, gran_sec))
             if gran_prim != old_prim: # new primary
-                logging.debug("New primary: {!s}".format(gran_prim))
+#                logging.debug("New primary: {!s}".format(gran_prim))
                 if prim is not None: # if not first time, yield pair
-                    logging.debug("Yielding!")
+#                    logging.debug("Yielding!")
                     yield (prim, numpy.concatenate(sec))
                 prim = self.primary.read(gran_prim)
                 old_prim = gran_prim
 
             if gran_sec != old_sec:
-                logging.debug("New secondary: {!s}".format(gran_sec))
+#                logging.debug("New secondary: {!s}".format(gran_sec))
                 try:
                     sec.append(self.secondary.read(gran_sec))
                 except ValueError as msg:
@@ -501,11 +501,11 @@ class CollocationDescriber:
         m.drawmeridians(numpy.arange(-120., -41., 10.), latmax=88,
             linewidth=0.3, zorder=2, labels=[0, 1, 0, 1])
 
+        m.plot(lon, lat, latlon=True, markersize=15,
+            marker='o', markerfacecolor="white",
+            markeredgecolor="red", markeredgewidth=2, zorder=4,
+            label="Eureka", linestyle="None")
         if station:
-            m.plot(lon, lat, latlon=True, markersize=15,
-                marker='o', markerfacecolor="white",
-                markeredgecolor="red", markeredgewidth=2, zorder=4,
-                label="Eureka", linestyle="None")
             m.scatter(other["lon"], other["lat"], 50, marker='o',
                 edgecolor="black", #edgewidth=4,
                 facecolor="white", latlon=True, zorder=3,
@@ -519,7 +519,23 @@ class CollocationDescriber:
 
             ax.legend(loc="upper left", numpoints=1)
         else:
-            raise NotImplementedError("To be implemented")
+            m.scatter(self.p_col["lon"], self.p_col["lat"], 50, marker='o',
+                edgecolor="black", facecolor="red", latlon=True, zorder=3,
+                label=self.cd.primary.name)
+            m.scatter(self.s_col["lon"], self.s_col["lat"], 50, marker='o',
+                edgecolor="black", facecolor="blue", latlon=True, zorder=3,
+                label=self.cd.secondary.name)
+            for i in range(self.p_col.size):
+                m.plot([self.p_col["lon"][i], self.s_col["lon"][i]],
+                       [self.p_col["lat"][i], self.s_col["lat"][i]],
+                       latlon=True,
+                       marker=None, linestyle="--", linewidth=1,
+                       color="black", zorder=2)
+            ax.text(0.5, 1.08,
+                "Collocations {:s}-{:s}".format(self.cd.primary.name,
+                    self.cd.secondary.name, horizontalalignment="center",
+                    fontsize=20, transform=ax.transAxes))
+            ax.legend(loc="upper left", numpoints=1)
             
         graphics.print_or_show(f, False,
             "map_collocs_{}_{}.".format(
