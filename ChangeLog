@@ -1,3 +1,31 @@
+2014-05-02  Gerrit Holl  <gerrit.holl@utoronto.ca>:
+
+	* pyatmlab-0-0-27
+
+	* pyatmlab/collocations.py:
+
+	(CollocationDescriber.compare_profile):
+
+	- Started work on this method.  Unfinished.
+
+	* pyatmlab/dataset.py:
+
+	- Added field 'aliases'
+
+	- Added class 'ProfileDataset' as mixin for any data-specific methods
+
+	* pyatmlab/datasets.py:
+
+	(TansoFTS):
+
+	- Also derive from ProfileDataset
+	- Add aliase
+	- Implement get_z (work in progress, DRY!)
+
+	(AceFTS):
+
+	- Add aliases and implement get_z (trivial here)
+
 2014-05-01  Gerrit Holl  <gerrit.holl@utoronto.ca>:
 
 	* pyatmlab-0-0-26

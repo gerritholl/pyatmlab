@@ -582,3 +582,35 @@ class CollocationDescriber:
 
         print(("Distance, direction between mean positions: "
                "{:.2f} km, {:.0f}°").format(mean_dist, mean_dir))
+
+
+    def compare_profile(self, z_grid):
+        """Compare profiles.
+
+        Currently hardcoded for CH4.
+
+        :param z_grid: Altitude grid to compare on.  Both products will be
+            interpolated onto this grid (may be a no-op for one).
+        """
+
+        p_ch4 = self.p_col[self.primary.aliases["ch4_profile"]]
+
+        s_ch4 = self.s_col[self.secondary.aliases["ch4_profile"]]
+
+        p_ch4_int = numpy.zeros(self.p_col.size, z_grid.size)
+        s_ch4_int = numpy.zeros_like(p_ch4_int)
+
+        for i in range(self.p_col.size):
+            p_interp = scipy.interpolate.interp1d(
+                self.cd.primary.get_z(self.p_col[i]),
+                p_ch4[i])
+            s_interp = scipy.interpolate.interp1d(
+                self.cd.secondary.get_z(self.s_col[i]),
+                s_ch4[i])
+
+            p_ch4_int[i, :] = p_interp(z_grid)
+            s_ch4_int[i, :] = s_interp(z_grid)
+
+        return (p_ch4_int, s_ch4_int)
+#                
+#        self.s_col

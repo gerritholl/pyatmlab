@@ -17,7 +17,7 @@ from .constants import ppm as PPM
 
 HECTO = 100
 
-class TansoFTS(dataset.SingleFileDataset):
+class TansoFTS(dataset.SingleFileDataset, dataset.ProfileDataset):
 
 #    start_date = datetime.datetime(2010, 3, 23, 2, 24, 54, 210)
 #    end_date = datetime.datetime(2010, 10, 31, 20, 34, 50, 814)
@@ -29,6 +29,7 @@ class TansoFTS(dataset.SingleFileDataset):
         700, 600, 500, 400, 300, 250, 200, 150, 100, 70, 50, 30, 20,
         10])*HECTO # hPa -> Pa
     p_for_interp_profile = None
+    aliases = {"CH4_profile": "CH4", "z_profile": "z"}
 
     @classmethod
     def vmr_to_column_density(cls, data):
@@ -111,7 +112,6 @@ class TansoFTS(dataset.SingleFileDataset):
         return (ncd, ncd_e)
 
 
-
     # implementation of abstract methods
 
     def _read(self, path=None):
@@ -159,6 +159,74 @@ class TansoFTS(dataset.SingleFileDataset):
         A["p0"] *= HECTO
 
         return A
+
+    def get_z(self, meas): 
+#            if data["T"].mask.size == 1:
+#                T = data["T"][n, ::-1].data
+#            else:
+#                T = data["T"][n, ::-1].data[~data["T"][n, ::-1].mask]
+#
+#            if data["h2o"].mask.size == 1:
+#                h2o = data["h2o"][n, ::-1].data
+#            else:
+#                h2o = data["h2o"][n, ::-1].data[~data["h2o"][n, ::-1].mask]
+
+
+        # Can't use masked arrays due to bug:
+        # https://github.com/numpy/numpy/issues/2972
+        # Use workaround instead.
+
+        valid = meas["p_raw"] > 0
+
+        T_interpolator = scipy.interpolate.interp1d(
+            self.p_for_T_profile[::-1],
+            meas["T"][::-1])# should be increasing
+
+        h2o_interpolator = scipy.interpolate.interp1d(
+            self.p_for_T_profile[::-1],
+            meas["h2o"][::-1])
+        
+#            p = data["p_raw"][n, :].data[~data["p_raw"][n, :].mask]*HECTO
+        p = meas["p_raw"] * HECTO
+        p = p[valid]
+
+        T_interp = T_interpolator(p)
+        h2o_interp = h2o_interpolator(p)
+
+#            nd = physics.vmr2nd(
+#                data["ch4_profile_raw"][n, :].data[
+#                    ~data["ch4_profile_raw"][n, :].mask]*PPM,
+#                T_interp, p)
+#
+#            nd_e = physics.vmr2nd(
+#                data["ch4_profile_raw_e"][n, :].data[
+#                    ~data["ch4_profile_raw_e"][n, :].mask]*PPM,
+#                T_interp, p)
+
+        #z = physics.p2z_oversimplified(p)
+        if meas["p0"] > p[0]:
+            # need to add dummy p[0] < p to satisfy p2z
+            #
+            # this is inaccurate, but has little effect on the
+            # *relative* location of other levels (<1 m), so it is an
+            # acceptable source of error
+            dummy = True
+            pp = numpy.r_[meas["p0"], p]
+            Tp = numpy.r_[287, T_interp]
+            # although putting h2o-surface to a low value is an EXTREMELY
+            # bad approximation, it /still/ doesn't matter for the
+            # relative thicknesses higher up
+            h2op = numpy.r_[h2o_interp[0], h2o_interp]
+        else:
+            dummy = False
+            (pp, Tp, h2op) = (p, T_interp, h2o_interp)
+        #z = physics.p2z_hydrostatic(p, T_interp, h2o_interp,
+        z = physics.p2z_hydrostatic(pp, Tp, h2op*PPM,
+            p0=meas["p0"],
+            z0=meas["z0"],
+            lat=meas["lat"])[dummy:]
+        return z
+
 
 class NDACCAmes(dataset.MultiFileDataset):
     """NDACC Ames-style file
@@ -285,6 +353,7 @@ class ACEFTS(dataset.SingleMeasurementPerFileDataset):
     subdir = "{year:04d}-{month:02d}"
     re = r"(?P<type>s[sr])(?P<orbit>\d{5})v3\.0\.asc"
     _time_format = "%Y-%m-%d %H:%M:%S"
+    aliases = {"CH4_profile": "CH4"}
 
     @staticmethod
     def read_header(fp):
@@ -356,6 +425,9 @@ class ACEFTS(dataset.SingleMeasurementPerFileDataset):
         return tuple(datetime.datetime.strptime(
             head[m + "_time"][:-3], self._time_format)
             for m in ("start", "end"))
+
+    def get_z(self, meas):
+        return meas["z"]
             
 
 def collect_values(fp, N, dtp):

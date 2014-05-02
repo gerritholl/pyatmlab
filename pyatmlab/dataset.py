@@ -40,11 +40,21 @@ class Dataset(metaclass=abc.ABCMeta):
         
         Name for the dataset.  May be used for logging purposes and so.
 
+    - aliases::
+
+        Aliases for field.  Dictionary can be useful if you want to
+        programmatically loop through the same field for many different
+        datasets, but they are named differently.  Aliases known to be
+        used::
+
+        - ch4_profile
+
     """
 
     start_date = None
     end_date = None
     name = ""
+    aliases = {}
 
     def __init__(self, **kwargs):
         for (k, v) in kwargs.items():
@@ -486,3 +496,14 @@ class HomemadeDataset(MultiFileDataset):
 
     def find_granules(self, start, end):
         raise StopIteration()
+
+class ProfileDataset(Dataset):
+    """Abstract superclass with stuff for anything having profiles
+    """
+
+    def get_z(self, dt):
+        """Get z-profile in metre.
+
+        Takes as argument a single measurement, with the dtype returned by
+        its own reading routine.
+        """
