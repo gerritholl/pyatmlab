@@ -1,3 +1,60 @@
+2014-05-06  Gerrit Holl  <gerrit.holl@utoronto.ca>:
+
+	* pyatmlab-0-0-28
+
+	* pyatmlab/collocations.py:
+
+	(CollocatedDataset):
+
+	- Keep track of size in read_aggregated_pairs, don't hog memory, read
+	at most 100 MB.
+
+	(CollocationDescriber):
+
+	- Start work on filter
+
+	(interpolate_profiles):
+
+	- Interpolate profiles on common grids
+
+	(compare_profiles):
+
+	- Return percentiles for difference, square difference, ratio
+
+	(visualise_profile_comparison):
+
+	- And plot this, using different linestyles
+
+	* pyatmlab/dataset.py:
+
+	- If the server is read-only, open granule start times read-only.
+
+	* pyatmlab/datasets.py:
+
+	(TansoFTS):
+
+	- Fix CH4_profile alias
+
+	- Convert ppm -> ppv on reading already
+
+	- Use hstack to concat scalar to profile
+
+	- Convert z to metre
+
+	* pyatmlab/physics.py:
+
+	(p2z_oversimplified):
+
+	- Also permit numpy.ndarray, which can be a scalar (strang numpy
+	corner case of array([0]) with ndim=0 not being like
+	numpy.float32(0))
+
+	* pyatmlab/tools.py:
+
+	(_validate_one):
+
+	- When stuff goes wrong, write more info, such as type and function
+	name
 2014-05-02  Gerrit Holl  <gerrit.holl@utoronto.ca>:
 
 	* pyatmlab-0-0-27

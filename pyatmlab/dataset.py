@@ -246,8 +246,13 @@ class MultiFileDataset(Dataset):
                 not isinstance(getattr(self, attr), pathlib.PurePath)):
                 setattr(self, attr, pathlib.Path(getattr(self, attr)))
         if self.granule_cache_file is not None:
-            self._granule_start_times = shelve.open(str(self.basedir /
-                self.granule_cache_file), protocol=4)
+            p = str(self.basedir / self.granule_cache_file)
+            try:
+                self._granule_start_times = shelve.open(p, protocol=4)
+            except OSError:
+                logging.error(("Unable to open granule file {} RW.  "
+                               "Opening read-only.").format(p))
+                self._granule_start_times = shelve.open(p, flag='r')
         else:
             self._granule_start_times = {}
         if self.re is not None:

@@ -196,10 +196,10 @@ def p2z_oversimplified(p):
 def p2z_hydrostatic(p:numpy.ndarray,
     T:numpy.ndarray,
     h2o,
-    p0:(numpy.number, numbers.Number),
-    z0:(numpy.number, numbers.Number),
-    lat:(numpy.number, numbers.Number)=45,
-    z_acc:(numpy.number, numbers.Number)=-1,
+    p0:(numpy.number, numbers.Number, numpy.ndarray),
+    z0:(numpy.number, numbers.Number, numpy.ndarray),
+    lat:(numpy.number, numbers.Number, numpy.ndarray)=45,
+    z_acc:(numpy.number, numbers.Number, numpy.ndarray)=-1,
     ellps="WGS84"):
     """Calculate hydrostatic elevation
 

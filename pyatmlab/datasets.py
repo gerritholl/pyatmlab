@@ -29,7 +29,7 @@ class TansoFTS(dataset.SingleFileDataset, dataset.ProfileDataset):
         700, 600, 500, 400, 300, 250, 200, 150, 100, 70, 50, 30, 20,
         10])*HECTO # hPa -> Pa
     p_for_interp_profile = None
-    aliases = {"CH4_profile": "CH4", "z_profile": "z"}
+    aliases = {"CH4_profile": "ch4_profile_raw"}
 
     @classmethod
     def vmr_to_column_density(cls, data):
@@ -75,12 +75,12 @@ class TansoFTS(dataset.SingleFileDataset, dataset.ProfileDataset):
 
             nd = physics.vmr2nd(
                 data["ch4_profile_raw"][n, :].data[
-                    ~data["ch4_profile_raw"][n, :].mask]*PPM,
+                    ~data["ch4_profile_raw"][n, :].mask],#*PPM,
                 T_interp, p)
 
             nd_e = physics.vmr2nd(
                 data["ch4_profile_raw_e"][n, :].data[
-                    ~data["ch4_profile_raw_e"][n, :].mask]*PPM,
+                    ~data["ch4_profile_raw_e"][n, :].mask],#*PPM,
                 T_interp, p)
 
             #z = physics.p2z_oversimplified(p)
@@ -139,9 +139,12 @@ class TansoFTS(dataset.SingleFileDataset, dataset.ProfileDataset):
             else:
                 self.p_for_interp_profile = p
             #D["p"] = h5f["Data"]["originalProfile"]["pressure"]
-            D["ch4_profile_interp"] = h5f["Data"]["interpolatedProfile"]["CH4Profile"]
-            D["ch4_profile_raw"] = h5f["Data"]["originalProfile"]["CH4Profile"]
-            D["ch4_profile_raw_e"] = h5f["Data"]["originalProfile"]["CH4ProfileError"]
+            D["ch4_profile_interp"] = (h5f["Data"]["interpolatedProfile"]
+                ["CH4Profile"][:]*PPM)
+            D["ch4_profile_raw"] = (h5f["Data"]["originalProfile"]
+                ["CH4Profile"][:]*PPM)
+            D["ch4_profile_raw_e"] = (h5f["Data"]["originalProfile"]
+                ["CH4ProfileError"][:]*PPM)
             D["p_raw"] = h5f["Data"]["originalProfile"]["pressure"]
             D["T"] = h5f["scanAttribute"]["referenceData"]["temperatureProfile"]
             D["h2o"] = h5f["scanAttribute"]["referenceData"]["waterVaporProfile"]
@@ -175,6 +178,8 @@ class TansoFTS(dataset.SingleFileDataset, dataset.ProfileDataset):
         # Can't use masked arrays due to bug:
         # https://github.com/numpy/numpy/issues/2972
         # Use workaround instead.
+        if isinstance(meas, numpy.ma.core.MaskedArray):
+            meas = meas.data
 
         valid = meas["p_raw"] > 0
 
@@ -211,12 +216,12 @@ class TansoFTS(dataset.SingleFileDataset, dataset.ProfileDataset):
             # *relative* location of other levels (<1 m), so it is an
             # acceptable source of error
             dummy = True
-            pp = numpy.r_[meas["p0"], p]
-            Tp = numpy.r_[287, T_interp]
+            pp = numpy.hstack((meas["p0"], p))
+            Tp = numpy.hstack((287, T_interp))
             # although putting h2o-surface to a low value is an EXTREMELY
             # bad approximation, it /still/ doesn't matter for the
             # relative thicknesses higher up
-            h2op = numpy.r_[h2o_interp[0], h2o_interp]
+            h2op = numpy.hstack((h2o_interp[0], h2o_interp))
         else:
             dummy = False
             (pp, Tp, h2op) = (p, T_interp, h2o_interp)
@@ -398,6 +403,9 @@ class ACEFTS(dataset.SingleMeasurementPerFileDataset):
                 for (i, name) in enumerate(names):
                     D[name][n] = vals[i]
 
+        # km -> m
+        D["z"] *= 1e3
+
         head["lat"] = float(head["latitude"])
         head["lon"] = float(head["longitude"])
         # make sure lons are in (-180, 180)
@@ -427,7 +435,11 @@ class ACEFTS(dataset.SingleMeasurementPerFileDataset):
             for m in ("start", "end"))
 
     def get_z(self, meas):
-        return meas["z"]
+        m = meas["z"]
+        if m[-1] < 150: # oops, still in km
+            return m * 1e3
+        else:
+            return m
             
 
 def collect_values(fp, N, dtp):

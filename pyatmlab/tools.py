@@ -54,9 +54,9 @@ def validate(func, locals):
     """
     for var, test in func.__annotations__.items():
         value = locals[var]
-        _validate_one(var, test, value)
+        _validate_one(var, test, value, func)
 
-def _validate_one(var, test, value):
+def _validate_one(var, test, value, func):
     """Verify that var=value passes test
 
     Internal function for validate
@@ -76,15 +76,15 @@ def _validate_one(var, test, value):
         passed = False
         for t in test:
             try:
-                _validate_one(var, t, value)
+                _validate_one(var, t, value, func)
             except TypeError:
                 pass
             else:
                 passed = True
         if not passed:
-            raise TypeError(("All tests failed for argument '{0}'. "
-                             "Value: {1}.  Tests: {2!s}").format(
-                var, value, test))
+            raise TypeError(("All tests failed for function {0}, argument '{1}'. "
+                             "Value: {2}, type {3}.  Tests: {4!s}").format(
+                func.__qualname__, var, value, type(value), test))
     else:
         raise RuntimeError("I don't know how to validate test {}!".format(test))
 
@@ -145,7 +145,8 @@ def disk_lru_cache(path):
             key = str(make_key(args, kwds, False, kwd_mark=(42,)))
             result = cache_get(key, sentinel)
             if result is not sentinel:
-                logging.debug("Getting result from cache")
+                logging.debug(("Getting result from cache at "
+                    " {!s} (key {!s}").format(path, key))
                 return result
             logging.debug("No result in cache")
             result = user_function(*args, **kwds)

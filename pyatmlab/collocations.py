@@ -6,6 +6,9 @@ import math
 import numpy
 import numpy.ma
 import logging
+import scipy
+import scipy.stats
+import scipy.interpolate
 
 import matplotlib.pyplot
 import pyproj
@@ -17,6 +20,8 @@ from . import geo
 from . import tools
 from . import graphics
 from . import math as pamath
+
+MB = 10**6
 
 class CollocatedDataset(dataset.HomemadeDataset):
     """Holds collocations.
@@ -95,36 +100,63 @@ class CollocatedDataset(dataset.HomemadeDataset):
                 *self.primary.get_times_for_granule(gran_prim)):
                 yield (gran_prim, gran_sec)
 
-    def read_aggregated_pairs(self, start_date=None, end_date=None):
+    def read_aggregated_pairs(self, start_date=None, end_date=None,
+        maxsize=1e8):
         """Iterate and read aggregated co-time granule pairs
 
         Collect and read all secondary granules sharing the same primary.
+
+        Will yield prematurely if size in bytes exceeds maxsize.
         """
         old_prim = old_sec = None
         prim = None
         sec = []
         logging.info("Searching granule pairs")
-        for (gran_prim, gran_sec) in self.find_granule_pairs(
-            start_date, end_date):
+        primsize = secsize = size_ms = 0
+        all_granule_pairs = list(self.find_granule_pairs(
+            start_date, end_date))
+        n_pairs = len(all_granule_pairs)
+        logging.info("Found {:d} granule pairs".format(n_pairs))
+        for (i, (gran_prim, gran_sec)) in enumerate(all_granule_pairs):
 #            logging.debug("Next pair: {} vs. {}".format(
 #                gran_prim, gran_sec))
             if gran_prim != old_prim: # new primary
 #                logging.debug("New primary: {!s}".format(gran_prim))
                 if prim is not None: # if not first time, yield pair
-#                    logging.debug("Yielding!")
                     yield (prim, numpy.concatenate(sec))
+                    sec = []
+                    secsize = 0
                 prim = self.primary.read(gran_prim)
+                primsize = prim.nbytes
                 old_prim = gran_prim
 
-            if gran_sec != old_sec:
+            if gran_sec != old_sec: # new secondary
 #                logging.debug("New secondary: {!s}".format(gran_sec))
                 try:
                     sec.append(self.secondary.read(gran_sec))
+                    secsize += sec[-1].nbytes
                 except ValueError as msg:
                     logging.error("Could not read {}: {}".format(
                         gran_sec, msg.args[0]))
                     continue
                 old_sec = gran_sec
+
+            if primsize + secsize > maxsize:
+                # save memory, yield prematurely
+                logging.debug(("Read {:d}/{:d} granules.  "
+                    "Yielding {:.2f} MB").format(
+                        i, n_pairs, (primsize+secsize)/MB))
+                logging.debug("Yielding due to size")
+                yield (prim, numpy.concatenate(sec))
+                sec = []
+                size_ms = secsize = 0
+
+            totsize = primsize + secsize
+            if totsize//1e7 > size_ms:
+                logging.debug(("Read {:d}/{:d} granules.  "
+                    "Current size: {:.2f} MB").format(
+                        i, n_pairs, (primsize+secsize)/MB))
+                size_ms = totsize//1e7
 
         yield (prim, numpy.concatenate(sec))
 
@@ -422,6 +454,58 @@ class CollocationDescriber:
         self.cd = cd
         self.p_col = p_col
         self.s_col = s_col
+        self.reset_filter()
+
+    # limit etc.
+
+    def reset_filter(self):
+        """Completely reset the filter.  All collocations used.
+        """
+
+        self.mask = numpy.ones(shape=self.p_col.shape, dtype="bool")
+        self.mask_label = "all"
+
+    def filter(self, limit_str="UNDESCRIBED", dist=(0, numpy.inf),
+            interval=(-numpy.inf, numpy.inf),
+            prim_lims={}, sec_lims={}):
+        """Set limits for further processing.
+
+        This method sets a mask that characterises which collocations meet
+        criteria and which ones do not.
+
+        To be expanded.  Work in progress.
+
+        :param str limit_str: Label for this filter.  Used in figures and
+            so.
+        :param dist: (min, max) distance [m]
+        :param interval: (min, max) interval [s]
+        :param dict prim_lims: Dictionary with keys corresponding to
+            fields in the primary and values (min, max) thereof
+        :param dict sec_lims: Like prim_lims but for secondary
+        """
+        mask = numpy.ones(shape=self.p_col.shape, dtype="bool")
+
+        (_, _, dists) = self.cd.ellipsoid.inv(
+            self.p_col["lon"], self.p_col["lat"],
+            self.s_col["lon"], self.s_col["lat"])
+
+        ints = self.s_col["time"] - self.p_col["time"]
+
+        mask = mask & (dists > dist[0]) & (dists < dist[1])
+        mask = mask & (ints > interval[0]) & (ints < interval[1])
+
+        
+        for (lims, db) in ((prim_lims, self.p_col),
+                           (sec_lims, self.s_col)):
+            for (field, (lo, hi)) in lims.items():
+                mask = (mask    
+                    & (db[field] > lo)
+                    & (db[field] < hi))
+
+        self.mask = mask
+        self.mask_label = limit_str
+
+    # visualise
 
     def plot_scatter_dist_int(self, time_unit="h",
             plot_name=None):
@@ -436,10 +520,11 @@ class CollocationDescriber:
         """
 
         (_, _, dist_m) = self.cd.ellipsoid.inv(
-            self.p_col["lon"], self.p_col["lat"],
-            self.s_col["lon"], self.s_col["lat"])
-        interval = (self.p_col["time"] - self.s_col["time"]).astype(
-            "m8[{}]".format(time_unit)).astype("i")
+            self.p_col["lon"][self.mask], self.p_col["lat"][self.mask],
+            self.s_col["lon"][self.mask], self.s_col["lat"][self.mask])
+        interval = (self.p_col["time"][self.mask] -
+                    self.s_col["time"][self.mask]).astype(
+                    "m8[{}]".format(time_unit)).astype("i")
         max_i = self.cd.max_interval.astype(
             "m8[{}]".format(time_unit)).astype("i")
 
@@ -506,7 +591,8 @@ class CollocationDescriber:
             markeredgecolor="red", markeredgewidth=2, zorder=4,
             label="Eureka", linestyle="None")
         if station:
-            m.scatter(other["lon"], other["lat"], 50, marker='o',
+            m.scatter(other["lon"][self.mask], other["lat"][self.mask],
+                50, marker='o',
                 edgecolor="black", #edgewidth=4,
                 facecolor="white", latlon=True, zorder=3,
                 label=other_ds.name)
@@ -519,13 +605,15 @@ class CollocationDescriber:
 
             ax.legend(loc="upper left", numpoints=1)
         else:
-            m.scatter(self.p_col["lon"], self.p_col["lat"], 50, marker='o',
+            m.scatter(self.p_col["lon"][self.mask],
+                self.p_col["lat"][self.mask], 50, marker='o',
                 edgecolor="black", facecolor="red", latlon=True, zorder=3,
                 label=self.cd.primary.name)
-            m.scatter(self.s_col["lon"], self.s_col["lat"], 50, marker='o',
+            m.scatter(self.s_col["lon"][self.mask],
+                self.s_col["lat"][self.mask], 50, marker='o',
                 edgecolor="black", facecolor="blue", latlon=True, zorder=3,
                 label=self.cd.secondary.name)
-            for i in range(self.p_col.size):
+            for i in self.mask.nonzero()[0]:#range(self.p_col.size):
                 m.plot([self.p_col["lon"][i], self.s_col["lon"][i]],
                        [self.p_col["lat"][i], self.s_col["lat"][i]],
                        latlon=True,
@@ -548,16 +636,16 @@ class CollocationDescriber:
         print("Found {:d} collocations".format(self.p_col.shape[0]))
 
         (_, _, dists) = self.cd.ellipsoid.inv(
-            self.p_col["lon"], self.p_col["lat"],
-            self.s_col["lon"], self.s_col["lat"])
+            self.p_col["lon"][self.mask], self.p_col["lat"][self.mask],
+            self.s_col["lon"][self.mask], self.s_col["lat"][self.mask])
         dists /= 1e3 # m -> km
 
         means = {}
         for c in ("p", "s"):
             means[c] = numpy.rad2deg(
                 pamath.average_position_sphere(
-                    numpy.deg2rad(getattr(self, c+"_col")["lat"]),
-                    numpy.deg2rad(getattr(self, c+"_col")["lon"])))
+                    numpy.deg2rad(getattr(self, c+"_col")["lat"][self.mask]),
+                    numpy.deg2rad(getattr(self, c+"_col")["lon"][self.mask])))
 
         (mean_dir, _, mean_dist) = self.cd.ellipsoid.inv(
             means["p"][1], means["p"][0],
@@ -584,8 +672,8 @@ class CollocationDescriber:
                "{:.2f} km, {:.0f}°").format(mean_dist, mean_dir))
 
 
-    def compare_profile(self, z_grid):
-        """Compare profiles.
+    def interpolate_profiles(self, z_grid):
+        """Interpolate profiles on a common z-grid
 
         Currently hardcoded for CH4.
 
@@ -593,20 +681,41 @@ class CollocationDescriber:
             interpolated onto this grid (may be a no-op for one).
         """
 
-        p_ch4 = self.p_col[self.primary.aliases["ch4_profile"]]
+        p_ch4 = self.p_col[self.mask][self.cd.primary.aliases["CH4_profile"]]
 
-        s_ch4 = self.s_col[self.secondary.aliases["ch4_profile"]]
+        s_ch4 = self.s_col[self.mask][self.cd.secondary.aliases["CH4_profile"]]
 
-        p_ch4_int = numpy.zeros(self.p_col.size, z_grid.size)
+        # interpolate profiles onto a common grid
+        p_ch4_int = numpy.zeros(shape=(self.p_col.size, z_grid.size),
+            dtype=p_ch4.dtype)
         s_ch4_int = numpy.zeros_like(p_ch4_int)
 
-        for i in range(self.p_col.size):
-            p_interp = scipy.interpolate.interp1d(
-                self.cd.primary.get_z(self.p_col[i]),
-                p_ch4[i])
-            s_interp = scipy.interpolate.interp1d(
-                self.cd.secondary.get_z(self.s_col[i]),
-                s_ch4[i])
+        for i in self.mask.nonzero()[0]:#range(self.p_col.size):
+            p_z_i = self.cd.primary.get_z(self.p_col[i])
+            s_z_i = self.cd.secondary.get_z(self.s_col[i])
+            # workaround https://github.com/numpy/numpy/issues/2972
+            p_valid = (p_ch4[i] > 0)
+            s_valid = (s_ch4[i] > 0)
+            p_ch4_i = (p_ch4[i].data 
+                if isinstance(p_ch4, numpy.ma.MaskedArray)
+                else p_ch4[i])[p_valid]
+            s_ch4_i = (s_ch4[i].data
+                if isinstance(s_ch4, numpy.ma.MaskedArray)
+                else s_ch4[i])[s_valid]
+            if p_valid.shape == p_z_i.shape:
+                p_z_i = p_z_i[p_valid]
+            if s_valid.shape == s_z_i.shape:
+                s_z_i = s_z_i[s_valid]
+            #
+            if not p_valid.any() or not s_valid.any():
+                p_ch4_int[i, :] = numpy.nan
+                s_ch4_int[i, :] = numpy.nan
+                continue
+
+            p_interp = scipy.interpolate.interp1d(p_z_i, p_ch4_i,
+                bounds_error=False)
+            s_interp = scipy.interpolate.interp1d(s_z_i, s_ch4_i,
+                bounds_error=False)
 
             p_ch4_int[i, :] = p_interp(z_grid)
             s_ch4_int[i, :] = s_interp(z_grid)
@@ -614,3 +723,59 @@ class CollocationDescriber:
         return (p_ch4_int, s_ch4_int)
 #                
 #        self.s_col
+
+    def compare_profiles(self, z_grid,
+            percs=(5, 25, 50, 75, 95)):
+        """Return some statistics comparing profiles.
+
+        Currently hardcoded for CH4.
+
+        Arguments as for interpolate_profiles.
+
+        Returns percentiles (5, 25, 50, 75, 95) for difference, square
+        difference, and ratio.
+        """
+
+        (p_ch4_int, s_ch4_int) = self.interpolate_profiles(z_grid)
+
+        diff = s_ch4_int - p_ch4_int
+        diff_sq = diff ** 2
+        ratio = s_ch4_int / p_ch4_int
+
+        return numpy.array([
+            [scipy.stats.scoreatpercentile(d[:, i], percs)
+                for i in range(d.shape[1])]
+            for d in (diff, diff_sq, ratio)])
+
+    def visualise_profile_comparison(self, z_grid):
+        """Visualise profile comparisons.
+
+        Currently hardcoded for CH4.
+
+        Arguments as for compare_profiles and interpolate_profiles.
+        """
+
+        p_locs = (5, 25, 50, 75, 95)
+        p_styles = (':', '--', '-', '--', ':')
+        p_widths = (0.5, 1, 2, 1, 0.5)
+
+        percs = self.compare_profiles(z_grid, p_locs)
+        for (i, v) in enumerate("diff diff^2 ratio".split()):
+            f = matplotlib.pyplot.figure()
+            a = f.add_subplot(1, 1, 1)
+            for k in range(len(p_locs)):
+                a.plot(percs[i, :, k], z_grid, color="blue",
+                    linestyle=p_styles[k], linewidth=p_widths[k])
+#            a.plot(percs[1], z_grid, label="p diff^2", color="red")
+#            a.plot(percs[2], z_grid, label="p ratio", color="black")
+#            a.legend()
+            a.set_xlabel("Percentiles 5/25/50/75/95")
+            a.set_ylabel("Elevation")
+            a.set_title(v)
+            graphics.print_or_show(f, False,
+                "compare_profiles_ch4_{}_{}_{}_{}_{}.".format(
+                    v,
+                    self.cd.primary.__class__.__name__,
+                    self.cd.primary.name.replace(" ", "_"),
+                    self.cd.secondary.__class__.__name__,
+                    self.cd.secondary.name.replace(" ", "_")))
