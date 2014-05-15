@@ -14,6 +14,8 @@ import sys
 import datetime
 import numpy
 
+from . import tools
+
 class InvalidFileError(Exception):
     """Raised when the requested information cannot be obtained from the file
     """
@@ -92,13 +94,15 @@ class Dataset(metaclass=abc.ABCMeta):
 
     def read_period(self, start=None,
                           end=None,
-                          onerror="skip"):
+                          onerror="skip",
+                          fields="all"):
         """Read all granules between start and end, in bulk.
 
         :param datetime start: Starting time, None for any time
         :param datetime end: Ending time, None for any time
         :param str onerror: What to do with unreadable files.  Defaults to
             "skip", can be set to "raise".
+        :param list fields: List of fields to read, or "all" (default).
         :returns: Masked array with all data in period.
         """
 
@@ -109,7 +113,7 @@ class Dataset(metaclass=abc.ABCMeta):
         for gran in self.find_granules(start, end):
             try:
                 logging.info("Reading {!s}".format(gran))
-                cont = self.read(str(gran))
+                cont = self.read(str(gran), fields=fields)
             except ValueError as exc:
                 if onerror == "skip":
                     print("Could not read file {}: {}".format(
@@ -120,38 +124,46 @@ class Dataset(metaclass=abc.ABCMeta):
             else:
                 contents.append(cont)
         # retain type of first result, ordinary array of masked array
-        return (numpy.ma.concatenate 
+        arr = (numpy.ma.concatenate 
             if isinstance(contents[0], numpy.ma.MaskedArray)
             else numpy.concatenate)(contents)
+        return arr if fields == "all" else arr[fields]
 #        return numpy.ma.concatenate(list(
 #            self.read(f) for f in self.find_granules(start, end)))
 
-    def read_all(self):
+    def read_all(self, fields="all", onerror="skip"):
         """Read all data in one go.
 
         Warning: for some datasets, this may cause memory problems.
+
+        :param fields: List of fields to read, or "all" (default)
+        :param onerror: What to do in case of an error.  See
+            `read_period`.
         """
 
-        return self.read_period()
+        return self.read_period(fields=fields)
             
     @abc.abstractmethod
-    def _read(self, f):
+    def _read(self, f, fields="all"):
         """Read granule in file, low-level
 
         Shall return an ndarray with at least the fields lat, lon, time.
 
         :param str f: Path to file
+        :param fields: List of fields to read, or "all" (default)
         """
 
         raise NotImplementedError()
 
-    @functools.lru_cache(maxsize=10)
-    def read(self, f=None):
+    #@functools.lru_cache(maxsize=10)
+    @tools.mutable_cache(maxsize=10)
+    def read(self, f=None, fields="all"):
         """Read granule in file and do some other fixes
 
         Uses self._read.  Do not override, override _read instead.
 
         :param str f: Path to file
+        :param list fields: Fields to read or "all" (default)
         """
         if isinstance(f, pathlib.PurePath):
             f = str(f)
@@ -460,7 +472,7 @@ class SingleMeasurementPerFileDataset(MultiFileDataset):
     """
 
     @abc.abstractmethod
-    def read_single(self, p):
+    def read_single(self, p, fields="all"):
         """Read a single measurement from a single file.
 
         Shall take one argument (a path object) and return a tuple with
@@ -468,11 +480,11 @@ class SingleMeasurementPerFileDataset(MultiFileDataset):
         latitude, longitude, time.
         """
 
-    def _read(self, p):
+    def _read(self, p, fields="all"):
         """Reads a single measurement converted to ndarray
         """
 
-        (head, body) = self.read_single(p)
+        (head, body) = self.read_single(p, fields=fields)
 
         dt = [s+body.shape for s in body.dtype.descr]
         dt.extend([("lat", "f8"), ("lon", "f8"), ("time", "M8[s]")])
@@ -496,7 +508,7 @@ class HomemadeDataset(MultiFileDataset):
     # dummy implementation for abstract methods, so that I can test other
     # things
 
-    def _read(self, f):
+    def _read(self, f, fields="all"):
         raise NotImplementedError()
 
     def find_granules(self, start, end):
@@ -506,6 +518,7 @@ class ProfileDataset(Dataset):
     """Abstract superclass with stuff for anything having profiles
     """
 
+    @abc.abstractmethod
     def get_z(self, dt):
         """Get z-profile in metre.
 

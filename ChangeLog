@@ -1,3 +1,54 @@
+2014-05-15  Gerrit Holl  <gerrit.holl@utoronto.ca>:
+
+	* pyatlmab-0-0-29
+
+	* pyatmlab/collocations.py:
+
+	(CollocatedDataset.collocate): 
+	
+	- Fixed bug that caused duplicates near
+	the poles, due to the number of longitude bins being considered
+	exceeding the width of the Earth.
+
+	(CollocationDescriber):
+
+	- Also write out data for plots
+
+	- For map, also add dashed line connecting pair to legend
+
+	- Fix bug with text location for non-stationary map
+
+	- Consider more statistics
+
+	(find_collocation_duplicates):
+
+	- Small function, belongs rather in test, may move later
+
+	* pyatmlab/dataset.py:
+
+	- Adapt for read functions now taking a fields argument
+
+	- read_all too should be able to skip on error
+
+	- Use new mutable cache rather than lru_cache that doesn't take
+	non-hashable arguments
+
+	* pyatmlab/datasets.py:
+
+	- Also take v3.5 for ACE
+
+	* pyatmlab/graphics.py:
+
+	- Also use plotdatadir.  Perhaps doesn't belong in this module?
+
+	* pyatmlab/tools.py:
+
+	(mutable_cache):
+
+	- Added, like lru_cache but can have mutable arguments.  Tried to use
+	pickle but not all is picklable, currently using suboptimal way of
+	str-representation of arguments
+
 2014-05-06  Gerrit Holl  <gerrit.holl@utoronto.ca>:
 
 	* pyatmlab-0-0-28
@@ -55,6 +106,7 @@
 
 	- When stuff goes wrong, write more info, such as type and function
 	name
+
 2014-05-02  Gerrit Holl  <gerrit.holl@utoronto.ca>:
 
 	* pyatmlab-0-0-27

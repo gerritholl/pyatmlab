@@ -9,6 +9,7 @@ import functools
 import shelve
 import struct
 import logging
+import pickle
 
 class switch(object):
     """Simulate a switch-case statement.
@@ -145,8 +146,8 @@ def disk_lru_cache(path):
             key = str(make_key(args, kwds, False, kwd_mark=(42,)))
             result = cache_get(key, sentinel)
             if result is not sentinel:
-                logging.debug(("Getting result from cache at "
-                    " {!s} (key {!s}").format(path, key))
+                logging.debug(("Getting result from cache "
+                    "{!s}, (key {!s}").format(path, key))
                 return result
             logging.debug("No result in cache")
             result = user_function(*args, **kwds)
@@ -159,3 +160,55 @@ def disk_lru_cache(path):
 
     return decorating_function
 
+
+def mutable_cache(maxsize=10):
+
+    sentinel = object()
+    make_key = functools._make_key
+    def decorating_function(user_function):
+        cache = {}
+        cache_get = cache.get
+        keylist = [] # don't make it too long
+
+        def wrapper(*args, **kwds):
+            # Problem with pickle: dataset objects (commonly passed as
+            # 'self') contain a cache which is a shelve object which
+            # cannot be pickled.  Would need to create a proper pickle
+            # protocol for dataset objects... maybe later
+            #key = pickle.dumps(args, 1) + pickle.dumps(kwds, 1)
+            key = str(args) + str(kwds)
+            result = cache_get(key, sentinel)
+            if result is not sentinel:
+                logging.debug(("Getting result from cache "
+                    " (key {!s}").format(key))
+                return result
+#            logging.debug("No result in cache")
+            result = user_function(*args, **kwds)
+#            logging.debug("Storing result in cache")
+            cache[key] = result
+            keylist.append(key)
+            if len(keylist) > maxsize:
+                del cache[keylist[0]]
+                del keylist[0]
+            return result
+
+        return functools.update_wrapper(wrapper, user_function)
+
+    return decorating_function
+
+
+    def __init__(self, fn):
+        self.fn = fn
+        self.memo = {}
+        self.keys = [] # don't store too many
+
+    def __call__(self, *args, **kwds):
+        str = pickle.dumps(args, 1)+pickle.dumps(kwds, 1)
+        if not str in self.memo:
+            self.memo[str] = self.fn(*args, **kwds)
+            self.keys.append(str)
+            if len(self.keys) > maxsize:
+                del self.memo[self.keys[0]]
+                del self.keys[0]
+
+        return self.memo[str]

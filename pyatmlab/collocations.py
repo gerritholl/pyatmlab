@@ -11,6 +11,8 @@ import scipy.stats
 import scipy.interpolate
 
 import matplotlib.pyplot
+import matplotlib.backends.backend_agg
+import matplotlib.figure
 import pyproj
 import mpl_toolkits.basemap
 
@@ -356,8 +358,12 @@ class CollocatedDataset(dataset.HomemadeDataset):
 
                     # for width of lons consider polemost relevant
                     # latitude bin
-                    lon_is = numpy.mod(numpy.arange(lon_i - max_lon_range,
-                            lon_i+max_lon_range), bins["lon"].size).astype('uint64')
+                    lon_is = numpy.unique(
+                        numpy.mod(
+                            numpy.arange(
+                                lon_i - max_lon_range,
+                                lon_i+max_lon_range),
+                            bins["lon"].size).astype('uint64'))
                     #lon_s_min = max(0, lon_i - max_lon_range)
                     #lon_s_max = min(lon_bins.size-1, lon_i + max_lon_range + 1)
 
@@ -505,6 +511,8 @@ class CollocationDescriber:
         self.mask = mask
         self.mask_label = limit_str
 
+        logging.debug("Filtering to {:d} elements".format(mask.sum()))
+
     # visualise
 
     def plot_scatter_dist_int(self, time_unit="h",
@@ -539,11 +547,14 @@ class CollocationDescriber:
         ax.set_ylim(-max_i, +max_i)
 
         graphics.print_or_show(f, False,
-            "colloc_scatter_dist_time_{}_{}.".format(
+            "colloc_scatter_dist_time_{}_{}_{}.".format(
                 self.cd.primary.__class__.__name__,
-                self.cd.secondary.__class__.__name__))
+                self.cd.secondary.__class__.__name__,
+                self.mask_label),
+                data=numpy.vstack((dist_m/1e3, interval)).T)
+        matplotlib.pyplot.close(f)
 
-    def map_collocs(self, **kwargs):
+    def map_collocs(self):
         """Display collocations on a map.
 
         Currently hardcoded to be around Eureka, Nunavut.
@@ -573,8 +584,9 @@ class CollocationDescriber:
 
         f = matplotlib.pyplot.figure()
         ax = f.add_subplot(1, 1, 1)
+        sz = 1500e3 if station else 4000e3
         m = mpl_toolkits.basemap.Basemap(projection="laea",
-            lat_0=lat, lon_0=lon, width=1500e3, height=1500e3,
+            lat_0=lat, lon_0=lon, width=sz, height=sz,
             ax=ax, resolution="h")
         m.drawcoastlines(linewidth=0.3, color="0.5")
         m.etopo()
@@ -618,17 +630,20 @@ class CollocationDescriber:
                        [self.p_col["lat"][i], self.s_col["lat"][i]],
                        latlon=True,
                        marker=None, linestyle="--", linewidth=1,
-                       color="black", zorder=2)
+                       color="black", zorder=2,
+                       label="Collocated pair" if i==0 else None)
             ax.text(0.5, 1.08,
                 "Collocations {:s}-{:s}".format(self.cd.primary.name,
-                    self.cd.secondary.name, horizontalalignment="center",
-                    fontsize=20, transform=ax.transAxes))
+                    self.cd.secondary.name), horizontalalignment="center",
+                    fontsize=20, transform=ax.transAxes)
             ax.legend(loc="upper left", numpoints=1)
             
         graphics.print_or_show(f, False,
-            "map_collocs_{}_{}.".format(
+            "map_collocs_{}_{}_{}.".format(
                 self.cd.primary.__class__.__name__,
-                self.cd.secondary.__class__.__name__))
+                self.cd.secondary.__class__.__name__,
+                self.mask_label))
+        matplotlib.pyplot.close(f)
 
     def write_statistics(self):
         """Write a bunch of collocation statistics to the screen
@@ -681,15 +696,19 @@ class CollocationDescriber:
             interpolated onto this grid (may be a no-op for one).
         """
 
-        p_ch4 = self.p_col[self.mask][self.cd.primary.aliases["CH4_profile"]]
+        # do not apply mask here, rather loop only through unmasked
+        # elements further down
+        p_ch4 = self.p_col[self.cd.primary.aliases["CH4_profile"]]
 
-        s_ch4 = self.s_col[self.mask][self.cd.secondary.aliases["CH4_profile"]]
+        s_ch4 = self.s_col[self.cd.secondary.aliases["CH4_profile"]]
 
         # interpolate profiles onto a common grid
-        p_ch4_int = numpy.zeros(shape=(self.p_col.size, z_grid.size),
+        val_ind = self.mask.nonzero()[0]
+        p_ch4_int = numpy.zeros(shape=(val_ind.size, z_grid.size),
             dtype=p_ch4.dtype)
         s_ch4_int = numpy.zeros_like(p_ch4_int)
 
+        k = 0
         for i in self.mask.nonzero()[0]:#range(self.p_col.size):
             p_z_i = self.cd.primary.get_z(self.p_col[i])
             s_z_i = self.cd.secondary.get_z(self.s_col[i])
@@ -708,8 +727,9 @@ class CollocationDescriber:
                 s_z_i = s_z_i[s_valid]
             #
             if not p_valid.any() or not s_valid.any():
-                p_ch4_int[i, :] = numpy.nan
-                s_ch4_int[i, :] = numpy.nan
+                p_ch4_int[k, :] = numpy.nan
+                s_ch4_int[k, :] = numpy.nan
+                k += 1
                 continue
 
             p_interp = scipy.interpolate.interp1d(p_z_i, p_ch4_i,
@@ -717,8 +737,9 @@ class CollocationDescriber:
             s_interp = scipy.interpolate.interp1d(s_z_i, s_ch4_i,
                 bounds_error=False)
 
-            p_ch4_int[i, :] = p_interp(z_grid)
-            s_ch4_int[i, :] = s_interp(z_grid)
+            p_ch4_int[k, :] = p_interp(z_grid)
+            s_ch4_int[k, :] = s_interp(z_grid)
+            k += 1
 
         return (p_ch4_int, s_ch4_int)
 #                
@@ -732,50 +753,140 @@ class CollocationDescriber:
 
         Arguments as for interpolate_profiles.
 
-        Returns percentiles (5, 25, 50, 75, 95) for difference, square
-        difference, and ratio.
+        Returns percentiles (5, 25, 50, 75, 95) for difference, 
+        root mean square difference, ratio, and original values, as a
+        dictionary.
         """
 
         (p_ch4_int, s_ch4_int) = self.interpolate_profiles(z_grid)
 
-        diff = s_ch4_int - p_ch4_int
-        diff_sq = diff ** 2
-        ratio = s_ch4_int / p_ch4_int
+        D = {}
+        D["diff"] = s_ch4_int - p_ch4_int
+        D["rmsd"] = (D["diff"] ** 2)**(0.5)
+        D["ratio"] = s_ch4_int / p_ch4_int
+        D["prim"] = p_ch4_int
+        D["sec"] = s_ch4_int
 
-        return numpy.array([
-            [scipy.stats.scoreatpercentile(d[:, i], percs)
-                for i in range(d.shape[1])]
-            for d in (diff, diff_sq, ratio)])
+        #return numpy.array([
+        return {k:
+            numpy.array([scipy.stats.scoreatpercentile(D[k][:, i], percs)
+                for i in range(D[k].shape[1])])
+            for k in D.keys()}
 
-    def visualise_profile_comparison(self, z_grid):
+    def visualise_profile_comparison(self, z_grid, filters=None):
         """Visualise profile comparisons.
 
         Currently hardcoded for CH4.
 
-        Arguments as for compare_profiles and interpolate_profiles.
+        Arguments as for compare_profiles and interpolate_profiles, plus
+        an additional argument `filters` that will be passed on to
+        self.filter plus a color keyword arg.
         """
+
+        if filters is None:
+            filters = []
 
         p_locs = (5, 25, 50, 75, 95)
         p_styles = (':', '--', '-', '--', ':')
         p_widths = (0.5, 1, 2, 1, 0.5)
 
-        percs = self.compare_profiles(z_grid, p_locs)
-        for (i, v) in enumerate("diff diff^2 ratio".split()):
+        colours = {}
+        percs = {}
+        lims = {}
+        xlabels = dict(
+            diff = "Delta CH4 [ppv]",
+            rmsd = "RMSD CH4 [ppv]",
+            ratio = "CH4 ratio [1]",
+            prim = "Primary CH4 [ppv]",
+            sec = "Secondary CH4 [ppv]")
+        xlims = dict(
+            ratio = (0.5, 1.5),
+            prim = (0, 2e-6),
+            sec = (0, 2e-6))
+        self.reset_filter()
+        percs[self.mask_label] = self.compare_profiles(z_grid, p_locs)
+        colours[self.mask_label] = "blue"
+        for fd in filters:
+            lab = fd["limit_str"]
+            colours[lab] = fd.pop("color")
+            self.filter(**fd)
+            percs[fd["limit_str"]] = self.compare_profiles(z_grid, p_locs)
+#        percs = self.compare_profiles(z_grid, p_locs)
+        #for (i, v) in enumerate("diff diff^2 ratio".split()):
+        for quantity in percs[self.mask_label].keys():
             f = matplotlib.pyplot.figure()
             a = f.add_subplot(1, 1, 1)
-            for k in range(len(p_locs)):
-                a.plot(percs[i, :, k], z_grid, color="blue",
-                    linestyle=p_styles[k], linewidth=p_widths[k])
+            data = []
+            for filt in percs.keys():
+                for k in range(len(p_locs)):
+                    a.plot(percs[filt][quantity][:, k], z_grid,
+                           color=colours[filt],
+                           linestyle=p_styles[k], linewidth=p_widths[k],
+                           label=(filt if k==2 else None))
+                    data.append(percs[filt][quantity][:, k])
+                # end for percentiles
+            # end for filters
 #            a.plot(percs[1], z_grid, label="p diff^2", color="red")
 #            a.plot(percs[2], z_grid, label="p ratio", color="black")
-#            a.legend()
-            a.set_xlabel("Percentiles 5/25/50/75/95")
-            a.set_ylabel("Elevation")
-            a.set_title(v)
+            a.legend()
+            a.set_xlabel(xlabels[quantity])
+            if quantity in xlims:
+                a.set_xlim(xlims[quantity])
+            a.set_ylabel("Elevation [m]")
+            a.set_title("Percentiles 5/25/50/75/95 for" +
+                "CH4 {}, {} vs. {}".format(quantity,
+                    self.cd.primary.name, self.cd.secondary.name))
+            a.grid(which="major")
             graphics.print_or_show(f, False,
-                "compare_profiles_ch4_{}_{}_{}_{}_{}.".format(
-                    v,
+                "compare_profiles_ch4_{}_{}_{}_{}_{}_{}.".format(
                     self.cd.primary.__class__.__name__,
                     self.cd.primary.name.replace(" ", "_"),
                     self.cd.secondary.__class__.__name__,
-                    self.cd.secondary.name.replace(" ", "_")))
+                    self.cd.secondary.name.replace(" ", "_"),
+                    quantity,
+                    "multi"),
+                    data=numpy.vstack((z_grid,)+tuple(data)).T)
+            matplotlib.pyplot.close(f)
+        # end for quantities
+        self.reset_filter()
+
+        # some specialised plots
+        iqr = {}
+        for quantity in ("prim", "sec", "diff"):
+            iqr[quantity] = (percs["all"][quantity][:, 3] -
+                             percs["all"][quantity][:, 1])
+        f = matplotlib.pyplot.figure()
+        a = f.add_subplot(1, 1, 1)
+        a.plot(iqr["prim"], z_grid, label=self.cd.primary.name)
+        a.plot(iqr["sec"], z_grid, label=self.cd.secondary.name)
+        a.plot(iqr["diff"], z_grid, label="difference")
+        a.set_xlabel("CH4 [ppv]")
+        a.set_ylabel("Altitude [m]")
+        a.set_title("CH4 IQR")
+        a.legend()
+        a.grid(which="major")
+        graphics.print_or_show(f, False,
+                "iqr_{}_{}_{}_{}.".format(
+                    self.cd.primary.__class__.__name__,
+                    self.cd.primary.name.replace(" ", "_"),
+                    self.cd.secondary.__class__.__name__,
+                    self.cd.secondary.name.replace(" ", "_")),
+                data=numpy.vstack(
+                    (z_grid, iqr["prim"], iqr["sec"], iqr["diff"])).T)
+        matplotlib.pyplot.close(f)
+
+def find_collocation_duplicates(p_col, s_col):
+    dt = numpy.dtype([("A", "f8"), ("B", "f8"), ("C", "M8[s]"), ("D",
+    "f8"), ("E", "f8"), ("F", "f8")])
+
+
+    merged = numpy.ascontiguousarray(
+        numpy.vstack(
+            (p_col["lat"], p_col["lon"], 
+             p_col["time"].astype("M8[s]").astype("i8"),
+             s_col["lat"], s_col["lon"], 
+             s_col["time"].astype( "M8[s]").astype("i8"))
+                 ).T).view(dt)[:, 0]
+    uni = numpy.unique(merged)
+
+    return uni

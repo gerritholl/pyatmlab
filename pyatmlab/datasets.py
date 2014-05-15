@@ -114,7 +114,7 @@ class TansoFTS(dataset.SingleFileDataset, dataset.ProfileDataset):
 
     # implementation of abstract methods
 
-    def _read(self, path=None):
+    def _read(self, path=None, fields="all"):
         """Read Tanso FTP granule.  Currently hardcoded for CH4 raw profiles.
         
         """
@@ -161,7 +161,7 @@ class TansoFTS(dataset.SingleFileDataset, dataset.ProfileDataset):
                 A.mask[k][A.data[k]<0] = True
         A["p0"] *= HECTO
 
-        return A
+        return A if fields=="all" else A[fields]
 
     def get_z(self, meas): 
 #            if data["T"].mask.size == 1:
@@ -268,7 +268,7 @@ class NDACCAmes(dataset.MultiFileDataset):
 #        return (datetime.datetime(y1, m1, d1, 0, 0, 0),
 #                datetime.datetime(y2, m2, d2, 23, 59, 59))
              
-    def _read(self, path):
+    def _read(self, path, fields="all"):
         """Read Bruker data in NDACC Gaines format
 
         Returns a masked array
@@ -320,7 +320,7 @@ class NDACCAmes(dataset.MultiFileDataset):
                     new["time"] = dt
                     for field in v.dtype.names:
                         new[field] = v[field]
-                    L.append(new)
+                    L.append(new if fields=="all" else new[fields])
 
         # now I have an array with fractional years as the time-axis.
         # I want to have datetime64
@@ -356,7 +356,7 @@ class ACEFTS(dataset.SingleMeasurementPerFileDataset):
     """
 #    basedir = "/home/gerrit/sshfs/glacier/data/1/gholl/data/ACE"
     subdir = "{year:04d}-{month:02d}"
-    re = r"(?P<type>s[sr])(?P<orbit>\d{5})v3\.0\.asc"
+    re = r"(?P<type>s[sr])(?P<orbit>\d{5})v(?P<version>\d\.\d)\.asc"
     _time_format = "%Y-%m-%d %H:%M:%S"
     aliases = {"CH4_profile": "CH4"}
 
@@ -380,7 +380,7 @@ class ACEFTS(dataset.SingleMeasurementPerFileDataset):
                 "Unable to extract header from {0.name}.  Empty?".format(fp))
         return head
 
-    def read_single(self, f):
+    def read_single(self, f, fields="all"):
         with open(f) as fp:
             head = self.read_header(fp)
 
@@ -418,7 +418,7 @@ class ACEFTS(dataset.SingleMeasurementPerFileDataset):
         # decimal part (truncating it to the nearest second)
         head["time"] = datetime.datetime.strptime(
             head["date"].split(".")[0].split("+")[0], self._time_format)
-        return (head, D)
+        return (head, D if fields=="all" else D[fields])
         
     def get_time_from_granule_contents(self, p):
         """Get time from granule contents.
