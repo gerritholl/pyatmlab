@@ -6,6 +6,8 @@ import math
 import numpy
 import numpy.ma
 import logging
+import datetime
+
 import scipy
 import scipy.stats
 import scipy.interpolate
@@ -98,12 +100,14 @@ class CollocatedDataset(dataset.HomemadeDataset):
                 self.secondary.end_date])
 
         for gran_prim in self.primary.find_granules_sorted(start_date, end_date):
+            (sec_start, sec_end) = self.primary.get_times_for_granule(gran_prim)
             for gran_sec in self.secondary.find_granules_sorted(
-                *self.primary.get_times_for_granule(gran_prim)):
+                sec_start-self.max_interval.astype(datetime.timedelta),
+                sec_end+self.max_interval.astype(datetime.timedelta)):
                 yield (gran_prim, gran_sec)
 
     def read_aggregated_pairs(self, start_date=None, end_date=None,
-        maxsize=1e8):
+            maxsize=1e8):
         """Iterate and read aggregated co-time granule pairs
 
         Collect and read all secondary granules sharing the same primary.
@@ -111,7 +115,7 @@ class CollocatedDataset(dataset.HomemadeDataset):
         Will yield prematurely if size in bytes exceeds maxsize.
         """
         old_prim = old_sec = None
-        prim = None
+        prim = []
         sec = []
         logging.info("Searching granule pairs")
         primsize = secsize = size_ms = 0
@@ -119,29 +123,41 @@ class CollocatedDataset(dataset.HomemadeDataset):
             start_date, end_date))
         n_pairs = len(all_granule_pairs)
         logging.info("Found {:d} granule pairs".format(n_pairs))
+        # FIXME: should concatenate both primary and secondary if both
+        # have very short granules (such as one measurement per file).
+        # Relevant for ACE vs Conway CH4+aux!
         for (i, (gran_prim, gran_sec)) in enumerate(all_granule_pairs):
 #            logging.debug("Next pair: {} vs. {}".format(
 #                gran_prim, gran_sec))
             if gran_prim != old_prim: # new primary
 #                logging.debug("New primary: {!s}".format(gran_prim))
-                if prim is not None: # if not first time, yield pair
-                    yield (prim, numpy.concatenate(sec))
-                    sec = []
-                    secsize = 0
-                prim = self.primary.read(gran_prim)
-                primsize = prim.nbytes
-                old_prim = gran_prim
+                try:
+                    newprim = self.primary.read(gran_prim)
+                except (ValueError, IOError) as msg:
+                    logging.error("Could not read {}: {}".format(
+                        gran_prim, msg.args[0]))
+                    #continue
+                else:
+                    prim.append(newprim)
+                    primsize += newprim.nbytes
+                    old_prim = gran_prim
+#                if prim is not None and sec != []: # if not first time, yield pair
+#                    yield (prim, numpy.concatenate(sec))
+#                    sec = []
+#                    secsize = 0
 
             if gran_sec != old_sec: # new secondary
 #                logging.debug("New secondary: {!s}".format(gran_sec))
                 try:
-                    sec.append(self.secondary.read(gran_sec))
-                    secsize += sec[-1].nbytes
-                except ValueError as msg:
+                    newsec = self.secondary.read(gran_sec)
+                except (ValueError, IOError) as msg:
                     logging.error("Could not read {}: {}".format(
                         gran_sec, msg.args[0]))
                     continue
-                old_sec = gran_sec
+                else:
+                    sec.append(newsec)
+                    secsize += newsec.nbytes
+                    old_sec = gran_sec
 
             if primsize + secsize > maxsize:
                 # save memory, yield prematurely
@@ -149,9 +165,10 @@ class CollocatedDataset(dataset.HomemadeDataset):
                     "Yielding {:.2f} MB").format(
                         i, n_pairs, (primsize+secsize)/MB))
                 logging.debug("Yielding due to size")
-                yield (prim, numpy.concatenate(sec))
+                yield (numpy.concatenate(prim), numpy.concatenate(sec))
+                prim = []
                 sec = []
-                size_ms = secsize = 0
+                primsize = size_ms = secsize = 0
 
             totsize = primsize + secsize
             if totsize//1e7 > size_ms:
@@ -160,7 +177,7 @@ class CollocatedDataset(dataset.HomemadeDataset):
                         i, n_pairs, (primsize+secsize)/MB))
                 size_ms = totsize//1e7
 
-        yield (prim, numpy.concatenate(sec))
+        yield (numpy.concatenate(prim), numpy.concatenate(sec))
 
                 
 
@@ -281,10 +298,11 @@ class CollocatedDataset(dataset.HomemadeDataset):
                 kmin-1, kmax+1,
                 max((((kmax+1)-(kmin-1))/bin_intervals[k], 2)))
 
-        tmin = min(t.min() for t in times_trunc).astype(numpy.int64)
-        tmax = max(t.max() for t in times_trunc).astype(numpy.int64)
+        tmin = (min(t.min() for t in times_trunc)-self.bin_interval_time).astype(numpy.int64)
+        tmax = (max(t.max() for t in times_trunc)+self.bin_interval_time).astype(numpy.int64)
         bins["time"] = numpy.linspace(
-            tmin-1, tmax+1, ((tmax+1)-(tmin-1)) /
+            tmin, tmax,
+            (tmax-tmin) /
                 bin_intervals["time"].astype(numpy.int64)).astype(newtype)
                     
 #        lat_bins = numpy.linspace(

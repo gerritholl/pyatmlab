@@ -115,7 +115,7 @@ class TansoFTS(dataset.SingleFileDataset, dataset.ProfileDataset):
     # implementation of abstract methods
 
     def _read(self, path=None, fields="all"):
-        """Read Tanso FTP granule.  Currently hardcoded for CH4 raw profiles.
+        """Read Tanso FTS granule.  Currently hardcoded for CH4 raw&interp.
         
         """
         if path is None:
@@ -149,6 +149,7 @@ class TansoFTS(dataset.SingleFileDataset, dataset.ProfileDataset):
             D["T"] = h5f["scanAttribute"]["referenceData"]["temperatureProfile"]
             D["h2o"] = h5f["scanAttribute"]["referenceData"]["waterVaporProfile"]
             D["p0"] = h5f["scanAttribute"]["referenceData"]["surfacePressure"]
+            D["id"] = h5f["scanAttribute"]["scanID"]
 
 
             A = numpy.empty(shape=time_raw.size,

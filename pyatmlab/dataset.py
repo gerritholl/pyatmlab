@@ -114,7 +114,7 @@ class Dataset(metaclass=abc.ABCMeta):
             try:
                 logging.info("Reading {!s}".format(gran))
                 cont = self.read(str(gran), fields=fields)
-            except ValueError as exc:
+            except (OSError, ValueError) as exc:
                 if onerror == "skip":
                     print("Could not read file {}: {}".format(
                         gran, exc.args[0], file=sys.stderr))
@@ -218,7 +218,7 @@ class MultiFileDataset(Dataset):
             number, etc.  For time identification, relevant fields are
             contained in MultiFileDataset.date_info, where each field also
             exists in a version with "_end" appended.
-            MultiFileDataset.re_info contains all recognised fields.
+            MultiFileDataset.refields contains all recognised fields.
 
             If any *_end fields are found, the ending time is equal to the
             beginning time with any *_end fields replaced.  If no *_end
@@ -422,6 +422,8 @@ class MultiFileDataset(Dataset):
         May take hints for year, month, day, hour, minute, second, and
         their endings, according to self.date_fields
         """
+        if not isinstance(p, pathlib.PurePath):
+            p = pathlib.PurePath(p)
         if str(p) in self._granule_start_times.keys():
             (start, end) = self._granule_start_times[str(p)]
         else:
@@ -458,6 +460,8 @@ class MultiFileDataset(Dataset):
     # and only if starting/ending times cannot be determined from the filename
     def get_time_from_granule_contents(self, p):
         """Get datetime objects for beginning and end of granule
+
+        If it returns None, then use same as start time.
         """
         raise ValueError(
             ("To determine starting and end-times for a {0} dataset, "
@@ -471,6 +475,8 @@ class SingleMeasurementPerFileDataset(MultiFileDataset):
     An example of this would be ACE, or some RO datasets.
     """
 
+    granule_duration = datetime.timedelta(0)
+
     @abc.abstractmethod
     def read_single(self, p, fields="all"):
         """Read a single measurement from a single file.
@@ -480,14 +486,19 @@ class SingleMeasurementPerFileDataset(MultiFileDataset):
         latitude, longitude, time.
         """
 
+    _head_dtype = dict(CH4_total="<f4")
     def _read(self, p, fields="all"):
         """Reads a single measurement converted to ndarray
         """
 
         (head, body) = self.read_single(p, fields=fields)
 
-        dt = [s+body.shape for s in body.dtype.descr]
+        dt = [(s+body.shape if len(s)==2 else (s[0], s[1], s[2]+body.shape))
+                for s in body.dtype.descr]
         dt.extend([("lat", "f8"), ("lon", "f8"), ("time", "M8[s]")])
+        dt.extend([(s, self._head_dtype[s])
+                for s in (head.keys() & self._head_dtype.keys())
+                if s not in {"lat", "lon", "time"}])
         # This fails. https://github.com/numpy/numpy/issues/4583
         #D = numpy.ma.empty(1, dt)
         D = numpy.empty(1, dt)
@@ -497,6 +508,10 @@ class SingleMeasurementPerFileDataset(MultiFileDataset):
 
         for nm in {"lat", "lon", "time"}:
             D[nm] = head[nm]
+
+        for nm in head.keys() & D.dtype.names:
+            if nm not in {"lat", "lon", "time"}:
+                D[nm] = head[nm]
 
         return D
 
@@ -513,6 +528,14 @@ class HomemadeDataset(MultiFileDataset):
 
     def find_granules(self, start, end):
         raise StopIteration()
+
+#    @abc.abstractmethod
+#    def quicksave(self, f):
+#        """Quick save to file
+#
+#        :param str f: File to save to
+#        """
+
 
 class ProfileDataset(Dataset):
     """Abstract superclass with stuff for anything having profiles

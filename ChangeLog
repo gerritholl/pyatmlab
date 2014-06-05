@@ -1,6 +1,43 @@
+2014-06-05  Gerrit Holl  <gerrit.holl@utoronto.ca>:
+
+	* pyatmlab-0-0-30
+
+	* pyatmlab/collocations.py:
+
+	(CollocatedDataset):
+
+	- When reading aggregated pairs, collect both primary and secondary.
+	No reason to yield before having read plenty of data.
+
+	- When collocating, make sure there are enough time bins.  Otherwise
+	collocating will fail if time span is shorter than one bin.
+
+	* pyatmlab/dataset.py:
+
+	(Dataset):
+
+	- When reading many, also catch OSError
+
+	(MultiFileDataset): bugfixes
+
+	(SingleMeasurementPerFileDataset):
+
+	- Allow any header information, not just lat/lon/time
+
+	(HomemadeDataset):
+
+	- Comment out quicksave method for now, still not doing anything with
+	it.
+
+	* pyatmlab/datasets.py:
+
+	(TansoFTS):
+
+	- Also read ID
+
 2014-05-15  Gerrit Holl  <gerrit.holl@utoronto.ca>:
 
-	* pyatlmab-0-0-29
+	* pyatmlab-0-0-29
 
 	* pyatmlab/collocations.py:
 
