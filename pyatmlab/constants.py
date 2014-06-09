@@ -14,3 +14,7 @@ ppb = 1e-9  # parts per billion
 ppt = 1e-12 # parts per trillion
 M_d = 28.97 # kg kmol^-1; effective molecular weight of dry air; Wallace and Hobbs
 M_w = 18.016 # kg kmol^-1; molecular weight of H2O (Wallace and Hobbs)
+KiB = 2**10
+KB = 10**3
+MiB = 2**20
+MB = 10**6

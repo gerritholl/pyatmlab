@@ -169,6 +169,9 @@ class Dataset(metaclass=abc.ABCMeta):
             f = str(f)
         return self._read(f) if f is not None else self._read()
 
+    def __str__(self):
+        return "Dataset:" + self.name
+
 
 class SingleFileDataset(Dataset):
     """Represents a dataset where all measurements are in one file.
@@ -356,8 +359,8 @@ class MultiFileDataset(Dataset):
         d_end = (dt_end.date()
                 if isinstance(dt_end, datetime.datetime) 
                 else dt_end)
-        logging.info(("Searching for granules between {!s} and {!s}"
-                      "for {}").format(dt_start, dt_end, self.name))
+        logging.debug(("Searching for {!s} granules between {!s} and {!s} "
+                      ).format(self.name, dt_start, dt_end))
         for (timeinfo, subdir) in self.iterate_subdirs(d_start, d_end):
             if subdir.exists() and subdir.is_dir():
                 logging.debug("Searching directory {!s}".format(subdir))
@@ -430,7 +433,7 @@ class MultiFileDataset(Dataset):
             m = self._re.fullmatch(p.name)
             gd = m.groupdict()
             if (any(f in gd.keys() for f in self.datefields) and
-                (any(f in gd.keys() for f in {x+"end" for x in self.datefields})
+                (any(f in gd.keys() for f in {x+"_end" for x in self.datefields})
                         or self.granule_duration is not None)):
                 st_date = [int(gd.get(p, kwargs.get(p, "0"))) for p in self.datefields]
                 # month and day can't be 0...
@@ -444,8 +447,8 @@ class MultiFileDataset(Dataset):
                     end_date = [int(gd.get(
                         p+"_end",
                         kwargs.get(p+"_end", None))) for p in self.datefields]
-                    end_date[0] = self._getyear(gd, "year_end", year)
-                    end = datetime.datetime(**end_date)
+                    end_date[0] = self._getyear(gd, "year_end", kwargs.get("year_end", "0"))
+                    end = datetime.datetime(*end_date)
                 elif self.granule_duration is not None:
                     end = start + self.granule_duration
                 else:
@@ -523,11 +526,31 @@ class HomemadeDataset(MultiFileDataset):
     # dummy implementation for abstract methods, so that I can test other
     # things
 
+    stored_name = ""
+
+    def find_granule_for_time(self, **kwargs):
+        """Find granule for specific time.
+
+        May or may not exist.
+
+        Arguments (kw only) are passed on to format directories stored in
+        self.basedir / self.subdir / self.stored_name, along with
+        self.__dict__.
+
+        Returns path to granule.
+        """
+
+        d = self.basedir / self.subdir / self.stored_name
+        subsdict = self.__dict__.copy()
+        subsdict.update(**kwargs)
+        nm = pathlib.Path(str(d).format(**subsdict))
+        return nm
+
     def _read(self, f, fields="all"):
         raise NotImplementedError()
 
-    def find_granules(self, start, end):
-        raise StopIteration()
+#    def find_granules(self, start, end):
+#        raise StopIteration()
 
 #    @abc.abstractmethod
 #    def quicksave(self, f):

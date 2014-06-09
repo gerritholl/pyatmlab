@@ -1,3 +1,24 @@
+2014-06-09  Gerrit Holl  <gerrit.holl@utoronto.ca>:
+
+	* pyatmlab-0-0-31
+
+	* pyatmlab/collocations.py(CollocatedDataset):
+
+	- Add capability to store collocations
+
+	- Add capability to read collocations
+
+	- Added higher-level collocation getting that will collocate as
+	needed, read from disk as possible
+
+	* pyatmlab/constants.py:
+
+	- Added KB, KiB, MB, MiB
+
+	* pyatmlab/dataset.py(HomemadeDataset):
+
+	- Added capability to find granule given time
+
 2014-06-05  Gerrit Holl  <gerrit.holl@utoronto.ca>:
 
 	* pyatmlab-0-0-30

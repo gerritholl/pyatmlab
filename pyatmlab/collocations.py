@@ -7,6 +7,7 @@ import numpy
 import numpy.ma
 import logging
 import datetime
+import pathlib
 
 import scipy
 import scipy.stats
@@ -25,7 +26,7 @@ from . import tools
 from . import graphics
 from . import math as pamath
 
-MB = 10**6
+from .constants import MB
 
 class CollocatedDataset(dataset.HomemadeDataset):
     """Holds collocations.
@@ -37,6 +38,9 @@ class CollocatedDataset(dataset.HomemadeDataset):
     max_distance    Maximum distance in m
     max_interval    Maximum time interval in s.
     projection      projection to use in calculations
+    stored_name     Filename to store collocs in.  String substition with
+                    object dictionary (cd.__dict__), as well as start_date
+                    and end_date.
 
     The following attributes may be changed at your own risk.  Changing
     should not affect results, but may affect performance.  Optimise based
@@ -51,6 +55,16 @@ class CollocatedDataset(dataset.HomemadeDataset):
     secondary = None
     projection = "WGS84"
     ellipsoid = None
+
+    # NB: make sure basedir is unique for each collocated-dataset!
+    subdir = ""
+    stored_name = "collocations_{start_date!s}_{end_date!s}.npz"
+    timefmt = "%Y%m%d%H%M%S" # used for start_date, end_date
+    re = (r"collocations_(?P<year>\d{4})(?P<month>\d{2})(?P<day>\d{2})"
+                       r"(?P<hour>\d{2})(?P<minute>\d{2})(?P<second>\d{2})_"
+                  r"(?P<year_end>\d{4})(?P<month_end>\d{2})(?P<day_end>\d{2})"
+                  r"(?P<hour_end>\d{2})(?P<minute_end>\d{2})(?P<second_end>\d{2})"
+                   "\.npz")
 
     max_distance = 0.0 # distance in m
 
@@ -161,7 +175,7 @@ class CollocatedDataset(dataset.HomemadeDataset):
 
             if primsize + secsize > maxsize:
                 # save memory, yield prematurely
-                logging.debug(("Read {:d}/{:d} granules.  "
+                logging.info(("Read {:d}/{:d} granules.  "
                     "Yielding {:.2f} MB").format(
                         i, n_pairs, (primsize+secsize)/MB))
                 logging.debug("Yielding due to size")
@@ -172,22 +186,86 @@ class CollocatedDataset(dataset.HomemadeDataset):
 
             totsize = primsize + secsize
             if totsize//1e7 > size_ms:
-                logging.debug(("Read {:d}/{:d} granules.  "
+                logging.info(("Read {:d}/{:d} granules.  "
                     "Current size: {:.2f} MB").format(
                         i, n_pairs, (primsize+secsize)/MB))
                 size_ms = totsize//1e7
 
+        if len(prim) == 0 or len(sec) == 0:
+            return
+
         yield (numpy.concatenate(prim), numpy.concatenate(sec))
 
+
+    ########################################################
+    ##
+    ## Higher-level collocation routines
+    ##
+    ## Higher-level collocation routines take a time period, rather than
+    ## arrays.  They take care of reading and storing.  Those are:
+    ##
+    ## Base layer:
+    ##
+    ##   - Read collocations stored on disk.
+    ##   - Write collocations to disk (no return)
+    ##   - Collocate period and return results (no reading/writing).
+    ##     Best through generator to facilitate storing differently sized
+    ##     chunks.
+    ## 
+    ## Above base layer:
+    ##
+    ##   - Get collocations for period, from disk if possible, store
+    ##     results when appropriate
                 
 
-    def collocate_period(self, start_date=None, end_date=None):
-        """Collocate period from start_date to end_date
+    ## Reading and storing resulting collocations
 
-        And return results
+    def quicksave(self, prim, sec, f):
+        """Store collocations to file
+
+        To be implemented: more "robust" storing to netcdf.
+
+        :param array prim: Primaries
+        :param array sec: Secondaries
+        :param str f: File to store to
         """
-        all_p_col = []
-        all_s_col = []
+        if not isinstance(f, pathlib.Path):
+            f = pathlib.Path(f)
+        logging.info("Writing to {!s}".format(f))
+        if not f.parent.exists():
+            f.parent.mkdir(parents=True)
+        with f.open('wb') as fp:
+            numpy.savez_compressed(fp, prim=prim, sec=sec)
+
+    def quickload(self, f):
+        """Load collocations stored in quicksave format
+
+        :param str f: File to load from
+        :returns: (prim, sec)
+        """
+
+        logging.info("Reading from {!s}".format(f))
+        D = numpy.load(str(f))
+        return (D["prim"], D["sec"])
+
+
+    def get_collocations(self, start_date=None, end_date=None,
+            store_size_MB=100):
+        """Get collocations from start_date to end_date
+
+        If available, read from disk.  If not, collocate on the fly and
+        store results to disk.
+
+        TODO: read only specific fields
+
+        :param datetime start_date: First date to collocate
+        :param datetime end_date: Last date to collocate
+        :param store_size: Store results on disk after passing this size.
+            Negative number means no storing.  Size in megabytes.
+        """
+
+#        all_p_col = []
+#        all_s_col = []
 #        all_p_ind = []
 
         # construct dtype
@@ -196,43 +274,129 @@ class CollocatedDataset(dataset.HomemadeDataset):
         
 #        dtp = L[0] + L[1]
 
-        # FIXME: aggregate multiple granules before collocating, in
-        # particular for cases with only one measurement per file
 #        for (gran_prim, gran_sec) in self.find_granule_pairs(
 #                start_date, end_date):
 #            logging.info("Collocating {0!s} with {1!s}".format(
 #                ran_prim, gran_sec))
 #            prim = self.primary.read(gran_prim)
 #            sec = self.secondary.read(gran_sec)
-        logging.info(("Searching collocations {!s} vs. {!s}, distance {:.1f} km, "
+        logging.info(("Getting collocations {!s} vs. {!s}, distance {:.1f} km, "
                       "interval {!s}, period {!s} - {!s}").format(
                         self.primary.name, self.secondary.name,
                         self.max_distance/1e3, self.max_interval,
                         start_date, end_date))
+
+        # check whether we already have stored collocations.  Sort the
+        # entire period in segments where we do or do not have collocation
+        # information, to decide where we can read and where we need to
+        # calculate collocations.  These are stored in two lists: segments
+        # and collocs_sofar.
+        segments = [] # time segments to still read
+        collocs_stored_all = []
+        # store 'grans' in list because I need to iterate over it twice
+        # and index it later
+        grans = list(self.find_granules_sorted(start_date, end_date))
+        coltimes = [self.get_times_for_granule(gran) for gran in grans]
+        if len(coltimes) == 0:
+            segments.append((start_date, end_date))
+            collocs_stored_all.append(None)
+        else:
+            # consider time before first segment found
+            if coltimes[0][0] > start_date:
+                segments.append((start_date, coltimes[0][0]))
+                collocs_stored_all.append(None)
+            # consider time between segments found
+            #for i in range(len(coltimes)):
+            for i in range(len(coltimes)):
+                segments.append(coltimes[i])
+                collocs_stored_all.append(self.quickload(grans[i]))
+                if i<len(coltimes)-1 and coltimes[i][1] < coltimes[i+1][0]:
+                    segments.append((coltimes[i][1], coltimes[i+1][0]))
+                    collocs_stored_all.append(None)
+            # consider time after last segment found
+            if coltimes[-1][1] < end_date:
+                segments.append((coltimes[-1][1], end_date))
+                collocs_stored_all.append(None)
+
+        collocs_all = []
+        for (segment, collocs_stored) in zip(segments, collocs_stored_all):
+            if collocs_stored is None:
+                for collocs in self.collocate_period(*segment,
+                        yield_size_MB=store_size_MB):
+                    (prim, sec) = collocs
+                    if prim.shape[0] != sec.shape[0]:
+                        raise RuntimeError("Impossible output from"
+                            "collocate_period")
+
+                    if prim.shape[0] > 0:
+                        first = min(prim["time"].min(), sec["time"].min()).astype(datetime.datetime)
+                        last = max(prim["time"].max(), sec["time"].max()).astype(datetime.datetime)
+                    else:
+                        # store empty...
+                        (first, last) = segment
+
+                    f = self.find_granule_for_time(
+                        start_date=first.strftime(self.timefmt),
+                        end_date=last.strftime(self.timefmt))
+                    self.quicksave(prim, sec, f)
+                    yield collocs
+            else:
+                yield collocs_stored
+
+
+    def collocate_period(self, start_date, end_date,
+        yield_size_MB=100):
+        """Collocate period and yield results.
+
+        :param datetime start_date: Starting date
+        :param datetime end_date: Ending date
+        :param number yield_size: Size in MB after which to yield.
+        """
+        all_p_col = []
+        all_s_col = []
+        size_since_yield = 0
+        yield_size = yield_size_MB*MB
         for (prim, sec) in self.read_aggregated_pairs(
                 start_date, end_date):
-            logging.info(("{} {:d} measurements spanning {!s} - {!s}, "
-                          "{} {:d} measurements spanning {!s} - {!s}").format(
-                    self.primary.name, prim.shape[0], min(prim["time"]),
+            logging.info(("Collocating: "
+                         "{:d} measurements for '{}', spanning {!s} - {!s}, "
+                         "{:d} measurements for '{}', spanning {!s} - {!s}").format(
+                    prim.shape[0], self.primary.name, min(prim["time"]),
                     max(prim["time"]),
-                    self.secondary.name, sec.shape[0], min(sec["time"]),
+                    sec.shape[0], self.secondary.name, min(sec["time"]),
                     max(sec["time"])))
-            #(p_col, s_col) = self.collocate(prim, sec)
-            logging.info("Collocating...")
             p_ind = self.collocate(prim, sec)
             logging.info("Found {0:d} collocations".format(p_ind.shape[0]))
             #all_p_ind.append(p_ind) # FIXME: get more useful than indices
             all_p_col.append(prim[p_ind[:, 0]])
             all_s_col.append(sec[p_ind[:, 1]])
+            size = all_p_col[-1].nbytes + all_s_col[-1].nbytes
+            size_since_yield += size
+            logging.info(("So far {:d} collocations, total {:.0f} MB"
+                ).format(sum(n.size for n in all_p_col), size_since_yield/MB))
+            if size_since_yield > yield_size:
+                yield (numpy.concatenate(all_p_col), numpy.concatenate(all_s_col))
+                all_p_col = []
+                all_s_col = []
+                size_since_yield = 0
+                
             #all_s_col.append(s_col)
         #return numpy.concatenate(all_p_ind)
-        return (numpy.concatenate(all_p_col), numpy.concatenate(all_s_col))
+        if len(all_p_col)>0:
+            collocs = (numpy.concatenate(all_p_col), numpy.concatenate(all_s_col))
+            yield collocs
 
     def collocate_all(self, distance=0, interval=numpy.timedelta64(1, 's')):
         """Collocate all available data.
         """
         raise NotImplementedError("Not implemented yet")
 
+
+    ##################################################################
+    ##
+    ## Low-level collocation routines.  Likely not directly used.
+    ##
+    
     @tools.validator
     def collocate(self, arr1:geo.valid_geo, arr2:geo.valid_geo):
         """Collocate arrays in time, late, lon.
