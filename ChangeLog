@@ -1,3 +1,28 @@
+2014-06-10  Gerrit Holl  <gerrit.holl@utoronto.ca>:
+
+	* pyatmlab-0-0-32
+
+	* pyatmlab/collocations.py(CollocatedDataset):
+
+	- Bugfix: when reading many primaries, keep track of what secondaries
+	already were returned; we don't want [(A1, B1), (A2, B1)] if both A
+	and B are going to be concatenated in one yield!
+
+	- Bugfix: have a small timedelta when considering segments, so we
+	don't try to find new collocations for a 0.001 second period.
+
+	- Bugfix: Make sure batches that are written to disk cover the full
+	segment, without leaving any gaps, even if those gaps are verified to
+	be free of collocations.
+
+	* pyatmlab/datasets.py:
+
+	- Use an OrderedDict rather than a dict when collecting header and
+	body info, to guarantee that the subsequently converted dtype is
+	consistent.
+
+	- Give up on masked arrays.  They are buggy as hell.
+
 2014-06-09  Gerrit Holl  <gerrit.holl@utoronto.ca>:
 
 	* pyatmlab-0-0-31

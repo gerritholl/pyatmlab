@@ -135,6 +135,10 @@ class CollocatedDataset(dataset.HomemadeDataset):
         primsize = secsize = size_ms = 0
         all_granule_pairs = list(self.find_granule_pairs(
             start_date, end_date))
+        # since I'm reading many primaries at once, I may be returning
+        # duplicate secondaries, which consequently results in duplicate
+        # collocations.  Keep track of secondaries I've already read.
+        secs_read = set()
         n_pairs = len(all_granule_pairs)
         logging.info("Found {:d} granule pairs".format(n_pairs))
         # FIXME: should concatenate both primary and secondary if both
@@ -160,7 +164,7 @@ class CollocatedDataset(dataset.HomemadeDataset):
 #                    sec = []
 #                    secsize = 0
 
-            if gran_sec != old_sec: # new secondary
+            if gran_sec not in secs_read: # new secondary
 #                logging.debug("New secondary: {!s}".format(gran_sec))
                 try:
                     newsec = self.secondary.read(gran_sec)
@@ -169,6 +173,7 @@ class CollocatedDataset(dataset.HomemadeDataset):
                         gran_sec, msg.args[0]))
                     continue
                 else:
+                    secs_read.add(gran_sec)
                     sec.append(newsec)
                     secsize += newsec.nbytes
                     old_sec = gran_sec
@@ -182,6 +187,7 @@ class CollocatedDataset(dataset.HomemadeDataset):
                 yield (numpy.concatenate(prim), numpy.concatenate(sec))
                 prim = []
                 sec = []
+                secs_read.clear()
                 primsize = size_ms = secsize = 0
 
             totsize = primsize + secsize
@@ -250,11 +256,14 @@ class CollocatedDataset(dataset.HomemadeDataset):
 
 
     def get_collocations(self, start_date=None, end_date=None,
-            store_size_MB=100):
+            store_size_MB=100, fields=(None, None)):
         """Get collocations from start_date to end_date
 
         If available, read from disk.  If not, collocate on the fly and
         store results to disk.
+
+        This is a generator.  It yields in chunks of 100 MB or so.  This
+        is so subsequent processing doesn't hog memory needlessly.
 
         TODO: read only specific fields
 
@@ -262,6 +271,8 @@ class CollocatedDataset(dataset.HomemadeDataset):
         :param datetime end_date: Last date to collocate
         :param store_size: Store results on disk after passing this size.
             Negative number means no storing.  Size in megabytes.
+        :param (list, list) fields: If set, return only those fields.
+            Should be a tuple of two lists.  If None, return all fields.
         """
 
 #        all_p_col = []
@@ -314,13 +325,14 @@ class CollocatedDataset(dataset.HomemadeDataset):
                     segments.append((coltimes[i][1], coltimes[i+1][0]))
                     collocs_stored_all.append(None)
             # consider time after last segment found
-            if coltimes[-1][1] < end_date:
+            if abs(coltimes[-1][1] - end_date) > datetime.timedelta(seconds=0.1):
                 segments.append((coltimes[-1][1], end_date))
                 collocs_stored_all.append(None)
 
         collocs_all = []
         for (segment, collocs_stored) in zip(segments, collocs_stored_all):
             if collocs_stored is None:
+                begin, last = segment
                 for collocs in self.collocate_period(*segment,
                         yield_size_MB=store_size_MB):
                     (prim, sec) = collocs
@@ -328,20 +340,50 @@ class CollocatedDataset(dataset.HomemadeDataset):
                         raise RuntimeError("Impossible output from"
                             "collocate_period")
 
+                    # Make sure time intervals as stored in filenames
+                    # cover full period.  Looking for the first and last
+                    # collocation is insufficient as this covers only a
+                    # subset of the time.
+                    #
+                    # Begin at either the start of the segment, or the
+                    # last collocation from the previous batch.  End at
+                    # the last collocation.  This leaves only the time
+                    # from the last collocation until the end of the
+                    # segment to be filled.
+
+
                     if prim.shape[0] > 0:
-                        first = min(prim["time"].min(), sec["time"].min()).astype(datetime.datetime)
+#                        first = min(prim["time"].min(), sec["time"].min()).astype(datetime.datetime)
                         last = max(prim["time"].max(), sec["time"].max()).astype(datetime.datetime)
                     else:
                         # store empty...
                         (first, last) = segment
 
                     f = self.find_granule_for_time(
-                        start_date=first.strftime(self.timefmt),
+                        start_date=begin.strftime(self.timefmt),
                         end_date=last.strftime(self.timefmt))
                     self.quicksave(prim, sec, f)
-                    yield collocs
+                    if fields == (None, None):
+                        yield collocs
+                    else:
+                        yield (collocs[0][fields[0]], collocs[1][fields[1]])
+
+                    begin = last 
+                # end for all colloc batches
+                if last < segment[1]: # store empty for remaining period
+                    f = self.find_granule_for_time(
+                        start_date=last.strftime(self.timefmt),
+                        end_date=segment[1].strftime(self.timefmt))
+                    self.quicksave(
+                        numpy.empty(dtype=prim.dtype, shape=0),
+                        numpy.empty(dtype=sec.dtype, shape=0),
+                        f)
             else:
-                yield collocs_stored
+                if fields == (None, None):
+                    yield collocs_stored
+                else:
+                    yield (collocs_stored[0][fields[0]],
+                           collocs_stored[1][fields[1]])
 
 
     def collocate_period(self, start_date, end_date,

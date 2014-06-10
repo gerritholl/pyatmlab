@@ -4,6 +4,7 @@ import datetime
 import ast
 import itertools
 import calendar
+import collections
 
 import numpy
 import scipy.interpolate
@@ -122,7 +123,7 @@ class TansoFTS(dataset.SingleFileDataset, dataset.ProfileDataset):
             path = self.srcfile
 
         with h5py.File(path, 'r') as h5f:
-            D = {}
+            D = collections.OrderedDict()
             time_raw = h5f["scanAttribute"]["time"]
             # force UTC time
             D["time"] = numpy.array([numpy.datetime64(time_raw[i].decode('ascii')+'Z')
@@ -156,10 +157,11 @@ class TansoFTS(dataset.SingleFileDataset, dataset.ProfileDataset):
                 dtype=[(k, D[k].dtype, D[k].shape[1:]) for k in D.keys()])
             for k in D.keys():
                 A[k] = D[k][:]
-            A = A.view(numpy.ma.MaskedArray)
-            for k in {"ch4_profile_interp", "ch4_profile_raw",
-                      "ch4_profile_raw_e", "p_raw", "T"}:
-                A.mask[k][A.data[k]<0] = True
+            # Unfortunately, masked arrays are buggy
+#            A = A.view(numpy.ma.MaskedArray)
+#            for k in {"ch4_profile_interp", "ch4_profile_raw",
+#                      "ch4_profile_raw_e", "p_raw", "T"}:
+#                A.mask[k][A.data[k]<0] = True
         A["p0"] *= HECTO
 
         return A if fields=="all" else A[fields]
@@ -338,9 +340,11 @@ class NDACCAmes(dataset.MultiFileDataset):
         #return AA
 
         # apply masks and factors
-        M = A.view(numpy.ma.MaskedArray)
+        # No, rather not.  MaskedArrays are buggy.
+#        M = A.view(numpy.ma.MaskedArray)
+        M = A
         for (i, field) in enumerate(self.type_core):
-            M.mask[field[0]] = A[field[0]] == vmiss[i]
+#            M.mask[field[0]] = A[field[0]] == vmiss[i]
             A[field[0]] *= vscal[i]
 
         # lats are secretly wrongly typed
@@ -371,7 +375,7 @@ class ACEFTS(dataset.SingleMeasurementPerFileDataset):
         :param fp: File open at beginning of header
         :returns: Dictionary with header information
         """
-        head = {}
+        head = collections.OrderedDict()
         isempty = lambda line: not line.isspace()
         for line in itertools.takewhile(isempty, fp):
             k, v = line.split("|")
