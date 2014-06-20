@@ -29,7 +29,8 @@ class TansoFTS(dataset.SingleFileDataset, dataset.ProfileDataset):
     p_for_T_profile = numpy.array([1000, 975, 950, 925, 900, 850, 800,
         700, 600, 500, 400, 300, 250, 200, 150, 100, 70, 50, 30, 20,
         10])*HECTO # hPa -> Pa
-    p_for_interp_profile = None
+    p_for_interp_profile = numpy.array([1000, 700, 500, 300, 100, 50,
+        10])*HECTO
     aliases = {"CH4_profile": "ch4_profile_raw"}
 
     @classmethod

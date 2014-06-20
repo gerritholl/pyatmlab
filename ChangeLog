@@ -1,3 +1,15 @@
+2014-06-20  Gerrit Holl  <gerrit.holl@utoronto.ca>:
+
+	* pyatmlab-0-0-33
+
+	* pyatmlab/collocations.py:
+
+	- Implement one-directional smoothing
+
+	* pyatmlab/datasets.py:
+
+	- Add default p profile for TANSO
+
 2014-06-10  Gerrit Holl  <gerrit.holl@utoronto.ca>:
 
 	* pyatmlab-0-0-32

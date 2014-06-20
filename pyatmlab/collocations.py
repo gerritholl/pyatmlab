@@ -5,6 +5,7 @@
 import math
 import numpy
 import numpy.ma
+import numpy.core.umath_tests
 import logging
 import datetime
 import pathlib
@@ -42,6 +43,7 @@ class CollocatedDataset(dataset.HomemadeDataset):
                     object dictionary (cd.__dict__), as well as start_date
                     and end_date.
 
+
     The following attributes may be changed at your own risk.  Changing
     should not affect results, but may affect performance.  Optimise based
     on application.  Subject to change.
@@ -68,6 +70,8 @@ class CollocatedDataset(dataset.HomemadeDataset):
 
     max_distance = 0.0 # distance in m
 
+    ## Properties
+
     _max_interval = numpy.timedelta64(0, 's')
     @property
     def max_interval(self):
@@ -85,6 +89,9 @@ class CollocatedDataset(dataset.HomemadeDataset):
     bin_interval_time = numpy.timedelta64(1, 'D')
     bin_interval_lat = 1.0 # degree
     bin_interval_lon = 1.0 # degree
+
+
+    ##
 
     def __init__(self, primary, secondary, **kwargs):
         """Initialize with Dataset objects
@@ -264,8 +271,6 @@ class CollocatedDataset(dataset.HomemadeDataset):
 
         This is a generator.  It yields in chunks of 100 MB or so.  This
         is so subsequent processing doesn't hog memory needlessly.
-
-        TODO: read only specific fields
 
         :param datetime start_date: First date to collocate
         :param datetime end_date: Last date to collocate
@@ -678,13 +683,35 @@ class CollocationDescriber:
     Initialise with a CollocatedDataset object as well as
     sets of measurements already collocated through
     CollocatedDataset.collocate
+
+    target      When smoothing profiles, smooth to this target.  It means
+                we use the averaging kernel and z-grid therefrom.
+
     """
 
-    def __init__(self, cd, p_col, s_col):
+    z_grid = None
+
+    _target_vals = ["primary", "secondary"]
+
+    _target = None
+    @property
+    def target(self):
+        """See class docstring
+        """
+        #return self._target_vals[self._target] if self._target else None
+        return self._target
+
+    @target.setter
+    def target(self, value):
+        self._target = self._target_vals.index(value)
+
+    def __init__(self, cd, p_col, s_col, **kwargs):
         self.cd = cd
         self.p_col = p_col
         self.s_col = s_col
         self.reset_filter()
+        for (k, v) in kwargs.items():
+            setattr(self, k, v)
 
     # limit etc.
 
@@ -914,14 +941,16 @@ class CollocationDescriber:
     def interpolate_profiles(self, z_grid):
         """Interpolate profiles on a common z-grid
 
-        Currently hardcoded for CH4.
+        Currently hardcoded for CH4, linear.
 
         :param z_grid: Altitude grid to compare on.  Both products will be
             interpolated onto this grid (may be a no-op for one).
+        :returns: (p_ch4, s_ch4) interpolated profiles
         """
 
         # do not apply mask here, rather loop only through unmasked
-        # elements further down
+        # elements further down.
+
         p_ch4 = self.p_col[self.cd.primary.aliases["CH4_profile"]]
 
         s_ch4 = self.s_col[self.cd.secondary.aliases["CH4_profile"]]
@@ -969,20 +998,89 @@ class CollocationDescriber:
 #                
 #        self.s_col
 
-    def compare_profiles(self, z_grid,
-            percs=(5, 25, 50, 75, 95)):
-        """Return some statistics comparing profiles.
+    def extend_common_grid(self):
+        """Extend both profiles to common grid.
 
-        Currently hardcoded for CH4.
+        Sets self.z_grid accordingly
 
-        Arguments as for interpolate_profiles.
-
-        Returns percentiles (5, 25, 50, 75, 95) for difference, 
-        root mean square difference, ratio, and original values, as a
-        dictionary.
+        This interpolates in the shared region and places the a priori in
+        the non-shared region.
         """
 
-        (p_ch4_int, s_ch4_int) = self.interpolate_profiles(z_grid)
+
+        targ = (self.p_col, self.s_col)[self.target]
+        if not (targ["z"] == targ["z"][0, :]).all():
+            raise ValueError("Inconsistent z-grid for target")
+        z = targ["z"][0, :]
+
+        (p_ch4_int, s_ch4_int) = self.interpolate_profiles(z)
+        xa = targ["CH4_apriori"]
+
+        targ_ch4_int = (p_ch4_int, s_ch4_int)[self.target]
+        xh = (p_ch4_int, s_ch4_int)[1-self.target]
+        xh[numpy.isnan(xh)] = xa[numpy.isnan(xh)]
+
+        self.z_grid = z
+        return (p_ch4_int, s_ch4_int)
+
+
+        # fill up 'nans' using a priori
+#        for i in self.mask.nonzero()[0]:#range(self.p_col.size):
+#            
+
+    def smooth(self):
+        """Smooth profile with highest information content
+        
+        Source is equation 4 in:
+        
+        Rodgers and Connor (2003): Intercomparison of
+        remote sounding instruments.  In: Journal of Geophysical Research,
+        Vol 108, No. D3, 4116, doi:10.1029/2002JD002299
+
+        Also callse self.extend_common_grid thus setting self.z_grid.
+
+        Returns primary and secondary profiles, one smoothed, the other
+        unchanged
+        """
+
+        targ = (self.p_col, self.s_col)[self.target][self.mask]
+        #highres = (self.prim, self.sec)[1-self.target]
+        (p_ch4_int, s_ch4_int) = self.extend_common_grid()
+
+        xa = targ["CH4_apriori"]
+        xh = (p_ch4_int, s_ch4_int)[1-self.target]
+
+#        xh = s_int
+#        xh[xnan(xh)] = xa[isnan(xh)]
+        A = targ["CH4_ak"].swapaxes(1, 2)
+
+        # correct A according to e-mail Stephanie 2014-06-17
+
+        Avmr = numpy.rollaxis(
+            numpy.dstack(
+                [numpy.diag(1/targ["CH4_apriori"][i, :]).dot(
+                    targ["CH4_ak"][i, :, :]).dot(
+                    numpy.diag(targ["CH4_apriori"][i, :]))
+                for i in range(targ.shape[0])]), 2, 0)
+
+        #xs = xa + A.dot(xh-xa)
+        xb = xh - xa
+        xs = numpy.vstack(
+            [xa[n, :] + A[n, :, :].dot(xb[n, :]) for n in range(Avmr.shape[0])])
+#        xs = xa + numpy.core.umath_tests.matrix_multiply(A, xb[..., numpy.newaxis]).squeeze()
+
+        if self.target == 0:
+            return (p_ch4_int, xs)
+        elif self.target == 1:
+            return (xs, s_ch4_int)
+        else:
+            raise RuntimeError("Impossible!")
+
+
+    def _compare_profiles(self, p_ch4_int, s_ch4_int,
+            percs=(5, 25, 50, 75, 95)):
+        """Helper for compare_profiles_{raw,smoothed}
+        """
 
         D = {}
         D["diff"] = s_ch4_int - p_ch4_int
@@ -997,6 +1095,39 @@ class CollocationDescriber:
                 for i in range(D[k].shape[1])])
             for k in D.keys()}
 
+
+    def compare_profiles_raw(self, z_grid,
+            percs=(5, 25, 50, 75, 95)):
+        """Return some statistics comparing profiles.
+
+        Currently hardcoded for CH4.
+
+        Arguments as for interpolate_profiles.
+
+        Returns percentiles (5, 25, 50, 75, 95) for difference, 
+        root mean square difference, ratio, and original values, as a
+        dictionary.
+        """
+
+        (p_ch4_int, s_ch4_int) = self.interpolate_profiles(z_grid)
+
+        return self._compare_profiles(p_ch4_int, s_ch4_int,
+            percs=percs)
+
+    def compare_profiles_smooth(self, _,
+            percs=(5, 25, 50, 75, 95)):
+        #
+        # interpolate onto retrieval grid for dataset with less vertical
+        # resolution
+        #
+        # use averaging kernel and a priori of dataset with less vertical
+        # resolution
+
+        (p_ch4_int, s_ch4_int) = self.smooth()
+
+        return self._compare_profiles(p_ch4_int, s_ch4_int, percs=percs)
+
+
     def visualise_profile_comparison(self, z_grid, filters=None):
         """Visualise profile comparisons.
 
@@ -1004,7 +1135,8 @@ class CollocationDescriber:
 
         Arguments as for compare_profiles and interpolate_profiles, plus
         an additional argument `filters` that will be passed on to
-        self.filter plus a color keyword arg.
+        self.filter plus a color keyword arg, colour keyword arg must be a
+        tuple for (raw, smooth).
         """
 
         if filters is None:
@@ -1024,31 +1156,49 @@ class CollocationDescriber:
             prim = "Primary CH4 [ppv]",
             sec = "Secondary CH4 [ppv]")
         xlims = dict(
-            ratio = (0.5, 1.5),
+            diff = (-3e-7, 3e-7),
+            rmsd = (0e-6, 5e-7),
+            ratio = (0.8, 1.2),
             prim = (0, 2e-6),
             sec = (0, 2e-6))
         self.reset_filter()
-        percs[self.mask_label] = self.compare_profiles(z_grid, p_locs)
-        colours[self.mask_label] = "blue"
+
+        # see how smoothed or raw compare
+
+        z_grids = {}
+        percs[self.mask_label + "_smooth"] = self.compare_profiles_smooth(
+                    z_grid, p_locs)
+        z_grids["smooth"] = self.z_grid
+        percs[self.mask_label + "_raw"] = self.compare_profiles_raw(
+                    z_grid, p_locs)
+        z_grids["raw"] = z_grid
+
+        colours[self.mask_label + "_raw"] = "blue"
+        colours[self.mask_label + "_smooth"] = "black"
         for fd in filters:
             lab = fd["limit_str"]
-            colours[lab] = fd.pop("color")
+            (colours[lab + "_raw"], colours[lab + "_smooth"]) = fd.pop("color")
             self.filter(**fd)
-            percs[fd["limit_str"]] = self.compare_profiles(z_grid, p_locs)
+            percs[fd["limit_str"] + "_raw"] = self.compare_profiles_raw(z_grid, p_locs)
+            percs[fd["limit_str"] + "_smooth"] = self.compare_profiles_smooth(z_grid, p_locs)
 #        percs = self.compare_profiles(z_grid, p_locs)
         #for (i, v) in enumerate("diff diff^2 ratio".split()):
-        for quantity in percs[self.mask_label].keys():
+        for quantity in percs[self.mask_label + "_raw"].keys():
             f = matplotlib.pyplot.figure()
             a = f.add_subplot(1, 1, 1)
-            data = []
+            data = dict(smooth=[], raw=[])
             for filt in percs.keys():
+                ff = "smooth" if "smooth" in filt else "raw"
+                #if "smooth" in filt: z_grid = z_grids["smooth"]
+                #elif "raw" in filt: z_grid = z_grids["raw"]
+                #else: raise RuntimeError("Something wrong")
                 for k in range(len(p_locs)):
-                    a.plot(percs[filt][quantity][:, k], z_grid,
+                    a.plot(percs[filt][quantity][:, k], z_grids[ff],
                            color=colours[filt],
                            linestyle=p_styles[k], linewidth=p_widths[k],
                            label=(filt if k==2 else None))
-                    data.append(percs[filt][quantity][:, k])
-                # end for percentiles
+                    data[ff].append(percs[filt][quantity][:, k])
+            # end for percentiles
             # end for filters
 #            a.plot(percs[1], z_grid, label="p diff^2", color="red")
 #            a.plot(percs[2], z_grid, label="p ratio", color="black")
@@ -1061,6 +1211,9 @@ class CollocationDescriber:
                 "CH4 {}, {} vs. {}".format(quantity,
                     self.cd.primary.name, self.cd.secondary.name))
             a.grid(which="major")
+            a.set_ylim([5e3, 60e3])
+            ### FIXME: write data for both, will need to be in two
+            ### files...
             graphics.print_or_show(f, False,
                 "compare_profiles_ch4_{}_{}_{}_{}_{}_{}.".format(
                     self.cd.primary.__class__.__name__,
@@ -1069,35 +1222,35 @@ class CollocationDescriber:
                     self.cd.secondary.name.replace(" ", "_"),
                     quantity,
                     "multi"),
-                    data=numpy.vstack((z_grid,)+tuple(data)).T)
+                    data=numpy.vstack((z_grids["raw"],)+tuple(data["raw"])).T)
             matplotlib.pyplot.close(f)
         # end for quantities
         self.reset_filter()
 
         # some specialised plots
-        iqr = {}
-        for quantity in ("prim", "sec", "diff"):
-            iqr[quantity] = (percs["all"][quantity][:, 3] -
-                             percs["all"][quantity][:, 1])
-        f = matplotlib.pyplot.figure()
-        a = f.add_subplot(1, 1, 1)
-        a.plot(iqr["prim"], z_grid, label=self.cd.primary.name)
-        a.plot(iqr["sec"], z_grid, label=self.cd.secondary.name)
-        a.plot(iqr["diff"], z_grid, label="difference")
-        a.set_xlabel("CH4 [ppv]")
-        a.set_ylabel("Altitude [m]")
-        a.set_title("CH4 IQR")
-        a.legend()
-        a.grid(which="major")
-        graphics.print_or_show(f, False,
-                "iqr_{}_{}_{}_{}.".format(
-                    self.cd.primary.__class__.__name__,
-                    self.cd.primary.name.replace(" ", "_"),
-                    self.cd.secondary.__class__.__name__,
-                    self.cd.secondary.name.replace(" ", "_")),
-                data=numpy.vstack(
-                    (z_grid, iqr["prim"], iqr["sec"], iqr["diff"])).T)
-        matplotlib.pyplot.close(f)
+##         iqr = {}
+##         for quantity in ("prim", "sec", "diff"):
+##             iqr[quantity] = (percs["all"][quantity][:, 3] -
+##                              percs["all"][quantity][:, 1])
+##         f = matplotlib.pyplot.figure()
+##         a = f.add_subplot(1, 1, 1)
+##         a.plot(iqr["prim"], z_grid, label=self.cd.primary.name)
+##         a.plot(iqr["sec"], z_grid, label=self.cd.secondary.name)
+##         a.plot(iqr["diff"], z_grid, label="difference")
+##         a.set_xlabel("CH4 [ppv]")
+##         a.set_ylabel("Altitude [m]")
+##         a.set_title("CH4 IQR")
+##         a.legend()
+##         a.grid(which="major")
+##         graphics.print_or_show(f, False,
+##                 "iqr_{}_{}_{}_{}.".format(
+##                     self.cd.primary.__class__.__name__,
+##                     self.cd.primary.name.replace(" ", "_"),
+##                     self.cd.secondary.__class__.__name__,
+##                     self.cd.secondary.name.replace(" ", "_")),
+##                 data=numpy.vstack(
+##                     (z_grid, iqr["prim"], iqr["sec"], iqr["diff"])).T)
+##         matplotlib.pyplot.close(f)
 
 def find_collocation_duplicates(p_col, s_col):
     dt = numpy.dtype([("A", "f8"), ("B", "f8"), ("C", "M8[s]"), ("D",
