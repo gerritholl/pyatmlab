@@ -284,7 +284,8 @@ class MultiFileDataset(Dataset):
         :returns: pathlib.Path object to relevant directory
         """
         return pathlib.Path(str(self.basedir / self.subdir).format(
-            year=dt.year, month=dt.month, day=dt.day))
+            year=dt.year, month=dt.month, day=dt.day,
+            doy=dt.timetuple().tm_yday))
 
     def get_subdir_resolution(self):
         """Return the resolution for the subdir precision.
@@ -298,6 +299,8 @@ class MultiFileDataset(Dataset):
                 if "day" in fields:
                     return "day"
                 return "month"
+            elif "doy" in fields:
+                return "day"
             return "year"
 
     def iterate_subdirs(self, d_start, d_end):
@@ -317,29 +320,38 @@ class MultiFileDataset(Dataset):
         d = d_start
         res = self.get_subdir_resolution()
 
+        pst = str(self.basedir / self.subdir)
         if res == "year":
             year = d.year
             while datetime.date(year, 1, 1) < d_end:
                 yield (dict(year=year),
-                    pathlib.Path(str(self.basedir / self.subdir).format(year=year)))
+                    pathlib.Path(pst.format(year=year)))
                 year += 1
         elif res == "month":
             year = d.year
             month = d.month
             while datetime.date(year, month, 1) < d_end:
                 yield (dict(year=year, month=month),
-                    pathlib.Path(str(self.basedir / self.subdir).format(year=year, month=month)))
+                    pathlib.Path(pst.format(year=year, month=month)))
                 if month == 12:
                     year += 1
                     month = 1
                 else:
                     month += 1
         elif res == "day":
-            while d < d_end:
-                yield (dict(year=year, month=month, day=day),
-                    pathlib.Path(str(self.basedir / self.subdir).format(
-                    year=d.year, month=d.month, day=d.day)))
-                d = d + datetime.timedelta(days=1)
+            #while d < d_end:
+            if any(x[1] == "doy" for x in string.Formatter().parse(pst)):
+                while d < d_end:
+                    doy = d.timetuple().tm_yday
+                    yield (dict(year=d.year, doy=doy),
+                        pathlib.Path(pst.format(year=d.year, doy=doy)))
+                    d += datetime.timedelta(days=1)
+            else:
+                while d < d_end:
+                    yield (dict(year=d.year, month=d.month, day=d.day),
+                        pathlib.Path(pst.format(
+                            year=d.year, month=d.month, day=d.day)))
+                    d = d + datetime.timedelta(days=1)
         else:
             yield ({}, self.basedir)
           

@@ -1,3 +1,9 @@
+2014-06-25  Gerrit Holl  <gerrit.holl@utoronto.ca>:
+
+	* pyatmlab/datasets.py:
+
+	- Permit doy
+
 2014-06-20  Gerrit Holl  <gerrit.holl@utoronto.ca>:
 
 	* pyatmlab-0-0-33
