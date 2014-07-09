@@ -686,11 +686,35 @@ class CollocationDescriber:
 
     target      When smoothing profiles, smooth to this target.  It means
                 we use the averaging kernel and z-grid therefrom.
+    visualisation  Contains visualisation hints for drawing maps and so.
 
     """
 
     z_grid = None
 
+    visualisation = dict(
+        Eureka = dict(
+            markersize=15,
+            marker='o', markerfacecolor="white",
+            markeredgecolor="red", markeredgewidth=2, zorder=4,
+            label="Eureka", linestyle="None"),
+        col0 = dict(
+            marker='o',
+            edgecolor="black",
+            facecolor="white"),
+        col1 = dict(
+            marker='o',
+            edgecolor="black",
+            facecolor="red"),
+        col2 = dict(
+            marker='o',
+            edgecolor="black",
+            facecolor="blue"),
+        col_line = dict(
+            marker=None,
+            linestyle="--",
+            linewidth=1,
+            color="black"))
     _target_vals = ["primary", "secondary"]
 
     _target = None
@@ -805,6 +829,34 @@ class CollocationDescriber:
                 data=numpy.vstack((dist_m/1e3, interval)).T)
         matplotlib.pyplot.close(f)
 
+    def get_bare_collocation_map(self, lat, lon,
+            sz=1500):
+        """Get the bare map for plotting collocations.
+
+        Don't actually plot any yet.
+
+        Centered on (lat, lon).
+
+        Returns tuple with (Figure, Axes, Basemap) objects.
+        """
+
+        f = matplotlib.pyplot.figure()
+        ax = f.add_subplot(1, 1, 1)
+        #sz = 1500e3 if station else 4000e3
+        m = mpl_toolkits.basemap.Basemap(projection="laea",
+            lat_0=lat, lon_0=lon, width=sz, height=sz,
+            ax=ax, resolution="h")
+        m.drawcoastlines(linewidth=0.3, color="0.5")
+        m.etopo()
+        (sb_lon, sb_lat) = m(m.urcrnrx, m.llcrnry, inverse=True)
+        m.drawmapscale(sb_lon-7, sb_lat+2, sb_lon-7, sb_lat+2,
+            length=500, units="km")
+        m.drawparallels(numpy.arange(70., 89., 2.), zorder=2,
+            linewidth=0.3, labels=[1, 0, 1, 0])
+        m.drawmeridians(numpy.arange(-120., -41., 10.), latmax=88,
+            linewidth=0.3, zorder=2, labels=[0, 1, 0, 1])
+        return (f, ax, m)
+
     def map_collocs(self):
         """Display collocations on a map.
 
@@ -833,32 +885,34 @@ class CollocationDescriber:
             other_ds = None
             (lat, lon) = (80, -86) # arbitrary? ;-)
 
-        f = matplotlib.pyplot.figure()
-        ax = f.add_subplot(1, 1, 1)
-        sz = 1500e3 if station else 4000e3
-        m = mpl_toolkits.basemap.Basemap(projection="laea",
-            lat_0=lat, lon_0=lon, width=sz, height=sz,
-            ax=ax, resolution="h")
-        m.drawcoastlines(linewidth=0.3, color="0.5")
-        m.etopo()
-        (sb_lon, sb_lat) = m(m.urcrnrx, m.llcrnry, inverse=True)
-        m.drawmapscale(sb_lon-7, sb_lat+2, sb_lon-7, sb_lat+2,
-            length=500, units="km")
-        m.drawparallels(numpy.arange(70., 89., 2.), zorder=2,
-            linewidth=0.3, labels=[1, 0, 1, 0])
-        m.drawmeridians(numpy.arange(-120., -41., 10.), latmax=88,
-            linewidth=0.3, zorder=2, labels=[0, 1, 0, 1])
+        (f, ax, m) = self.get_bare_collocation_map(lat, lon,
+            sz = 1500e3 if station else 4000e3)
 
-        m.plot(lon, lat, latlon=True, markersize=15,
-            marker='o', markerfacecolor="white",
-            markeredgecolor="red", markeredgewidth=2, zorder=4,
-            label="Eureka", linestyle="None")
+#        f = matplotlib.pyplot.figure()
+#        ax = f.add_subplot(1, 1, 1)
+#        sz = 1500e3 if station else 4000e3
+#        m = mpl_toolkits.basemap.Basemap(projection="laea",
+#            lat_0=lat, lon_0=lon, width=sz, height=sz,
+#            ax=ax, resolution="h")
+#        m.drawcoastlines(linewidth=0.3, color="0.5")
+#        m.etopo()
+#        (sb_lon, sb_lat) = m(m.urcrnrx, m.llcrnry, inverse=True)
+#        m.drawmapscale(sb_lon-7, sb_lat+2, sb_lon-7, sb_lat+2,
+#            length=500, units="km")
+#        m.drawparallels(numpy.arange(70., 89., 2.), zorder=2,
+#            linewidth=0.3, labels=[1, 0, 1, 0])
+#        m.drawmeridians(numpy.arange(-120., -41., 10.), latmax=88,
+#            linewidth=0.3, zorder=2, labels=[0, 1, 0, 1])
+
+        m.plot(lon, lat, latlon=True, 
+            **self.visualisation["Eureka"])
+
         if station:
             m.scatter(other["lon"][self.mask], other["lat"][self.mask],
-                50, marker='o',
-                edgecolor="black", #edgewidth=4,
-                facecolor="white", latlon=True, zorder=3,
-                label=other_ds.name)
+                50,
+                latlon=True, zorder=3,
+                label=other_ds.name,
+                **self.visualisation["col0"])
             ax.text(0.5, 1.08,
                 "Collocations Eureka-{:s}".format(other_ds.name),
                  horizontalalignment='center',
@@ -869,20 +923,21 @@ class CollocationDescriber:
             ax.legend(loc="upper left", numpoints=1)
         else:
             m.scatter(self.p_col["lon"][self.mask],
-                self.p_col["lat"][self.mask], 50, marker='o',
-                edgecolor="black", facecolor="red", latlon=True, zorder=3,
-                label=self.cd.primary.name)
+                self.p_col["lat"][self.mask], 50, 
+                latlon=True, zorder=3,
+                label=self.cd.primary.name,
+                **self.visualisation["col1"])
             m.scatter(self.s_col["lon"][self.mask],
-                self.s_col["lat"][self.mask], 50, marker='o',
-                edgecolor="black", facecolor="blue", latlon=True, zorder=3,
-                label=self.cd.secondary.name)
+                self.s_col["lat"][self.mask], 50, 
+                latlon=True, zorder=3,
+                label=self.cd.secondary.name,
+                **self.visualisation["col2"])
             for i in self.mask.nonzero()[0]:#range(self.p_col.size):
                 m.plot([self.p_col["lon"][i], self.s_col["lon"][i]],
                        [self.p_col["lat"][i], self.s_col["lat"][i]],
-                       latlon=True,
-                       marker=None, linestyle="--", linewidth=1,
-                       color="black", zorder=2,
-                       label="Collocated pair" if i==0 else None)
+                       latlon=True, zorder=2,
+                       label="Collocated pair" if i==0 else None,
+                       **self.visualisation["col_line"])
             ax.text(0.5, 1.08,
                 "Collocations {:s}-{:s}".format(self.cd.primary.name,
                     self.cd.secondary.name), horizontalalignment="center",
@@ -900,6 +955,12 @@ class CollocationDescriber:
         """Write a bunch of collocation statistics to the screen
         """
         print("Found {:d} collocations".format(self.p_col.shape[0]))
+
+        print("With {:s} {:d}, {:s} {:d}".format(
+            self.cd.primary.name,
+            numpy.unique(self.p_col[["lat", "lon", "time"]]).shape[0],
+            self.cd.secondary.name,
+            numpy.unique(self.s_col[["lat", "lon", "time"]]).shape[0]))
 
         (_, _, dists) = self.cd.ellipsoid.inv(
             self.p_col["lon"][self.mask], self.p_col["lat"][self.mask],

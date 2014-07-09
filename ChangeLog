@@ -1,3 +1,11 @@
+2014-07-09  Gerrit Holl  <gerrit.holl@utoronto.ca>:
+
+	* pyatmlab/collocations.py:
+
+	- Contain visualisation information in central dict
+	- Extract bare colloc map code for getting dual-colloc map
+	- Write no. of unique for each side of the pair
+
 2014-06-25  Gerrit Holl  <gerrit.holl@utoronto.ca>:
 
 	* pyatmlab/datasets.py:
