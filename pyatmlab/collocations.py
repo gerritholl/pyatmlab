@@ -1063,25 +1063,23 @@ class CollocationDescriber:
         """Extend both profiles to common grid.
 
         Sets self.z_grid accordingly
-
-        This interpolates in the shared region and places the a priori in
-        the non-shared region.
         """
 
 
         targ = (self.p_col, self.s_col)[self.target]
+
         if not (targ["z"] == targ["z"][0, :]).all():
             raise ValueError("Inconsistent z-grid for target")
         z = targ["z"][0, :]
 
         (p_ch4_int, s_ch4_int) = self.interpolate_profiles(z)
-        xa = targ["CH4_apriori"]
-
-        targ_ch4_int = (p_ch4_int, s_ch4_int)[self.target]
-        xh = (p_ch4_int, s_ch4_int)[1-self.target]
-        xh[numpy.isnan(xh)] = xa[numpy.isnan(xh)]
-
-        self.z_grid = z
+#        xa = targ["CH4_apriori"]
+#
+#        targ_ch4_int = (p_ch4_int, s_ch4_int)[self.target]
+#        xh = (p_ch4_int, s_ch4_int)[1-self.target]
+#        xh[numpy.isnan(xh)] = xa[numpy.isnan(xh)]
+#
+#        self.z_grid = z
         return (p_ch4_int, s_ch4_int)
 
 
@@ -1098,7 +1096,7 @@ class CollocationDescriber:
         remote sounding instruments.  In: Journal of Geophysical Research,
         Vol 108, No. D3, 4116, doi:10.1029/2002JD002299
 
-        Also callse self.extend_common_grid thus setting self.z_grid.
+        Also calls self.extend_common_grid thus setting self.z_grid.
 
         Returns primary and secondary profiles, one smoothed, the other
         unchanged

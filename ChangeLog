@@ -1,3 +1,28 @@
+2014-07-23  Gerrit Holl  <gerrit.holl@utoronto.ca>:
+
+	* pyatmlab/collocations.py(CollocationDescriber):
+	
+	- Comment out unused code and removed lying comment
+	
+	* pyatmlab/dataset.py:
+
+	(Dataset):
+
+	- Started on 'combine' method that finds corresponding measurements
+	from another dataset (must be exact subset).
+
+	(MultiFileDataset):
+
+	- Get info or granule
+
+	(SingleMeasurementPerFileDataset):
+
+	- Copy info from filename into header
+
+	* pyatmlab/datasets.py:
+
+	- Adapt for info from filename copied, and for DMPs too
+
 2014-07-09  Gerrit Holl  <gerrit.holl@utoronto.ca>:
 
 	* pyatmlab/collocations.py:

@@ -365,6 +365,8 @@ class ACEFTS(dataset.SingleMeasurementPerFileDataset):
     re = r"(?P<type>s[sr])(?P<orbit>\d{5})v(?P<version>\d\.\d)\.asc"
     _time_format = "%Y-%m-%d %H:%M:%S"
     aliases = {"CH4_profile": "CH4"}
+    filename_fields = {"orbit": "u4", "version": "S3"}
+    unique_fields = {"orbit"}
 
     @staticmethod
     def read_header(fp):

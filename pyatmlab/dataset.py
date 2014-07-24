@@ -13,11 +13,17 @@ import sys
 
 import datetime
 import numpy
+import numpy.lib.arraysetops
+import numpy.lib.recfunctions
 
 from . import tools
 
 class InvalidFileError(Exception):
     """Raised when the requested information cannot be obtained from the file
+    """
+
+class InvalidDataError(Exception):
+    """Raised when data is not how it should be.
     """
 
 class Dataset(metaclass=abc.ABCMeta):
@@ -51,12 +57,17 @@ class Dataset(metaclass=abc.ABCMeta):
 
         - ch4_profile
 
+    - unique_fields::
+        
+        Set of fields that make any individual measurement unique.
+
     """
 
     start_date = None
     end_date = None
     name = ""
     aliases = {}
+    unique_fields = {"time", "lat", "lon"}
 
     def __init__(self, **kwargs):
         for (k, v) in kwargs.items():
@@ -171,6 +182,62 @@ class Dataset(metaclass=abc.ABCMeta):
 
     def __str__(self):
         return "Dataset:" + self.name
+
+    
+    def combine(self, my_data, other_obj):
+        """Combine with data from other dataset
+
+        Combine a set of measurements from this dataset with another
+        dataset, where each individual measurement correspond to exactly
+        one from the other one, as identified by time/lat/lon, orbitid, or
+        measurument id, or other characteristics.  The object attribute
+        unique_fields determines how those are found.
+
+        The other dataset may contain flags, DMPs, or different
+        information altogether.
+
+        :param ndarray my_data: Data as returned from self.read.
+        :param Dataset other_obj: Other dataset from which to read
+            corresponding data.
+        """
+
+        first = my_data["time"].min().astype(datetime.datetime)
+        last = my_data["time"].max().astype(datetime.datetime)
+
+        other_data = other_obj.read_period(first, last)
+        other_ind = numpy.zeros(dtype="u4", shape=my_data.shape)
+        found = numpy.zeros(dtype="bool", shape=my_data.shape)
+        other_combi = numpy.zeros(dtype=other_data.dtype, shape=my_data.shape)
+        
+        # brute force algorithm for now.  Update if needed.
+        for i in range(my_data.shape[0]):
+            ident = [(my_data[i][f] == other_data[f]).nonzero()[0]
+                        for f in self.unique_fields]
+            # N arrays of numbers, find numbers occuring in each array.
+            # Should be exactly one!
+            secondaries = functools.reduce(numpy.lib.arraysetops.intersect1d, ident)
+            if secondaries.shape[0] == 1: # all good
+                other_ind[i] = secondaries[0]
+                found[i] = True
+            elif secondaries.shape[0] > 1: # don't know what to do!
+                raise InvalidDataError(
+                    "Expected 1 unique, got {:d}".format(
+                        secondaries.shape[0]))
+        # else, leave unfound
+        other_combi[found] = other_data[other_ind[found]]
+        # Meh.  even with usemask=False, append_fields internally uses
+        # masked arrays.
+#        return numpy.lib.recfunctions.append_fields(
+#            my_data, other_combi.dtype.names,
+#                [other_combi[s] for s in other_combi.dtype.names], usemask=False)
+#       But what if fields have the same name?  Just return both...
+#        dmp = numpy.zeros(shape=my_data.shape,
+#            dtype=my_data.dtype.descr + other_combi.dtype.descr)
+#        for f in my_data.dtype.names:
+#            dmp[f] = my_data[f]
+#        for f in other_combi.dtype.names:
+#            dmp[f] = other_combi[f]
+        return other_combi
 
 
 class SingleFileDataset(Dataset):
@@ -430,6 +497,15 @@ class MultiFileDataset(Dataset):
         else:
             return alt
 
+    def get_info_for_granule(self, p):
+        """Return dict (re.fullmatch) for granule, based on re
+        """
+
+        if not isinstance(p, pathlib.Path):
+            p = pathlib.Path(p)
+        m = self._re.fullmatch(p.name)
+        return m.groupdict()
+
     def get_times_for_granule(self, p,
             **kwargs):
         """For granule stored in `path`, get start and end times.
@@ -442,8 +518,7 @@ class MultiFileDataset(Dataset):
         if str(p) in self._granule_start_times.keys():
             (start, end) = self._granule_start_times[str(p)]
         else:
-            m = self._re.fullmatch(p.name)
-            gd = m.groupdict()
+            gd = self.get_info_for_granule(p)
             if (any(f in gd.keys() for f in self.datefields) and
                 (any(f in gd.keys() for f in {x+"_end" for x in self.datefields})
                         or self.granule_duration is not None)):
@@ -488,9 +563,18 @@ class SingleMeasurementPerFileDataset(MultiFileDataset):
     """Represents datasets where each file contains one measurement.
 
     An example of this would be ACE, or some RO datasets.
+
+    Special attributes::
+
+        filename_fields::
+
+            dict with {name, dtype} for fields that should be copied from
+            the filename (as obtained with self.re) into the header
     """
 
     granule_duration = datetime.timedelta(0)
+    filename_fields = {}
+
 
     @abc.abstractmethod
     def read_single(self, p, fields="all"):
@@ -514,6 +598,9 @@ class SingleMeasurementPerFileDataset(MultiFileDataset):
         dt.extend([(s, self._head_dtype[s])
                 for s in (head.keys() & self._head_dtype.keys())
                 if s not in {"lat", "lon", "time"}])
+        if self.filename_fields:
+            info = self.get_info_for_granule(p)
+            dt.extend(self.filename_fields.items())
         # This fails. https://github.com/numpy/numpy/issues/4583
         #D = numpy.ma.empty(1, dt)
         D = numpy.empty(1, dt)
@@ -527,6 +614,10 @@ class SingleMeasurementPerFileDataset(MultiFileDataset):
         for nm in head.keys() & D.dtype.names:
             if nm not in {"lat", "lon", "time"}:
                 D[nm] = head[nm]
+
+        if self.filename_fields:
+            for nm in self.filename_fields.keys():
+                D[nm] = info[nm]
 
         return D
 
