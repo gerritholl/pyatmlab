@@ -220,6 +220,8 @@ def p2z_hydrostatic(p:numpy.ndarray,
     :param array T: Temperature [K].  Must match the size of p.
     :param h2o: Water vapour [vmr].  If negligible, set to 0.  Must be
         either scalar, or match the size of p and T.
+    :param p0:
+    :param z0:
     :param lat: Latitude [degrees].  This has some effect on the vertical
         distribution of gravitational acceleration, leading to difference
         of some 500 metre at 150 km.  Defaults to 45°.

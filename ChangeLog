@@ -1,3 +1,31 @@
+2014-07-30  Gerrit Holl  <gerrit.holl@utoronto.ca>:
+
+	* pyatmlab/collocations.py:
+
+	(CollocatedDataset):
+
+	- Initialise start_date and end_date based on the start and end dates
+	for the constituent datasets.
+
+	* pyatmlab/dataset.py:
+
+	(StationaryDataset):
+
+	- Added class that will super to any ground-station dataset
+
+	* pyatmlab/math.py:
+
+	(linear_interpolation_matrix):
+
+	- Calculate transformation matrix for linear interpolation between two
+	  grids
+	
+	* pyatmlab/physics.py:
+
+	(p2z_hydrostatic):
+
+	- Added two missing params to docstring
+
 2014-07-23  Gerrit Holl  <gerrit.holl@utoronto.ca>:
 
 	* pyatmlab/collocations.py(CollocationDescriber):

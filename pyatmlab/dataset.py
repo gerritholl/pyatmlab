@@ -674,3 +674,9 @@ class ProfileDataset(Dataset):
         Takes as argument a single measurement, with the dtype returned by
         its own reading routine.
         """
+
+class StationaryDataset(Dataset):
+    """Abstract superclass for any ground-station dataset
+    """
+
+    unique_fields = {"time"}

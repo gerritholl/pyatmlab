@@ -102,8 +102,17 @@ class CollocatedDataset(dataset.HomemadeDataset):
             self.projection = kwargs.pop("projection")
         self.ellipsoid = pyproj.Geod(ellps=self.projection)
         self.max_interval = 0
-
+        
         super().__init__(**kwargs)
+
+        if self.start_date is None:
+            self.start_date = max(self.primary.start_date,
+                self.secondary.start_date) - self.max_interval.astype(datetime.timedelta)
+
+        if self.end_date is None:
+            self.end_date = min(self.primary.end_date,
+                self.secondary.end_date) + self.max_interval.astype(datetime.timedelta)
+
 
     def find_granule_pairs(self, start_date=None, end_date=None):
         """Iterate through all (prim, sec) co-time granule pairs

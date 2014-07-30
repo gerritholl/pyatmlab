@@ -84,3 +84,21 @@ def average_position_sphere(*args: (lambda a: len(a) in (1,2))):
     latm = numpy.arctan2(zm, numpy.sqrt(xm**2+ym**2))
 
     return (latm, lonm)
+
+def linear_interpolation_matrix(x_old, x_new):
+    """Get transformation matrix for linear interpolation.
+
+    :param x_old: Original 1-D grid
+    :param x_new: New 1-D grid for interpolation
+    :returns ndarray W: Interpolation transformation matrix.
+    """
+    
+    return numpy.vstack(
+        [numpy.interp(x_new, x_old, numpy.eye(x_old.size)[i, :])    
+            for i in range(x_old.size)])
+
+
+#    return numpy.vstack(
+#        [scipy.interpolate.InterpolatedUnivariateSpline(
+#            x_old, eye(x_old.size)[i, :])(x_new) 
+#                for i in range(x_old.size)])
