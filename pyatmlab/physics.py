@@ -316,7 +316,7 @@ def p2z_hydrostatic(p:numpy.ndarray,
         h2o = h2o * numpy.ones_like(p)
 
     if h2o.max() > 1:
-        raise ValueError("Found h2o values up to {:.2f}".format(h2o.max()))
+        raise ValueError("Found h2o vmr values up to {:.2f}.  Expected < 1.".format(h2o.max()))
 ##64  
 #65  
 #66  %= Make rough estimate of *z*

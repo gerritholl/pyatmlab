@@ -18,7 +18,57 @@ from .constants import ppm as PPM
 
 HECTO = 100
 
-class TansoFTS(dataset.SingleFileDataset, dataset.ProfileDataset):
+class TansoFTSBase(dataset.ProfileDataset):
+    """Applicable to both Tanso FTS versions
+    """
+    p_for_T_profile = numpy.array([1000, 975, 950, 925, 900, 850, 800,
+        700, 600, 500, 400, 300, 250, 200, 150, 100, 70, 50, 30, 20,
+        10])*HECTO # hPa -> Pa
+
+    def _read_common(self, h):
+        """From open h5 file, read some fields common to both tanso versions
+        """
+
+        D = collections.OrderedDict()
+        time_raw = h5f["scanAttribute"]["time"]
+        # force UTC time
+        D["time"] = numpy.array([numpy.datetime64(time_raw[i].decode('ascii')+'Z')
+            for i in range(time_raw.size)], dtype="datetime64[us]")
+        D["lat"] = h5f["Data"]["geolocation"]["latitude"]
+        D["lon"] = h5f["Data"]["geolocation"]["longitude"]
+        D["z0"] = h5f["Data"]["geolocation"]["height"]
+        D["T"] = h5f["scanAttribute"]["referenceData"]["temperatureProfile"]
+        D["h2o"] = h5f["scanAttribute"]["referenceData"]["waterVaporProfile"]*PPM
+        D["p0"] = h5f["scanAttribute"]["referenceData"]["surfacePressure"] * HECTO
+        D["id"] = h5f["scanAttribute"]["scanID"]
+
+        return D
+
+class TansoFTSv10x(dataset.MultiFileDataset, TansoFTSBase):
+    """Tanso FTS v1.00, 1.01
+    """
+
+    re = r"GOSATTFTS(?P<year>\d{4})(?P<month>\d{2})(?P<day>\d{2})_02P02TV010[01]R\d{6}[0-9A-F]{5}\.h5"
+
+    # implementation of abstract methods
+    def _read(self, path, fields="all"):
+        with h5py.File(path, 'r') as h5f:
+            D.update(self._read_common(h5f))
+            D["ch4_profile"] = (h5f["Data"]["originalProfile"]
+                ["CH4Profile"][:]*PPM)
+            D["ch4_profile_e"] = (h5f["Data"]["originalProfile"]
+                ["CH4ProfileError"][:]*PPM)
+            D["p"] = h5f["Data"]["originalProfile"]["pressure"]*HECTO
+            D["z0"] = h5f["Data"]["geolocation"]["height"]
+
+    def get_z(self, obj):
+        return pyatmlab.physics.p2z_hydrostatic(
+            obj["p"], obj["T"], obj["h2o"], 
+            obj["p0"], obj["z0"], obj["latitude"], -1)
+            
+
+class TansoFTSv001(dataset.SingleFileDataset, TansoFTSBase):
+    # Retained for historical reasons
 
 #    start_date = datetime.datetime(2010, 3, 23, 2, 24, 54, 210)
 #    end_date = datetime.datetime(2010, 10, 31, 20, 34, 50, 814)
@@ -26,9 +76,6 @@ class TansoFTS(dataset.SingleFileDataset, dataset.ProfileDataset):
 #               "GOSATTFTS20100316_02P02TV0001R14030500010.h5")
 #    name = "GOSAT Tanso FTS"
 
-    p_for_T_profile = numpy.array([1000, 975, 950, 925, 900, 850, 800,
-        700, 600, 500, 400, 300, 250, 200, 150, 100, 70, 50, 30, 20,
-        10])*HECTO # hPa -> Pa
     p_for_interp_profile = numpy.array([1000, 700, 500, 300, 100, 50,
         10])*HECTO
     aliases = {"CH4_profile": "ch4_profile_raw"}
@@ -125,13 +172,7 @@ class TansoFTS(dataset.SingleFileDataset, dataset.ProfileDataset):
 
         with h5py.File(path, 'r') as h5f:
             D = collections.OrderedDict()
-            time_raw = h5f["scanAttribute"]["time"]
-            # force UTC time
-            D["time"] = numpy.array([numpy.datetime64(time_raw[i].decode('ascii')+'Z')
-                for i in range(time_raw.size)], dtype="datetime64[us]")
-            D["lat"] = h5f["Data"]["geolocation"]["latitude"]
-            D["lon"] = h5f["Data"]["geolocation"]["longitude"]
-            D["z0"] = h5f["Data"]["geolocation"]["height"]
+            D.update(self._read_common(h5f))
             p = h5f["Data"]["interpolatedProfile"]["pressure"][:]
             p *= HECTO # Pa -> hPa
             if self.p_for_interp_profile is not None:
@@ -148,11 +189,6 @@ class TansoFTS(dataset.SingleFileDataset, dataset.ProfileDataset):
             D["ch4_profile_raw_e"] = (h5f["Data"]["originalProfile"]
                 ["CH4ProfileError"][:]*PPM)
             D["p_raw"] = h5f["Data"]["originalProfile"]["pressure"]
-            D["T"] = h5f["scanAttribute"]["referenceData"]["temperatureProfile"]
-            D["h2o"] = h5f["scanAttribute"]["referenceData"]["waterVaporProfile"]
-            D["p0"] = h5f["scanAttribute"]["referenceData"]["surfacePressure"]
-            D["id"] = h5f["scanAttribute"]["scanID"]
-
 
             A = numpy.empty(shape=time_raw.size,
                 dtype=[(k, D[k].dtype, D[k].shape[1:]) for k in D.keys()])
@@ -163,7 +199,6 @@ class TansoFTS(dataset.SingleFileDataset, dataset.ProfileDataset):
 #            for k in {"ch4_profile_interp", "ch4_profile_raw",
 #                      "ch4_profile_raw_e", "p_raw", "T"}:
 #                A.mask[k][A.data[k]<0] = True
-        A["p0"] *= HECTO
 
         return A if fields=="all" else A[fields]
 
