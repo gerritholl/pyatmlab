@@ -10,6 +10,8 @@ import re
 import shelve
 import string
 import sys
+import shutil
+import tempfile
 
 import datetime
 import numpy
@@ -333,8 +335,11 @@ class MultiFileDataset(Dataset):
                 self._granule_start_times = shelve.open(p, protocol=4)
             except OSError:
                 logging.error(("Unable to open granule file {} RW.  "
-                               "Opening read-only.").format(p))
-                self._granule_start_times = shelve.open(p, flag='r')
+                               "Opening copy read-only.").format(p))
+                tf = tempfile.NamedTemporaryFile()
+                shutil.copyfile(p, tf.name)
+                #self._granule_start_times = shelve.open(p, flag='r')
+                self._granule_start_times = shelve.open(tf.name, flag='r')
         else:
             self._granule_start_times = {}
         if self.re is not None:

@@ -297,10 +297,13 @@ def p2z_hydrostatic(p:numpy.ndarray,
 #52    error('The length of *h2o* must be 1 or match *p*.');                     %&%
 #53  end                                                                         %&%
 
-    if p0 > p[0] or p0 < p[-1]:
-        raise ValueError(("surface pressure ({:.2f}) must be "
-            "in total pressure range ({:.2f} -- {:.2f})").format(
-                p0, p[0], p[-1]))
+
+# FIXME IS THIS NEEDED?
+#    if p0 > p[0] or p0 < p[-1]:
+#        raise ValueError(("reference pressure ({:.2f}) must be "
+#            "in total pressure range ({:.2f} -- {:.2f})").format(
+#                p0, p[0], p[-1]))
+# END FIXME
 
 #54  if p0 > p(1)  |  p0 < p(np)                                                 %&%
 #55    error('Reference point (p0) can not be outside range of *p*.');           %&%

@@ -25,7 +25,7 @@ class TansoFTSBase(dataset.ProfileDataset):
         700, 600, 500, 400, 300, 250, 200, 150, 100, 70, 50, 30, 20,
         10])*HECTO # hPa -> Pa
 
-    def _read_common(self, h):
+    def _read_common(self, h5f):
         """From open h5 file, read some fields common to both tanso versions
         """
 
@@ -38,8 +38,8 @@ class TansoFTSBase(dataset.ProfileDataset):
         D["lon"] = h5f["Data"]["geolocation"]["longitude"]
         D["z0"] = h5f["Data"]["geolocation"]["height"]
         D["T"] = h5f["scanAttribute"]["referenceData"]["temperatureProfile"]
-        D["h2o"] = h5f["scanAttribute"]["referenceData"]["waterVaporProfile"]*PPM
-        D["p0"] = h5f["scanAttribute"]["referenceData"]["surfacePressure"] * HECTO
+        D["h2o"] = h5f["scanAttribute"]["referenceData"]["waterVaporProfile"][...]*PPM
+        D["p0"] = h5f["scanAttribute"]["referenceData"]["surfacePressure"][...] * HECTO
         D["id"] = h5f["scanAttribute"]["scanID"]
 
         return D
@@ -52,19 +52,30 @@ class TansoFTSv10x(dataset.MultiFileDataset, TansoFTSBase):
 
     # implementation of abstract methods
     def _read(self, path, fields="all"):
+        D = collections.OrderedDict()
         with h5py.File(path, 'r') as h5f:
             D.update(self._read_common(h5f))
             D["ch4_profile"] = (h5f["Data"]["originalProfile"]
                 ["CH4Profile"][:]*PPM)
             D["ch4_profile_e"] = (h5f["Data"]["originalProfile"]
                 ["CH4ProfileError"][:]*PPM)
-            D["p"] = h5f["Data"]["originalProfile"]["pressure"]*HECTO
+            D["ch4_ak"] = h5f["Data"]["originalProfile"]["CH4AveragingKernelMatrix"]
+            D["p"] = h5f["Data"]["originalProfile"]["pressure"][...]*HECTO
             D["z0"] = h5f["Data"]["geolocation"]["height"]
+            A = numpy.empty(shape=D["time"].size,
+                dtype=[(k, D[k].dtype, D[k].shape[1:]) for k in D.keys()])
+            for k in D.keys():
+                A[k] = D[k][:]
+        return A if fields=="all" else A[fields]
 
     def get_z(self, obj):
-        return pyatmlab.physics.p2z_hydrostatic(
-            obj["p"], obj["T"], obj["h2o"], 
-            obj["p0"], obj["z0"], obj["latitude"], -1)
+        return physics.p2z_hydrostatic(
+            self.p_for_T_profile, obj["T"], obj["h2o"], 
+            obj["p0"], obj["z0"], obj["lat"], -1)
+
+    def get_time_from_granule_contents(self, p):
+        M = self.read(p, fields={"time"})
+        return (M["time"].min(), M["time"].max())
             
 
 class TansoFTSv001(dataset.SingleFileDataset, TansoFTSBase):

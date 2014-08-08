@@ -88,6 +88,8 @@ def average_position_sphere(*args: (lambda a: len(a) in (1,2))):
 def linear_interpolation_matrix(x_old, x_new):
     """Get transformation matrix for linear interpolation.
 
+    This is denoted by W in Calisesi, Soebijanta and Van Oss (2005).
+
     :param x_old: Original 1-D grid
     :param x_new: New 1-D grid for interpolation
     :returns ndarray W: Interpolation transformation matrix.
@@ -102,3 +104,21 @@ def linear_interpolation_matrix(x_old, x_new):
 #        [scipy.interpolate.InterpolatedUnivariateSpline(
 #            x_old, eye(x_old.size)[i, :])(x_new) 
 #                for i in range(x_old.size)])
+
+def regrid_ak(A, z_old, z_new):
+    """Regrid averaging kernel matrix.
+
+    This follows the methodology outlined by Calisesi, Soebijanta and Van
+    Oss (2005).
+
+    :param A: Original averaging kernel
+    :param z_old: Original z-grid
+    :param z_new: New z-grid
+    :returns: New averaging kernel
+    """
+
+    W = linear_interpolation_matrix(z_old, z_new)
+    Wstar = numpy.pinv(W)
+    return W.dot(A).dot(Wstar)
+
+

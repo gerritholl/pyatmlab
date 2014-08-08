@@ -1,3 +1,25 @@
+2014-08-08  Gerrit Holl  <gerrit.holl@utoronto.ca>:
+
+	* pyatmlab/dataset.py(MultiFileDataset):
+
+	- When I can't open the granule start times file, open a *copy* read
+	only.  Opening the same one read only still doesn't work...
+
+	* pyatmlab/datasets.py:
+
+	(TansoFTSBase, TansoFTSv001, TansoFTSv10x):
+
+	- Split these classes into different versions.
+
+	* pyatmlab/math.py:
+
+	(regrid_ak): Added function for regridding averaging kernel
+
+	* pyatmlab/physics.py(p2z_hydrostatic):
+
+	- WARNING: Comment out p0/z0-check; is this really needed?
+	  This might introduce bugs, caution needed!  WARNING!
+
 2014-07-30  Gerrit Holl  <gerrit.holl@utoronto.ca>:
 
 	* pyatmlab/collocations.py:
