@@ -49,6 +49,28 @@ class TansoFTSv10x(dataset.MultiFileDataset, TansoFTSBase):
     """
 
     re = r"GOSATTFTS(?P<year>\d{4})(?P<month>\d{2})(?P<day>\d{2})_02P02TV010[01]R\d{6}[0-9A-F]{5}\.h5"
+    aliases = {"CH4_profile": "ch4_profile"}
+
+    # NOTE: For Tanso FTS v1.0x, there are THREE pressure profiles:
+    #
+    # - CH4 has 23 levels: 1165.9, 857.7, 735.6, 631.0, 541.2, 464.2,
+    #   398.1, 341.4, 287.3, 237.1, 195.7, 161.6, 133.4, 100.0, 75.0, 51.1,
+    #   34.8, 23.7, 16.2, 10.0, 5.6, 1.0, 0.1 hPa (GOSAT Product Description)
+    #
+    # - For each retrieval, the average pressure in each of 22 layers is
+    #   stored (this one varies)
+    #
+    # - For temperature and water vapour, there are 21 vertical levels:
+    #   1000, 975, 950, 925, 900, 850, 800, 700, 600, 500, 400, 300, 250,
+    #   200, 150, 100, 70, 50, 30, 20, 10 hPa.
+    #
+    # To get CH4 on z-grid rather than p-grid, need to convert p-grid to
+    # z-grid.  This needs temperature and water vapour profiles.  Either
+    # interpolate *and* extrapolate z-grid onto retrieval grid, or
+    # interpolate retrieval *and* averaging kernel onto T/Q-grid.  Prefer
+    # the former because ak-interpolation I found is linear which is OK
+    # for z but not for p?
+    #
 
     # implementation of abstract methods
     def _read(self, path, fields="all"):
@@ -69,9 +91,76 @@ class TansoFTSv10x(dataset.MultiFileDataset, TansoFTSBase):
         return A if fields=="all" else A[fields]
 
     def get_z(self, obj):
-        return physics.p2z_hydrostatic(
-            self.p_for_T_profile, obj["T"], obj["h2o"], 
+        # See comment near top of this class; different p-grids, different
+        # z-grids.  Want z-grid corresponding to CH4-profile.
+        p_for_T = self.p_for_T_profile # down up to 1 kPa
+        p_for_CH4 = obj["p"] # down to ~50 Pa
+        # inter- and extra-polate T and h2o onto the p_for_CH4 grid
+        # This introduces an extrapolation error but between 1 kPa and 50
+        # Pa I don't really care, should be insignificant.
+
+        # highest level is lowest pressure i.e. lower bound, and vice
+        # versa.  Therefore reserve p, f(p) so p is going up (increasing
+        # pressure)
+        xb = min(p_for_CH4.min(), p_for_T.min())
+        # including obj["p0"] here guarantees reference pressure/altitude
+        # always included in profile, satisfying Patricks algorithm
+        # (p2z_hydrostatic)
+        xe = max(p_for_CH4.max(), p_for_T.max(), obj["p0"])
+        tck_T = scipy.interpolate.splrep(p_for_T[::-1], obj["T"][::-1],
+            xb=xb,
+            xe=xe,
+            k=3)
+        tck_h2o = scipy.interpolate.splrep(p_for_T[::-1], obj["h2o"][::-1],
+            xb=xb,
+            xe=xe,
+            k=3)
+
+        # extrapolate, add extra pressure points.  Make sure that
+        # p0 >= p_grid[0], also include 100 kPa as this was in the
+        # original grid.  For completeness, merge both pressure grids,
+        # then "unpack" later.  Sort by index so I can later extract the
+        # parts that were belonging to p_for_CH4.
+        #
+        # FIXME: Do I really need to "unpack" it again?  Or just stick
+        # with the merged grid?!
+        p_full = []
+        p_full.append(obj["p0"])
+        p_full.extend(p_for_T)
+        p_for_ch4_i0 = len(p_full)
+        p_full.extend(p_for_CH4)
+        p_for_ch4_i1 = len(p_full)
+        p_full = numpy.array(p_full, dtype="f4")
+        p_inds = numpy.argsort(p_full)[::-1] # high to low pressure
+
+        p_full_sorted = p_full[p_inds]
+        p_full_sorted = numpy.ma.masked_less(p_full_sorted, 0)
+        T_retgrid = numpy.ma.masked_array(
+            scipy.interpolate.splev(p_full_sorted, tck_T),
+            p_full_sorted.mask)
+        q_retgrid = numpy.ma.masked_array(
+            scipy.interpolate.splev(p_full_sorted, tck_h2o),
+            p_full_sorted.mask)
+
+        # numpy warns even though I masked the invalid values... please
+        # don't :(
+        ed = numpy.seterr(invalid="ignore", divide="ignore")
+        z_extp = physics.p2z_hydrostatic(
+            p_full_sorted, T_retgrid, q_retgrid,
             obj["p0"], obj["z0"], obj["lat"], -1)
+        numpy.seterr(**ed)
+        
+        # return only elements belonging to p_for_CH4
+        # this yields the "inverse" sorting indices to get back the
+        # original order, but only for those that were part of p_for_CH4
+        p_i_was_CH4 = ((p_inds>=p_for_ch4_i0) & (p_inds<p_for_ch4_i1)).nonzero()[0]
+
+        return z_extp[p_i_was_CH4]
+#        inv_inds[-len(p_for_CH4):]]
+
+#        z_for_T = physics.p2z_hydrostatic(
+#            self.p_for_T_profile, obj["T"], obj["h2o"], 
+#            obj["p0"], obj["z0"], obj["lat"], -1)
 
     def get_time_from_granule_contents(self, p):
         M = self.read(p, fields={"time"})

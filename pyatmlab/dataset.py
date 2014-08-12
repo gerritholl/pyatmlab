@@ -40,7 +40,11 @@ class Dataset(metaclass=abc.ABCMeta):
     - start_date::
 
         Starting date for dataset.  May be used to search through ALL
-        granules.
+        granules.  WARNING!  If this is set at a time t_0 before the
+        actual first measurement t_1, then the collocation algorith (see
+        CollocatedDataset) will conclude that there are 0 collocations
+        in [t_0, t_1], and will not realise if data in [t_0, t_1] are
+        actually added later!
 
     - end_date::
 
@@ -335,11 +339,11 @@ class MultiFileDataset(Dataset):
                 self._granule_start_times = shelve.open(p, protocol=4)
             except OSError:
                 logging.error(("Unable to open granule file {} RW.  "
-                               "Opening copy read-only.").format(p))
+                               "Opening copy instead.").format(p))
                 tf = tempfile.NamedTemporaryFile()
                 shutil.copyfile(p, tf.name)
                 #self._granule_start_times = shelve.open(p, flag='r')
-                self._granule_start_times = shelve.open(tf.name, flag='r')
+                self._granule_start_times = shelve.open(tf.name)
         else:
             self._granule_start_times = {}
         if self.re is not None:

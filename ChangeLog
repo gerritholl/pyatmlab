@@ -1,4 +1,43 @@
+2014-08-12  Gerrit Holl  <gerrit.holl@utoronto.ca>:
+
+	* pyatmlab-0-0-39
+
+	* pyatmlab/collocations.py(CollocationDescriber):
+
+	- When extending common grid, do not insist on constant z-grid
+
+	- Clarify smoothing rules
+
+	- WARNING NEEDS WORK BEFORE APPLYING TO NON-PEARL DATA
+
+	* pyatmlab/dataset.py:
+
+	(Dataset):
+
+	- Clarified on risks of misusing start_date
+
+	(MultiFileDataset):
+
+	- When using a shelve copy, don't bother on read only.  Might only
+	  mean things go wrong later.  Stored data lost anyway.
+
+	* pyatmlab/datasets.py:
+
+	(TansoFTSv10x):
+
+	- Add comment clarifying pressure level mayhem
+
+	- When getting z, merge pressure grids that T/q and CH4 are on, so I
+	  can calculate z-levels for CH4-retrieval.  Needs a little bit of
+	  extrapolation.
+
+	* pyatmlab/physics.py(p2z_hydrostatic):
+
+	- Restore test for p[0] < p0 < p[-1] as per Patrick discussion
+
 2014-08-08  Gerrit Holl  <gerrit.holl@utoronto.ca>:
+
+	* pyatmlab-0-0-38
 
 	* pyatmlab/dataset.py(MultiFileDataset):
 
@@ -21,6 +60,8 @@
 	  This might introduce bugs, caution needed!  WARNING!
 
 2014-07-30  Gerrit Holl  <gerrit.holl@utoronto.ca>:
+
+	* pyatmlab-0-0-37
 
 	* pyatmlab/collocations.py:
 
@@ -50,6 +91,8 @@
 
 2014-07-23  Gerrit Holl  <gerrit.holl@utoronto.ca>:
 
+	* pyatmlab-0-0-36
+
 	* pyatmlab/collocations.py(CollocationDescriber):
 	
 	- Comment out unused code and removed lying comment
@@ -75,6 +118,8 @@
 
 2014-07-09  Gerrit Holl  <gerrit.holl@utoronto.ca>:
 
+	* pyatmlab-0-0-35
+
 	* pyatmlab/collocations.py:
 
 	- Contain visualisation information in central dict
@@ -82,6 +127,8 @@
 	- Write no. of unique for each side of the pair
 
 2014-06-25  Gerrit Holl  <gerrit.holl@utoronto.ca>:
+
+	* pyatmlab-0-0-34
 
 	* pyatmlab/datasets.py:
 

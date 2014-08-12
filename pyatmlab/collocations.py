@@ -1071,15 +1071,20 @@ class CollocationDescriber:
     def extend_common_grid(self):
         """Extend both profiles to common grid.
 
-        Sets self.z_grid accordingly
+        Sets self.z_grid accordingly.
+
+        If target does not have unique z-grid, choose average and
+        interpolate all onto that.
         """
 
-
         targ = (self.p_col, self.s_col)[self.target]
+        targ_obj = (self.cd.primary, self.cd.secondary)[self.target]
 
-        if not (targ["z"] == targ["z"][0, :]).all():
-            raise ValueError("Inconsistent z-grid for target")
-        z = targ["z"][0, :]
+        z_all = numpy.array([targ_obj.get_z(t) for t in targ])
+#        if not (targ["z"] == targ["z"][0, :]).all():
+#            raise ValueError("Inconsistent z-grid for target")
+#        z = targ["z"][0, :]
+        z = numpy.array(z_all, dtype="f8").mean(0)
 
         (p_ch4_int, s_ch4_int) = self.interpolate_profiles(z)
 #        xa = targ["CH4_apriori"]
@@ -1087,8 +1092,8 @@ class CollocationDescriber:
 #        targ_ch4_int = (p_ch4_int, s_ch4_int)[self.target]
 #        xh = (p_ch4_int, s_ch4_int)[1-self.target]
 #        xh[numpy.isnan(xh)] = xa[numpy.isnan(xh)]
-#
-#        self.z_grid = z
+
+        self.z_grid = z
         return (p_ch4_int, s_ch4_int)
 
 
@@ -1097,8 +1102,13 @@ class CollocationDescriber:
 #            
 
     def smooth(self):
-        """Smooth profile with highest information content
+        """Smooth one profile with the others AK
         
+        Normally the profile with the largest information content should
+        be smoothed according to the AK of the other.  This is not
+        determined automatically but determined by self.target which is
+        set upon object creation.
+
         Source is equation 4 in:
         
         Rodgers and Connor (2003): Intercomparison of
@@ -1123,6 +1133,9 @@ class CollocationDescriber:
         A = targ["CH4_ak"].swapaxes(1, 2)
 
         # correct A according to e-mail Stephanie 2014-06-17
+        #
+        # WARNING ERROR FIXME!  THIS IS HARDCODED FOR TARGET BEING EQUAL
+        # TO PEARL!
 
         Avmr = numpy.rollaxis(
             numpy.dstack(

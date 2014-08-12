@@ -298,11 +298,11 @@ def p2z_hydrostatic(p:numpy.ndarray,
 #53  end                                                                         %&%
 
 
-# FIXME IS THIS NEEDED?
-#    if p0 > p[0] or p0 < p[-1]:
-#        raise ValueError(("reference pressure ({:.2f}) must be "
-#            "in total pressure range ({:.2f} -- {:.2f})").format(
-#                p0, p[0], p[-1]))
+# FIXME IS THIS NEEDED?  Yes — See e-mail Patrick 2014-08-11
+    if p0 > p[0] or p0 < p[-1]:
+       raise ValueError(("reference pressure ({:.2f}) must be "
+           "in total pressure range ({:.2f} -- {:.2f})").format(
+               p0, p[0], p[-1]))
 # END FIXME
 
 #54  if p0 > p(1)  |  p0 < p(np)                                                 %&%
