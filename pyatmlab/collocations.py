@@ -1129,7 +1129,11 @@ class CollocationDescriber:
         xh = (p_ch4_int, s_ch4_int)[1-self.target]
 
 #        xh = s_int
-#        xh[xnan(xh)] = xa[isnan(xh)]
+        # where high-res profile is outside its z-range, set to a-priori
+        # of low-res.  For example, PEARL may go down only to 19.5 km, but
+        # the low-res xa might go down to 5 km.  Then set [5, 19.5] of
+        # high-res equal to a priori of other.
+        xh[numpy.isnan(xh)] = xa[numpy.isnan(xh)]
         A = targ["CH4_ak"].swapaxes(1, 2)
 
         # correct A according to e-mail Stephanie 2014-06-17

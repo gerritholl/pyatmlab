@@ -184,7 +184,8 @@ class Dataset(metaclass=abc.ABCMeta):
         """
         if isinstance(f, pathlib.PurePath):
             f = str(f)
-        return self._read(f) if f is not None else self._read()
+        M = self._read(f) if f is not None else self._read()
+        return M
 
     def __str__(self):
         return "Dataset:" + self.name
@@ -676,13 +677,36 @@ class ProfileDataset(Dataset):
     """Abstract superclass with stuff for anything having profiles
     """
 
-    @abc.abstractmethod
+    # source of profile sizes.  Can be a number (fixed size) or a string
+    # (field name to get size from)
+    n_prof = "p"
+
+    @tools.mutable_cache(maxsize=10)
+    def read(self, f=None, fields="all"):
+        M = super().read(f, fields)
+        if isinstance(self.n_prof, str):
+            n_prof = M.dtype[self.n_prof].shape
+        else:
+            n_prof = self.n_prof
+        if not "z" in M.dtype.names:
+            
+            newM = numpy.empty(shape=M.shape,
+                dtype=M.dtype.descr + [("z", "f4", n_prof)])
+            for nm in M.dtype.names:
+                newM[nm] = M[nm]
+            logging.debug("Adding {:d} z-profiles".format(M.shape[0]))
+            for i in range(M.shape[0]):
+                newM["z"][i, :] = self.get_z(M[i])
+            M = newM
+        return M
+
     def get_z(self, dt):
         """Get z-profile in metre.
 
         Takes as argument a single measurement, with the dtype returned by
         its own reading routine.
         """
+        return dt["z"]
 
 class StationaryDataset(Dataset):
     """Abstract superclass for any ground-station dataset

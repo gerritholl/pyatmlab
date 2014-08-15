@@ -1,3 +1,54 @@
+2014-08-15  Gerrit Holl  <gerrit.holl@utoronto.ca>:
+
+	* pyatmlab-0-0-40
+
+	* pyatmlab/collocations.py(CollocationDescriber):
+
+	- Reinsert extending xh with a-priori where outside the range of xh,
+	this was accidentally deleted earlier
+
+	* pyatmlab/dataset:
+
+	(Dataset):
+
+	- Cosmetic change
+
+	(ProfileDataset.read):
+
+	- Rather than having .read() as an abstract method, make an
+	implementation here that extends the parent .read() with adding a
+	z-profile upon/after reading.  Note that the real reading
+	implementation is still in children's read_ so that's actually done
+	before.  A new n_prof attribute will be used to determine profile
+	sizes.
+
+	(ProfileDataset.get_z):
+
+	- Don't abstract this one either, rather return dt["z"].  Children
+	super() this and catch the problem if there is no 'z' yet.
+
+	* pyatmlab/datasets.py:
+
+	(TansoFTSv10x):
+
+	- Add n_prof
+
+	- Try to get_z from super first
+
+	- Account for another bug with masked arrays
+
+	(TansoFTSv001):
+
+	- Try to get_z from super first
+
+	(ACEFTS):
+
+	- Inherit from ProfileDataset
+
+	- Add n_prof
+
+	- Try to get_z from super first
+
 2014-08-12  Gerrit Holl  <gerrit.holl@utoronto.ca>:
 
 	* pyatmlab-0-0-39

@@ -50,6 +50,7 @@ class TansoFTSv10x(dataset.MultiFileDataset, TansoFTSBase):
 
     re = r"GOSATTFTS(?P<year>\d{4})(?P<month>\d{2})(?P<day>\d{2})_02P02TV010[01]R\d{6}[0-9A-F]{5}\.h5"
     aliases = {"CH4_profile": "ch4_profile"}
+    n_prof = "p"
 
     # NOTE: For Tanso FTS v1.0x, there are THREE pressure profiles:
     #
@@ -91,6 +92,10 @@ class TansoFTSv10x(dataset.MultiFileDataset, TansoFTSBase):
         return A if fields=="all" else A[fields]
 
     def get_z(self, obj):
+        try:
+            return super().get_z(obj)
+        except IndexError:
+            pass # parent failed, continue here
         # See comment near top of this class; different p-grids, different
         # z-grids.  Want z-grid corresponding to CH4-profile.
         p_for_T = self.p_for_T_profile # down up to 1 kPa
@@ -155,7 +160,7 @@ class TansoFTSv10x(dataset.MultiFileDataset, TansoFTSBase):
         # original order, but only for those that were part of p_for_CH4
         p_i_was_CH4 = ((p_inds>=p_for_ch4_i0) & (p_inds<p_for_ch4_i1)).nonzero()[0]
 
-        return z_extp[p_i_was_CH4]
+        return z_extp[p_i_was_CH4].data
 #        inv_inds[-len(p_for_CH4):]]
 
 #        z_for_T = physics.p2z_hydrostatic(
@@ -303,6 +308,10 @@ class TansoFTSv001(dataset.SingleFileDataset, TansoFTSBase):
         return A if fields=="all" else A[fields]
 
     def get_z(self, meas): 
+        try:
+            return super().get_z(meas)
+        except IndexError:
+            pass # parent failed, continue here
 #            if data["T"].mask.size == 1:
 #                T = data["T"][n, ::-1].data
 #            else:
@@ -492,7 +501,8 @@ class NDACCAmes(dataset.MultiFileDataset):
         return M
 
 
-class ACEFTS(dataset.SingleMeasurementPerFileDataset):
+class ACEFTS(dataset.SingleMeasurementPerFileDataset,
+             dataset.ProfileDataset):
     """SCISAT Atmospheric Chemistry Experiment FTS
     """
 #    basedir = "/home/gerrit/sshfs/glacier/data/1/gholl/data/ACE"
@@ -502,6 +512,7 @@ class ACEFTS(dataset.SingleMeasurementPerFileDataset):
     aliases = {"CH4_profile": "CH4"}
     filename_fields = {"orbit": "u4", "version": "S3"}
     unique_fields = {"orbit"}
+    n_prof = "z"
 
     @staticmethod
     def read_header(fp):
@@ -578,6 +589,10 @@ class ACEFTS(dataset.SingleMeasurementPerFileDataset):
             for m in ("start", "end"))
 
     def get_z(self, meas):
+        try:
+            return super().get_z(meas)
+        except IndexError:
+            pass # parent failed, continue here
         m = meas["z"]
         if m[-1] < 150: # oops, still in km
             return m * 1e3
