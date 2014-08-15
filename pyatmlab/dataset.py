@@ -681,6 +681,10 @@ class ProfileDataset(Dataset):
     # (field name to get size from)
     n_prof = "p"
 
+    # does the A priori need converting?  It does for PEARL, does not for
+    # others
+    A_needs_converting = tools.NotTrueNorFalse
+
     @tools.mutable_cache(maxsize=10)
     def read(self, f=None, fields="all"):
         M = super().read(f, fields)

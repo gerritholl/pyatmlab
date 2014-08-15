@@ -1,5 +1,26 @@
 2014-08-15  Gerrit Holl  <gerrit.holl@utoronto.ca>:
 
+	* pyatmlab-0-0-41
+
+	* pyatmlab/collocations.py(CollocationDescriber):
+
+	- Fix serious bug in smoothing, where Avmr-correction was not applied
+
+	* pyatmlab/dataset.py:
+
+	- Force each dataset to say if A should be corrected to Avmr
+
+	* pyatmlab/datasets.py:
+
+	- For TansoFTS, A needs no correction
+
+	* pyatmlab/tools.py:
+
+	- Added NotTrueNorFalse, inspired by
+	  http://stackoverflow.com/a/25330344/974555
+
+2014-08-15  Gerrit Holl  <gerrit.holl@utoronto.ca>:
+
 	* pyatmlab-0-0-40
 
 	* pyatmlab/collocations.py(CollocationDescriber):

@@ -25,6 +25,8 @@ class TansoFTSBase(dataset.ProfileDataset):
         700, 600, 500, 400, 300, 250, 200, 150, 100, 70, 50, 30, 20,
         10])*HECTO # hPa -> Pa
 
+    A_needs_converting = False
+
     def _read_common(self, h5f):
         """From open h5 file, read some fields common to both tanso versions
         """

@@ -212,3 +212,29 @@ def mutable_cache(maxsize=10):
                 del self.keys[0]
 
         return self.memo[str]
+
+class NotTrueNorFalseType:
+    """Not true, nor false.
+
+    A singleton class whose instance can be used in place of True or
+    False, to represent a value which has no true-value nor false-value,
+    e.g. a boolean flag the value of which is unknown or undefined.
+
+    By Stack Overflow user shx2, http://stackoverflow.com/a/25330344/974555
+    """
+    def __new__(cls, *args, **kwargs):
+        # singleton
+        try:
+            obj = cls._obj
+        except AttributeError:
+            obj = object.__new__(cls, *args, **kwargs)
+            cls._obj = obj
+        return obj
+
+    def __bool__(self):
+        raise TypeError('%s: Value is neither True nor False' % self)
+
+    def __repr__(self):
+        return 'NotTrueNorFalse'
+
+NotTrueNorFalse = NotTrueNorFalseType()

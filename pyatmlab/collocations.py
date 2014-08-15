@@ -1122,6 +1122,7 @@ class CollocationDescriber:
         """
 
         targ = (self.p_col, self.s_col)[self.target][self.mask]
+        targobj = (self.cd.primary, self.cd.secondary)[self.target]
         #highres = (self.prim, self.sec)[1-self.target]
         (p_ch4_int, s_ch4_int) = self.extend_common_grid()
 
@@ -1134,24 +1135,24 @@ class CollocationDescriber:
         # the low-res xa might go down to 5 km.  Then set [5, 19.5] of
         # high-res equal to a priori of other.
         xh[numpy.isnan(xh)] = xa[numpy.isnan(xh)]
+
+        # axes tend to be turned around?  FIXME VERIFY
+        # Should rather do this in reading routine?!
         A = targ["CH4_ak"].swapaxes(1, 2)
 
-        # correct A according to e-mail Stephanie 2014-06-17
-        #
-        # WARNING ERROR FIXME!  THIS IS HARDCODED FOR TARGET BEING EQUAL
-        # TO PEARL!
-
-        Avmr = numpy.rollaxis(
-            numpy.dstack(
-                [numpy.diag(1/targ["CH4_apriori"][i, :]).dot(
-                    targ["CH4_ak"][i, :, :]).dot(
-                    numpy.diag(targ["CH4_apriori"][i, :]))
-                for i in range(targ.shape[0])]), 2, 0)
+        if targobj.A_needs_converting:
+            # correct A according to e-mail Stephanie 2014-06-17
+            A = numpy.rollaxis(
+                numpy.dstack(
+                    [numpy.diag(1/targ["CH4_apriori"][i, :]).dot(
+                        A[i, :, :]).dot(
+                        numpy.diag(targ["CH4_apriori"][i, :]))
+                    for i in range(targ.shape[0])]), 2, 0)
 
         #xs = xa + A.dot(xh-xa)
         xb = xh - xa
         xs = numpy.vstack(
-            [xa[n, :] + A[n, :, :].dot(xb[n, :]) for n in range(Avmr.shape[0])])
+            [xa[n, :] + A[n, :, :].dot(xb[n, :]) for n in range(A.shape[0])])
 #        xs = xa + numpy.core.umath_tests.matrix_multiply(A, xb[..., numpy.newaxis]).squeeze()
 
         if self.target == 0:
