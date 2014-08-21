@@ -200,7 +200,8 @@ def p2z_hydrostatic(p:numpy.ndarray,
     z0:(numpy.number, numbers.Number, numpy.ndarray),
     lat:(numpy.number, numbers.Number, numpy.ndarray)=45,
     z_acc:(numpy.number, numbers.Number, numpy.ndarray)=-1,
-    ellps="WGS84"):
+    ellps="WGS84",
+    extend=False):
     """Calculate hydrostatic elevation
 
     Translated from
@@ -231,6 +232,8 @@ def p2z_hydrostatic(p:numpy.ndarray,
     :param str ellps: Ellipsoid to use.  The function relies on
         pyproj.Geod, which is an interface to the proj library.  For a
         full table of ellipsoids, run 'proj -le'.
+    :param bool extend: If p0, z0 outside of p, z range, extend
+        artificially.  WARNING: This will assume CONSTANT T, h2o!
     :returns array z: Array of altitudes [m].  Same size as p and T.
 
     Original description:
@@ -300,7 +303,19 @@ def p2z_hydrostatic(p:numpy.ndarray,
 
 # FIXME IS THIS NEEDED?  Yes — See e-mail Patrick 2014-08-11
     if p0 > p[0] or p0 < p[-1]:
-       raise ValueError(("reference pressure ({:.2f}) must be "
+        if extend:
+            if p0 > p[0]: # p[0] is largest pressure, p0 even larger
+                extend = "below"
+                p = numpy.hstack([p0, p])
+                T = numpy.hstack([T[0], T])
+                h2o = numpy.hstack([h2o[0], h2o])
+            elif p0 < p[-1]:
+                extend = "above" # p[-1] is smallest pressure, p0 even smaller
+                p = numpy.hstack([p, p0])
+                T = numpy.hstack([T, T[-1]])
+                h2o = numpy.hstack([h2o, h2o[-1]])
+        else:
+            raise ValueError(("reference pressure ({:.2f}) must be "
            "in total pressure range ({:.2f} -- {:.2f})").format(
                p0, p[0], p[-1]))
 # END FIXME
@@ -410,7 +425,13 @@ def p2z_hydrostatic(p:numpy.ndarray,
 #125 end
 #126 
 #127 return
-    return z
+    # correct for extending
+    if extend == "below": # lowest pressure extra
+        return z[1:]
+    elif extend == "above": # highest pressure extra
+        return z[:-1]
+    else:
+        return z
 
 #128 %----------------------------------------------------------------------------
 #129 

@@ -14,9 +14,7 @@ from . import dataset
 from . import physics
 from . import math
 from . import geo
-from .constants import ppm as PPM
-
-HECTO = 100
+from .constants import ppm as PPM, hecto as HECTO
 
 class TansoFTSBase(dataset.ProfileDataset):
     """Applicable to both Tanso FTS versions

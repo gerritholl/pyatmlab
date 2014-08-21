@@ -108,8 +108,8 @@ def linear_interpolation_matrix(x_old, x_new):
 def regrid_ak(A, z_old, z_new):
     """Regrid averaging kernel matrix.
 
-    This follows the methodology outlined by Calisesi, Soebijanta and Van
-    Oss (2005).
+    Actual regridding done in apply_W_A, following Calisesi, Soebijanta
+    and Van Oss (2005).
 
     :param A: Original averaging kernel
     :param z_old: Original z-grid
@@ -118,7 +118,17 @@ def regrid_ak(A, z_old, z_new):
     """
 
     W = linear_interpolation_matrix(z_old, z_new)
+    return apply_W_A(W, A)
+
+def apply_W_A(W, A):
+    """Regrid averaging kernel matrix using W
+
+    If interpolation matrix W is already calculated, apply to averaging
+    kernel matrix here.
+
+    This follows the methodology outlined by Calisesi, Soebijanta and Van
+    Oss (2005).
+    """
+
     Wstar = numpy.pinv(W)
     return W.dot(A).dot(Wstar)
-
-

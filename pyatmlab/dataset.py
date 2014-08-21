@@ -246,6 +246,15 @@ class Dataset(metaclass=abc.ABCMeta):
 #            dmp[f] = other_combi[f]
         return other_combi
 
+    def get_additional_field(self, M, fld):
+        """Get additional field.
+
+        Get field from other dataset, original objects, or otherwise.
+        To be implemented by subclass implementations.
+
+        Exact fields depend on subclass.
+        """
+        raise NotImplementedError("Must be implemented by child-class")
 
 class SingleFileDataset(Dataset):
     """Represents a dataset where all measurements are in one file.

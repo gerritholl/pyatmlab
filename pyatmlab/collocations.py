@@ -25,6 +25,7 @@ from . import stats
 from . import geo
 from . import tools
 from . import graphics
+from . import physics
 from . import math as pamath
 
 from .constants import MB
@@ -1126,19 +1127,108 @@ class CollocationDescriber:
         #highres = (self.prim, self.sec)[1-self.target]
         (p_ch4_int, s_ch4_int) = self.extend_common_grid()
 
-        xa = targ["CH4_apriori"]
+        extra = xa = p_xa = z_xa = ak = p_ak = z_ak = None
+        if not "CH4_apriori" in targ.dtype.names: # try to add
+            extra = targobj.get_additional_field(targ, "(smoothing)")
+            xa = extra["ch4_ap"]
+            p_xa = extra["p_ch4_ap"]
+            if "z_ch4_ap" in extra.dtype.names:
+                z_xa = extra["z_ch4_ap"]
+            #xa = targobj.get_additional_field(targ, "CH4_apriori")
+        else:
+            xa = targ["CH4_apriori"]
+            p_xa = targ["p"]
+            z_xa = targ["z"]
         xh = (p_ch4_int, s_ch4_int)[1-self.target]
 
-#        xh = s_int
+        if "CH4_ak" in targ.dtype.names:
+            ak = targ["CH4_ak"]
+            p_ak = p_xa
+            z_ak = z_xa
+        elif extra is None:
+            ak = targobj.get_additional_field(targ, "CH4_ak")
+            raise RuntimeError("Found a priori but not AK outside ?!")
+        else:
+            ak = extra["ch4_ak"]
+            p_ak = extra["p_ch4_ak"]
+            if "z_ch4_ak" in extra.dtype.names:
+                z_ak = extra["z_ch4_ap"]
+
+        # axes tend to be turned around?  FIXME VERIFY
+        # Should rather do this in reading routine?!
+        A = ak.swapaxes(1, 2)
+
+        # I may need to regrid xh and ak to the resolution of targ
+#        if not (ak.shape[1] == ak.shape[2] == xa.shape[1]):
+#            raise ValueError("A and xa shapes don't match!")
+
+        if z_xa is None: # convert from p_xa
+            if (p_xa.shape == targ["p"].shape) and (p_xa - targ["p"]).max() < 1e-3: # same grid
+                z_xa = targ["z"]
+            elif (p_xa.shape == targ["T"].shape == targ["h2o"].shape):
+                # cannot be vectorised :(
+                filler = numpy.empty(shape=(p_xa.shape[1],), dtype="f4")
+                filler.fill(numpy.nan)
+                z_xa = [(physics.p2z_hydrostatic(
+                            p_xa[i, :],
+                            targ[i]["T"],
+                            targ[i]["h2o"],
+                            targ[i]["p0"],
+                            targ[i]["z0"],
+                            targ[i]["lat"],
+                            -1, extend=True)
+                                if numpy.isfinite(xa[i]).any() else filler)
+                            for i in range(targ.shape[0])]
+                z_xa = numpy.vstack(z_xa)
+            else:
+                raise ValueError("Can't find z.  Should I try harder?")
+
+        if z_ak is None: # convert from p_ak
+            if (p_ak.shape == targ["p"].shape) and numpy.nanmax(p_ak - targ["p"]) < 1e-3:
+                z_ak = targ["z"]
+            elif (p_ak.shape == p_xa.shape) and (p_ak - p_xa).max() < 1e-3:
+                z_ak = z_xa
+            else:
+                raise ValueError("Don't know how to get z.  Should I try harder?")
+
+        if z_ak.shape != xh.shape:
+            # regrid from z_xa to z_ak
+            z_ak_new = targ["z"]
+            z_ak_old = z_ak
+            ak_old = ak
+            W = numpy.dstack([
+                pamath.linear_interpolation_matrix(
+                    z_ak_old[i, :], z_ak_new[i, :])
+                        for i in range(z_ak.shape[0])])
+            W = numpy.transpose(W, [2, 0, 1])
+#            z_ak_new = numpy.vstack([W[i, :, :].dot(z_ak[i, :]) for i in
+#                        range(W.shape[0])])
+            ak_new = numpy.dstack(
+                [pamath.apply_W_A(W[i, :, :], ak_old[i, :, :])
+                    for i in range(W.shape[0])])
+            ak = ak_new
+
+        if z_xa.shape != xh.shape:
+            z_xa_new = targ["z"]
+            z_xa_old = z_xa
+            xa_old = xa
+            W = numpy.dstack([
+                pamath.linear_interpolation_matrix(
+                    z_xa_old[i, :], z_xa_new[i, :])
+                        for i in range(z_xa.shape[0])])
+            W = numpy.transpose(W, [2, 0, 1])
+            xa_new = numpy.vstack([
+                W[i, :, :].T.dot(xa_old[i, :]) for i in range(W.shape[0])])
+            xa = xa_new
+
+
+        # OK :)
+
         # where high-res profile is outside its z-range, set to a-priori
         # of low-res.  For example, PEARL may go down only to 19.5 km, but
         # the low-res xa might go down to 5 km.  Then set [5, 19.5] of
         # high-res equal to a priori of other.
         xh[numpy.isnan(xh)] = xa[numpy.isnan(xh)]
-
-        # axes tend to be turned around?  FIXME VERIFY
-        # Should rather do this in reading routine?!
-        A = targ["CH4_ak"].swapaxes(1, 2)
 
         if targobj.A_needs_converting:
             # correct A according to e-mail Stephanie 2014-06-17

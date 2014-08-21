@@ -1,3 +1,32 @@
+2014-08-20  Gerrit Holl  <gerrit.holl@utoronto.ca>:
+
+	* pyatmlab-0-0-42
+
+	* pyatmlab/collocations.py(CollocationsDescriber):
+
+	- In smoothing, take care of the situation when xa and A come from
+	another source and are not on the same vertical grid, so that
+	interpolation is needed.  Only partially tested, likely still buggy.
+
+	* pyatmlab/constants.py: +hecto
+
+	* pyatmlab/dataset.py(Dataset):
+
+	- Add method get_additional_field, not implemented here
+
+	* pyatmlab/datasets.py: get hecto from constants
+
+	* pyatmlab/math.py:
+
+	(regrid_ak): Move W*A*W' to separate function
+
+	(apply_W_A): Actual W*A*W'
+
+	* pyatmlab/physics.py:
+
+	(p2z_hydrostatic): Optionally extend p/t/q, USE AT OWN RISK,
+	assumptions wholly inappropriate if extending is far!
+
 2014-08-15  Gerrit Holl  <gerrit.holl@utoronto.ca>:
 
 	* pyatmlab-0-0-41
