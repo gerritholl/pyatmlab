@@ -288,6 +288,12 @@ def p2z_hydrostatic(p:numpy.ndarray,
     if not p.size == T.size:
         raise ValueError("p and T must have same length")
 
+    if p.min() < 0:
+        raise ValueError("Found negative pressures")
+
+    if T.min() < 0:
+        raise ValueError("Found negative temperatures")
+
 #47  np = length( p );
 #48  if length(t) ~= np                                                          %&%
 #49    error('The length of *p* and *t* must be identical.');                    %&%

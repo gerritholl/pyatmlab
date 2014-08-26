@@ -185,7 +185,8 @@ class CollocatedDataset(dataset.HomemadeDataset):
 #                logging.debug("New secondary: {!s}".format(gran_sec))
                 try:
                     newsec = self.secondary.read(gran_sec)
-                except (ValueError, IOError) as msg:
+                except (dataset.InvalidFileError, 
+                        dataset.InvalidDataError) as msg:
                     logging.error("Could not read {}: {}".format(
                         gran_sec, msg.args[0]))
                     continue
@@ -1037,8 +1038,8 @@ class CollocationDescriber:
             p_z_i = self.cd.primary.get_z(self.p_col[i])
             s_z_i = self.cd.secondary.get_z(self.s_col[i])
             # workaround https://github.com/numpy/numpy/issues/2972
-            p_valid = (p_ch4[i] > 0)
-            s_valid = (s_ch4[i] > 0)
+            p_valid = (p_ch4[i] > 0) & numpy.isfinite(p_z_i)
+            s_valid = (s_ch4[i] > 0) & numpy.isfinite(s_z_i)
             p_ch4_i = (p_ch4[i].data 
                 if isinstance(p_ch4, numpy.ma.MaskedArray)
                 else p_ch4[i])[p_valid]
@@ -1085,7 +1086,7 @@ class CollocationDescriber:
 #        if not (targ["z"] == targ["z"][0, :]).all():
 #            raise ValueError("Inconsistent z-grid for target")
 #        z = targ["z"][0, :]
-        z = numpy.array(z_all, dtype="f8").mean(0)
+        z = numpy.nanmean(numpy.array(z_all, dtype="f8"), 0)
 
         (p_ch4_int, s_ch4_int) = self.interpolate_profiles(z)
 #        xa = targ["CH4_apriori"]
@@ -1244,6 +1245,12 @@ class CollocationDescriber:
         xs = numpy.vstack(
             [xa[n, :] + A[n, :, :].dot(xb[n, :]) for n in range(A.shape[0])])
 #        xs = xa + numpy.core.umath_tests.matrix_multiply(A, xb[..., numpy.newaxis]).squeeze()
+
+        # remove invalid data
+        OK = numpy.isfinite(xs).any(1)
+        xs = xs[OK, :]
+        p_ch4_int = p_ch4_int[OK, :]
+        s_ch4_int = s_ch4_int[OK, :]
 
         if self.target == 0:
             return (p_ch4_int, xs)

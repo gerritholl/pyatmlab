@@ -111,15 +111,21 @@ class TansoFTSv10x(dataset.MultiFileDataset, TansoFTSBase):
         # including obj["p0"] here guarantees reference pressure/altitude
         # always included in profile, satisfying Patricks algorithm
         # (p2z_hydrostatic)
+        # The purpose of this interpolation is to find temperature and
+        # water vapour mixing ratio in order to convert pressure to
+        # elevation.  Even setting water vapour mixing ratio completely
+        # to 0 leads to sub-metre differences in elevation calculations.
+        # This means that a "1-D spline" (i.e. linear interpolation in T
+        # and log(vmr_h2o), k=1) is acceptable.
         xe = max(p_for_CH4.max(), p_for_T.max(), obj["p0"])
         tck_T = scipy.interpolate.splrep(p_for_T[::-1], obj["T"][::-1],
             xb=xb,
             xe=xe,
-            k=3)
-        tck_h2o = scipy.interpolate.splrep(p_for_T[::-1], obj["h2o"][::-1],
+            k=1)
+        tck_logh2o = scipy.interpolate.splrep(p_for_T[::-1], numpy.log(obj["h2o"][::-1]),
             xb=xb,
             xe=xe,
-            k=3)
+            k=1)
 
         # extrapolate, add extra pressure points.  Make sure that
         # p0 >= p_grid[0], also include 100 kPa as this was in the
@@ -138,29 +144,46 @@ class TansoFTSv10x(dataset.MultiFileDataset, TansoFTSBase):
         p_full = numpy.array(p_full, dtype="f4")
         p_inds = numpy.argsort(p_full)[::-1] # high to low pressure
 
+        # masked arrays go wrong within the p2z algorithm...
+        # rather do masking "by hand" :(
         p_full_sorted = p_full[p_inds]
-        p_full_sorted = numpy.ma.masked_less(p_full_sorted, 0)
-        T_retgrid = numpy.ma.masked_array(
-            scipy.interpolate.splev(p_full_sorted, tck_T),
-            p_full_sorted.mask)
-        q_retgrid = numpy.ma.masked_array(
-            scipy.interpolate.splev(p_full_sorted, tck_h2o),
-            p_full_sorted.mask)
+        ok = (numpy.isfinite(p_full_sorted) &
+              (p_full_sorted > 0))
+#        p_full_sorted = numpy.ma.masked_less(p_full_sorted, 0)
+#        T_retgrid = numpy.ma.masked_array(
+        T_retgrid = numpy.zeros_like(p_full_sorted)
+        T_retgrid.fill(numpy.nan)
+        T_retgrid[ok] = scipy.interpolate.splev(
+            p_full_sorted[ok], tck_T, ext=1)#,
+#            p_full_sorted.mask)
+#        q_retgrid = numpy.ma.masked_array(
+        logq_retgrid = numpy.zeros_like(p_full_sorted)
+        logq_retgrid.fill(numpy.nan)
+        logq_retgrid[ok] = scipy.interpolate.splev(
+            p_full_sorted[ok], tck_logh2o, ext=1)#,
+        q_retgrid = numpy.zeros_like(p_full_sorted)
+        q_retgrid.fill(numpy.nan)
+        q_retgrid[ok] = numpy.exp(logq_retgrid[ok])
+#            p_full_sorted.mask)
 
-        # numpy warns even though I masked the invalid values... please
-        # don't :(
-        ed = numpy.seterr(invalid="ignore", divide="ignore")
-        z_extp = physics.p2z_hydrostatic(
-            p_full_sorted, T_retgrid, q_retgrid,
+        z_extp = numpy.zeros(shape=p_full_sorted.shape, dtype="f4")
+        z_extp.fill(numpy.nan)
+        ok = (ok &
+              numpy.isfinite(T_retgrid) &
+              numpy.isfinite(q_retgrid))
+        ok[ok] = (ok[ok] & 
+              (T_retgrid[ok] > 0) &
+              (q_retgrid[ok] > 0))
+        z_extp[ok] = physics.p2z_hydrostatic(
+            p_full_sorted[ok], T_retgrid[ok], q_retgrid[ok],
             obj["p0"], obj["z0"], obj["lat"], -1)
-        numpy.seterr(**ed)
         
         # return only elements belonging to p_for_CH4
         # this yields the "inverse" sorting indices to get back the
         # original order, but only for those that were part of p_for_CH4
         p_i_was_CH4 = ((p_inds>=p_for_ch4_i0) & (p_inds<p_for_ch4_i1)).nonzero()[0]
 
-        return z_extp[p_i_was_CH4].data
+        return z_extp[p_i_was_CH4]#.data # no masked array...
 #        inv_inds[-len(p_for_CH4):]]
 
 #        z_for_T = physics.p2z_hydrostatic(

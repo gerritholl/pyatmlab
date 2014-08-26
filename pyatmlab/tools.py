@@ -11,6 +11,8 @@ import struct
 import logging
 import pickle
 
+import numpy
+
 class switch(object):
     """Simulate a switch-case statement.
 
@@ -238,3 +240,31 @@ class NotTrueNorFalseType:
         return 'NotTrueNorFalse'
 
 NotTrueNorFalse = NotTrueNorFalseType()
+
+def rec_concatenate(seqs, ax=0):
+    """Concatenate record arrays even if name order differs.
+
+    Takes the first record array and appends data from the rest, by name,
+    even if the name order or the specific dtype differs.
+    """
+
+    try:
+        return numpy.concatenate(seqs)
+    except TypeError as e:
+        if e.args[0] != "invalid type promotion":
+            raise
+    # this part is only reached if we do have the TypeError with "invalid
+    # type promotion"
+
+    if ax != 0 or any(s.ndim>1 for s in seqs):
+        raise ValueError("Liberal concatenations must be 1-d")
+    if len(seqs) < 2:
+        raise ValueError("Must concatenate at least 2")
+    M = numpy.empty(shape=sum(s.shape[0] for s in seqs),
+                    dtype=seqs[0].dtype)
+    for nm in M.dtype.names:
+        if M.dtype[nm].names is not None:
+            M[nm] = rec_concatenate([s[nm] for s in seqs])
+        else:
+            M[nm] = numpy.concatenate([s[nm] for s in seqs])
+    return M

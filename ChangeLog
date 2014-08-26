@@ -1,3 +1,39 @@
+2014-08-26  Gerrit Holl  <gerrit.holl@utoronto.ca>:
+
+	* pyatmlab-0-0-43
+
+	* pyatmlab/collocations.py:
+
+	(CollocatedDataset):
+
+	- Use own errors to catch more tightly
+
+	(CollocationDescriber):
+
+	- Correct non-finite z as invalid
+
+	- Also elsewhere, take care of nans (giving up on masked arrays)
+
+	* pyatmlab/datasets.py(TansoFTSv10x):
+
+	- Switch to k=1 spline interpolation (i.e. linear) to make
+	extrapolation less bad.
+
+	- Interpolate in logq, not in q
+
+	- Give up on masked arrays, flag manually with nans instead, and make
+	sure this doesn't mess up p2z (as masked arrays do!)
+
+	* pyatmlab/physics.py(p2z_hydrostatic):
+
+	- Catch negative p or T (could indicate flag or bug)
+
+	* pyatmlab/tools.py(rec_concatenate):
+
+	- More liberal concatenation of record arrays.  As long as the field
+	names are the same, who cares that the order in the structured dtype
+	is different?
+
 2014-08-20  Gerrit Holl  <gerrit.holl@utoronto.ca>:
 
 	* pyatmlab-0-0-42
