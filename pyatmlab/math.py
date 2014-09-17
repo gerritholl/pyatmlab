@@ -90,6 +90,9 @@ def linear_interpolation_matrix(x_old, x_new):
 
     This is denoted by W in Calisesi, Soebijanta and Van Oss (2005).
 
+    Does note extrapolate; values outside the range are equal to the
+    outermost values.
+
     :param x_old: Original 1-D grid
     :param x_new: New 1-D grid for interpolation
     :returns ndarray W: Interpolation transformation matrix.

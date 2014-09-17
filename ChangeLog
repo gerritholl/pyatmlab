@@ -1,3 +1,48 @@
+2014-09-17  Gerrit Holl  <gerrit.holl@utoronto.ca>:
+
+	* pyatmlab-0-0-44
+
+	* pyatmlab/collocations.py:
+
+	(CollocatedDataset):
+
+	- When collocating, use default start_date, end_date derived from base
+	datasets
+
+	- When reading, only return those collocations in the time period
+	requested, nothing more.
+
+	(CollocationDescriber):
+
+	- Work on figure filenames
+	- Set intervals to lowest/highest values of timedelta64 in seconds, as
+	 +/- infinity does not work as expected (see also
+	 https://github.com/numpy/numpy/issues/5079).
+	- Allow to set mask explicitly, externally
+	- Don't extrapolate averaging kernel matrix
+	
+	* pyatmlab/dataset.py:
+
+	(Dataset):
+
+	- Add attribute 'related' that can be used to point to dmp-object
+
+	(MultiFileDataset):
+
+	- When reading period, include end points
+	- When looking for granules, also consider 'tod' in seconds since
+	midnght
+
+	* pyatmlab/datasets.py(ACEFTS):
+
+	- Orbit alone is not unique, (also) consider time
+	- chain ValueError with InvalidFileError if reading fails, so it can
+	be properly caught higher up
+
+	* pyatmlab/math.py(linear_interpolation_matrix):
+
+	- Pointed out caveat with extrapolation
+
 2014-08-26  Gerrit Holl  <gerrit.holl@utoronto.ca>:
 
 	* pyatmlab-0-0-43

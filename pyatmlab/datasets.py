@@ -534,7 +534,7 @@ class ACEFTS(dataset.SingleMeasurementPerFileDataset,
     _time_format = "%Y-%m-%d %H:%M:%S"
     aliases = {"CH4_profile": "CH4"}
     filename_fields = {"orbit": "u4", "version": "S3"}
-    unique_fields = {"orbit"}
+    unique_fields = {"orbit", "time"}
     n_prof = "z"
 
     @staticmethod
@@ -576,7 +576,12 @@ class ACEFTS(dataset.SingleMeasurementPerFileDataset,
                 # why does this not work?
                 # http://stackoverflow.com/q/22865877/974555
                 #D[names][n] = tuple(float(f) for f in line.split())
-                vals = tuple(float(f) for f in line.split())
+                try:
+                    vals = tuple(float(f) for f in line.split())
+                except ValueError:
+                    # raise InvalidFileError instead so I can catch more
+                    # narrowly higher up in the stack
+                    raise dataset.InvalidFileError("Unable to read content")
                 for (i, name) in enumerate(names):
                     D[name][n] = vals[i]
 

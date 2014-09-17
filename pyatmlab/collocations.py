@@ -283,8 +283,12 @@ class CollocatedDataset(dataset.HomemadeDataset):
         This is a generator.  It yields in chunks of 100 MB or so.  This
         is so subsequent processing doesn't hog memory needlessly.
 
-        :param datetime start_date: First date to collocate
-        :param datetime end_date: Last date to collocate
+        :param datetime start_date: First date to collocate.  If not
+            given, use last of (self.primary.start_date,
+            self.secondary.start_date).
+        :param datetime end_date: Last date to collocate.  If not given,
+            use earliest of (self.primary.end_date,
+            self.secondary.end_date).
         :param store_size: Store results on disk after passing this size.
             Negative number means no storing.  Size in megabytes.
         :param (list, list) fields: If set, return only those fields.
@@ -307,6 +311,14 @@ class CollocatedDataset(dataset.HomemadeDataset):
 #                ran_prim, gran_sec))
 #            prim = self.primary.read(gran_prim)
 #            sec = self.secondary.read(gran_sec)
+        if start_date is None:
+            start_date = max(self.primary.start_date,
+                self.secondary.start_date)
+
+        if end_date is None:
+            end_date = min(self.primary.end_date,
+                self.secondary.end_date)
+
         logging.info(("Getting collocations {!s} vs. {!s}, distance {:.1f} km, "
                       "interval {!s}, period {!s} - {!s}").format(
                         self.primary.name, self.secondary.name,
@@ -395,6 +407,14 @@ class CollocatedDataset(dataset.HomemadeDataset):
                         numpy.empty(dtype=sec.dtype, shape=0),
                         f)
             else:
+                # select only those within the requested date-range
+                inrange = ((collocs_stored[0]["time"] > start_date) &
+                           (collocs_stored[1]["time"] > start_date) & 
+                           (collocs_stored[0]["time"] < end_date) &
+                           (collocs_stored[1]["time"] < end_date))
+                collocs_stored = (
+                    collocs_stored[0][inrange],
+                    collocs_stored[1][inrange])
                 if fields == (None, None):
                     yield collocs_stored
                 else:
@@ -726,6 +746,12 @@ class CollocationDescriber:
             linestyle="--",
             linewidth=1,
             color="black"))
+
+    figname_compare_profiles = ("compare_profiles_ch4"
+        "_{self.cd.primary.__class__.__name__!s}"
+        "_{self.cd.secondary.__class__.__name__}"
+        "_targ{self.target}"
+        "_{quantity}.")
     _target_vals = ["primary", "secondary"]
 
     _target = None
@@ -758,8 +784,11 @@ class CollocationDescriber:
         self.mask_label = "all"
 
     def filter(self, limit_str="UNDESCRIBED", dist=(0, numpy.inf),
-            interval=(-numpy.inf, numpy.inf),
-            prim_lims={}, sec_lims={}):
+            interval=
+                (-numpy.timedelta64(numpy.iinfo('int64').max, 's'),
+                 +numpy.timedelta64(numpy.iinfo('int64').max, 's')),
+            prim_lims={}, sec_lims={},
+            mask=None):
         """Set limits for further processing.
 
         This method sets a mask that characterises which collocations meet
@@ -774,8 +803,12 @@ class CollocationDescriber:
         :param dict prim_lims: Dictionary with keys corresponding to
             fields in the primary and values (min, max) thereof
         :param dict sec_lims: Like prim_lims but for secondary
+        :param ndarray mask: Alternately, set mask explicitly.  This may
+            be useful for more complicated cases.  Note that the rest of
+            the criteria are still added after.
         """
-        mask = numpy.ones(shape=self.p_col.shape, dtype="bool")
+        if mask is None:
+            mask = numpy.ones(shape=self.p_col.shape, dtype="bool")
 
         (_, _, dists) = self.cd.ellipsoid.inv(
             self.p_col["lon"], self.p_col["lat"],
@@ -1157,7 +1190,8 @@ class CollocationDescriber:
 
         # axes tend to be turned around?  FIXME VERIFY
         # Should rather do this in reading routine?!
-        A = ak.swapaxes(1, 2)
+        A = ak
+        ak = ak.swapaxes(1, 2)
 
         # I may need to regrid xh and ak to the resolution of targ
 #        if not (ak.shape[1] == ak.shape[2] == xa.shape[1]):
@@ -1220,6 +1254,14 @@ class CollocationDescriber:
             W = numpy.transpose(W, [2, 0, 1])
             xa_new = numpy.vstack([
                 W[i, :, :].T.dot(xa_old[i, :]) for i in range(W.shape[0])])
+            # interpolation above sets values outside the range to the
+            # edge of the range, leading to a weird constant in CH4(z).
+            # We don't want that, set to nan instead.
+            ok = numpy.isfinite(xa_new).any(1)
+            outside = z_xa_new[ok, :] > z_xa_old.max(1)[ok, numpy.newaxis]
+            xanew_tmp = xa_new[ok, :]
+            xanew_tmp.flat[outside.ravel()] = numpy.nan
+            xa_new[ok, :] = xanew_tmp
             xa = xa_new
 
 
@@ -1242,6 +1284,7 @@ class CollocationDescriber:
 
         #xs = xa + A.dot(xh-xa)
         xb = xh - xa
+        # This is where the smoothing is actually performed!
         xs = numpy.vstack(
             [xa[n, :] + A[n, :, :].dot(xb[n, :]) for n in range(A.shape[0])])
 #        xs = xa + numpy.core.umath_tests.matrix_multiply(A, xb[..., numpy.newaxis]).squeeze()
@@ -1331,6 +1374,7 @@ class CollocationDescriber:
 
         colours = {}
         percs = {}
+        profs = {}
         lims = {}
         xlabels = dict(
             diff = "Delta CH4 [ppv]",
@@ -1349,9 +1393,11 @@ class CollocationDescriber:
         # see how smoothed or raw compare
 
         z_grids = {}
+        profs[self.mask_label + "_smooth"] = self.smooth()
         percs[self.mask_label + "_smooth"] = self.compare_profiles_smooth(
                     z_grid, p_locs)
         z_grids["smooth"] = self.z_grid
+        profs[self.mask_label + "_raw"] = self.interpolate_profiles(z_grid)
         percs[self.mask_label + "_raw"] = self.compare_profiles_raw(
                     z_grid, p_locs)
         z_grids["raw"] = z_grid
@@ -1398,16 +1444,33 @@ class CollocationDescriber:
             ### FIXME: write data for both, will need to be in two
             ### files...
             graphics.print_or_show(f, False,
-                "compare_profiles_ch4_{}_{}_{}_{}_{}_{}.".format(
-                    self.cd.primary.__class__.__name__,
-                    self.cd.primary.name.replace(" ", "_"),
-                    self.cd.secondary.__class__.__name__,
-                    self.cd.secondary.name.replace(" ", "_"),
-                    quantity,
-                    "multi"),
-                    data=numpy.vstack((z_grids["raw"],)+tuple(data["raw"])).T)
+                self.figname_compare_profiles.format(**vars()),
+                data=numpy.vstack((z_grids["raw"],)+tuple(data["raw"])).T)
             matplotlib.pyplot.close(f)
         # end for quantities
+
+        ## Plot all profiles
+        # FIXME: can also be done for prim/sec/...
+##        f = matplotlib.pyplot.figure()
+##        a = f.add_subplot(1, 1, 1)
+##        for (w, c) in [("raw", "black"), ("smooth", "red")]:
+##            a.plot(profs[self.mask_label + "_" + w][self.target].T, z_grids[w],
+##                  color=c, label=w + " prim", linewidth=0.3)
+###            a.plot(profs[self.mask_label + "_" + w][1].T, z_grids[w],
+###                  color=c, label=w + " sec", linewidth=0.3)
+###        a.legend()
+##        a.set_xlabel("CH4 [ppv]")
+##        a.set_ylabel("Elevation [m]")
+##        a.set_title("All profiles")
+##        a.grid(which="major")
+##        a.set_ylim([5e3, 60e3])
+##        a.set_xlim([0, 2e-6])
+##        graphics.print_or_show(f, False,
+##            self.figname_compare_profiles.format(self=self,
+##                quantity="spaghetti"))
+##        matplotlib.pyplot.close(f)
+        #
+
         self.reset_filter()
 
         # some specialised plots

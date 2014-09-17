@@ -67,6 +67,11 @@ class Dataset(metaclass=abc.ABCMeta):
         
         Set of fields that make any individual measurement unique.
 
+    - related::
+
+        Dictionary whose keys may refer to other datasets with related
+        information, such as DMPs.
+
     """
 
     start_date = None
@@ -74,6 +79,7 @@ class Dataset(metaclass=abc.ABCMeta):
     name = ""
     aliases = {}
     unique_fields = {"time", "lat", "lon"}
+    related = {}
 
     def __init__(self, **kwargs):
         for (k, v) in kwargs.items():
@@ -215,6 +221,7 @@ class Dataset(metaclass=abc.ABCMeta):
         other_ind = numpy.zeros(dtype="u4", shape=my_data.shape)
         found = numpy.zeros(dtype="bool", shape=my_data.shape)
         other_combi = numpy.zeros(dtype=other_data.dtype, shape=my_data.shape)
+        other_combi.fill(numpy.nan) # masked arrays work poorly (2014-09-17)
         
         # brute force algorithm for now.  Update if needed.
         for i in range(my_data.shape[0]):
@@ -244,6 +251,9 @@ class Dataset(metaclass=abc.ABCMeta):
 #            dmp[f] = my_data[f]
 #        for f in other_combi.dtype.names:
 #            dmp[f] = other_combi[f]
+        if not found.all():
+            logging.warn("Only {:d}/{:d} ({:.2f}%) of secondaries found".format(
+                found.sum(), found.size, 100*found.sum()/found.size))
         return other_combi
 
     def get_additional_field(self, M, fld):
@@ -333,7 +343,8 @@ class MultiFileDataset(Dataset):
     granule_duration = None
 
     datefields = "year month day hour minute second".split()
-    # likely extended later
+    # likely extended later.  Note that "tod" is also a datefield,
+    # interpreted as seconds since 00
     refields = ["".join(x)
         for x in itertools.product(datefields, ("", "_end"))]
 
@@ -473,7 +484,7 @@ class MultiFileDataset(Dataset):
                                 "Skipping {!s}.  Problem: {}".format(
                                     child, e.args[0]))
                             continue
-                        if g_end > dt_start and g_start < dt_end:
+                        if g_end >= dt_start and g_start <= dt_end:
                             yield child
             
     def find_granules_sorted(self, dt_start=None, dt_end=None):
@@ -549,6 +560,8 @@ class MultiFileDataset(Dataset):
                 st_date[0] = self._getyear(gd, "year", kwargs.get("year", "0"))
 
                 start = datetime.datetime(*st_date)
+                if "tod" in gd and start.time() == datetime.time(0):
+                    start += datetime.timedelta(seconds=int(gd["tod"]))
                 if any(k.endswith("_end") for k in gd.keys()):
                     end_date = [int(gd.get(
                         p+"_end",
