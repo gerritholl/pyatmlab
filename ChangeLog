@@ -1,3 +1,27 @@
+2014-09-23  Gerrit Holl  <gerrit.holl@utoronto.ca>:
+
+	* pyatmlab-0-0-45
+
+	* pyatmlab/collocations.py(CollocationDescriber):
+
+	- Add mask info in filename
+
+	- Temporarily (?) disable setting a priori to nan outside interpolated
+	range.  It should not be necessary to extrapolate a priori where I
+	have averaging kernels but not a priori...
+
+	- When calculating percentiles, consider only finite data.
+
+	- Write data file for raw and smooth, filtered and unfiltered
+
+	* pytmlab/dataset.py(Dataset):
+
+	- Reduce verbosity when reading granules
+
+	* pyatmlab/graphics.py(print_or_show):
+
+	- Allow to write multiple data files
+
 2014-09-17  Gerrit Holl  <gerrit.holl@utoronto.ca>:
 
 	* pyatmlab-0-0-44

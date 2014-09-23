@@ -751,6 +751,7 @@ class CollocationDescriber:
         "_{self.cd.primary.__class__.__name__!s}"
         "_{self.cd.secondary.__class__.__name__}"
         "_targ{self.target}"
+        "_{allmask}"
         "_{quantity}.")
     _target_vals = ["primary", "secondary"]
 
@@ -1257,11 +1258,12 @@ class CollocationDescriber:
             # interpolation above sets values outside the range to the
             # edge of the range, leading to a weird constant in CH4(z).
             # We don't want that, set to nan instead.
-            ok = numpy.isfinite(xa_new).any(1)
-            outside = z_xa_new[ok, :] > z_xa_old.max(1)[ok, numpy.newaxis]
-            xanew_tmp = xa_new[ok, :]
-            xanew_tmp.flat[outside.ravel()] = numpy.nan
-            xa_new[ok, :] = xanew_tmp
+            # (disable temporarily so I have SOME result to show for PAHA)
+            #ok = numpy.isfinite(xa_new).any(1)
+            #outside = z_xa_new[ok, :] > z_xa_old.max(1)[ok, numpy.newaxis]
+            #xanew_tmp = xa_new[ok, :]
+            #xanew_tmp.flat[outside.ravel()] = numpy.nan
+            #xa_new[ok, :] = xanew_tmp
             xa = xa_new
 
 
@@ -1317,7 +1319,8 @@ class CollocationDescriber:
 
         #return numpy.array([
         return {k:
-            numpy.array([scipy.stats.scoreatpercentile(D[k][:, i], percs)
+            numpy.array([scipy.stats.scoreatpercentile(
+                D[k][numpy.isfinite(D[k][:, i]), i], percs)
                 for i in range(D[k].shape[1])])
             for k in D.keys()}
 
@@ -1392,6 +1395,9 @@ class CollocationDescriber:
 
         # see how smoothed or raw compare
 
+        filter_modes = []
+
+        filter_modes.append(self.mask_label)
         z_grids = {}
         profs[self.mask_label + "_smooth"] = self.smooth()
         percs[self.mask_label + "_smooth"] = self.compare_profiles_smooth(
@@ -1410,23 +1416,24 @@ class CollocationDescriber:
             self.filter(**fd)
             percs[fd["limit_str"] + "_raw"] = self.compare_profiles_raw(z_grid, p_locs)
             percs[fd["limit_str"] + "_smooth"] = self.compare_profiles_smooth(z_grid, p_locs)
+            filter_modes.append(self.mask_label)
 #        percs = self.compare_profiles(z_grid, p_locs)
         #for (i, v) in enumerate("diff diff^2 ratio".split()):
+        # quantities such as diff, ratio, rmsd
         for quantity in percs[self.mask_label + "_raw"].keys():
             f = matplotlib.pyplot.figure()
             a = f.add_subplot(1, 1, 1)
             data = dict(smooth=[], raw=[])
-            for filt in percs.keys():
-                ff = "smooth" if "smooth" in filt else "raw"
-                #if "smooth" in filt: z_grid = z_grids["smooth"]
-                #elif "raw" in filt: z_grid = z_grids["raw"]
-                #else: raise RuntimeError("Something wrong")
-                for k in range(len(p_locs)):
-                    a.plot(percs[filt][quantity][:, k], z_grids[ff],
-                           color=colours[filt],
-                           linestyle=p_styles[k], linewidth=p_widths[k],
-                           label=(filt if k==2 else None))
-                    data[ff].append(percs[filt][quantity][:, k])
+            # filters such as all, nearby, small delta-SPV
+            for filter_mode in filter_modes: # percs.keys():
+                for ff in ("smooth", "raw"):
+                    filt = "{}_{}".format(filter_mode, ff)
+                    for k in range(len(p_locs)):
+                        a.plot(percs[filt][quantity][:, k], z_grids[ff],
+                               color=colours[filt],
+                               linestyle=p_styles[k], linewidth=p_widths[k],
+                               label=(filt if k==2 else None))
+                        data[ff].append(percs[filt][quantity][:, k])
             # end for percentiles
             # end for filters
 #            a.plot(percs[1], z_grid, label="p diff^2", color="red")
@@ -1443,9 +1450,13 @@ class CollocationDescriber:
             a.set_ylim([5e3, 60e3])
             ### FIXME: write data for both, will need to be in two
             ### files...
+            allmask = ','.join(filter_modes)
             graphics.print_or_show(f, False,
                 self.figname_compare_profiles.format(**vars()),
-                data=numpy.vstack((z_grids["raw"],)+tuple(data["raw"])).T)
+                data=
+                    (numpy.vstack((z_grids["raw"],)+tuple(data["raw"])).T,
+                     numpy.vstack((z_grids["smooth"],)+tuple(data["smooth"])).T)
+                    )
             matplotlib.pyplot.close(f)
         # end for quantities
 

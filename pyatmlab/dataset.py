@@ -135,7 +135,7 @@ class Dataset(metaclass=abc.ABCMeta):
         contents = []
         for gran in self.find_granules(start, end):
             try:
-                logging.info("Reading {!s}".format(gran))
+                logging.debug("Reading {!s}".format(gran))
                 cont = self.read(str(gran), fields=fields)
             except (OSError, ValueError) as exc:
                 if onerror == "skip":

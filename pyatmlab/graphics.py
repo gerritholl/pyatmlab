@@ -50,7 +50,8 @@ def print_or_show(fig, show, outfile, in_plotdir=True, tikz=None, data=None):
         that the latter is installed.
     :type tikz: boolean
     :param data: Store associated data in .dat file (useful for pgfplots).
-    :type data: ndarray
+        May be a list of ndarrays, which results in multiple numbered datafiles.
+    :type data: ndarray or list thereof
     """
 
     if outfile is not None:
@@ -76,9 +77,14 @@ def print_or_show(fig, show, outfile, in_plotdir=True, tikz=None, data=None):
         print(now(), "Writing also to:", os.path.join(plotdir(), tikz))
         matplotlib2tikz.save(os.path.join(plotdir(), tikz))
     if data is not None:
-        outf = os.path.join(plotdatadir(),
-                            os.path.splitext(outfiles[0])[0]+".dat",)
         if not os.path.exists(plotdatadir()):
             os.makedirs(plotdatadir())
-        numpy.savetxt(outf, data,
-            fmt="%d" if issubclass(data.dtype.type, numpy.integer) else '%.18e')
+        if isinstance(data, numpy.ndarray):
+            data = (data,)
+        # now take it as a loop
+        for (i, dat) in enumerate(data):
+            outf = os.path.join(plotdatadir(),
+                "{:s}{:d}.dat".format(
+                    os.path.splitext(outfiles[0])[0], i))
+            numpy.savetxt(outf, dat,
+                fmt="%d" if issubclass(dat.dtype.type, numpy.integer) else '%.18e')
