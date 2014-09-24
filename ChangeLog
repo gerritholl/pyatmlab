@@ -1,3 +1,14 @@
+2014-09-24  Gerrit Holl  <gerrit.holl@utoronto.ca>:
+
+	* pyatmlab/collocations.py(CollocationDescriber):
+
+	- Fix bug in correcting averaging kernels.  Were not actuallly being
+	corrected!
+
+	* pyatmlab/math.py(convert_ak_ap2vmr):
+
+	- Move averaging kernel conversion to its own function
+
 2014-09-23  Gerrit Holl  <gerrit.holl@utoronto.ca>:
 
 	* pyatmlab-0-0-45

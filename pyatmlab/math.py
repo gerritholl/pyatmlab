@@ -135,3 +135,15 @@ def apply_W_A(W, A):
 
     Wstar = numpy.pinv(W)
     return W.dot(A).dot(Wstar)
+
+def convert_ak_ap2vmr(AKx, aprf):
+    """Convert averaging kernel from SFIT4 units to vmr
+
+    :param AKx: Averaging kernel from SFIT4
+    :param aprf: A-priori
+    :returns: Averaging kernel in VMR units
+    """
+
+    # Source: e-mail Stephanie 2014-06-17
+
+    return numpy.diag(1/aprf).dot(AKx).dot(numpy.diag(aprf))

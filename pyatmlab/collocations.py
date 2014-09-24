@@ -1162,7 +1162,7 @@ class CollocationDescriber:
         #highres = (self.prim, self.sec)[1-self.target]
         (p_ch4_int, s_ch4_int) = self.extend_common_grid()
 
-        extra = xa = p_xa = z_xa = ak = p_ak = z_ak = None
+        extra = xa = p_xa = z_xa = ak = p_ak = z_ak = W = None
         if not "CH4_apriori" in targ.dtype.names: # try to add
             extra = targobj.get_additional_field(targ, "(smoothing)")
             xa = extra["ch4_ap"]
@@ -1191,7 +1191,7 @@ class CollocationDescriber:
 
         # axes tend to be turned around?  FIXME VERIFY
         # Should rather do this in reading routine?!
-        A = ak
+        #A = ak
         ak = ak.swapaxes(1, 2)
 
         # I may need to regrid xh and ak to the resolution of targ
@@ -1276,19 +1276,24 @@ class CollocationDescriber:
         xh[numpy.isnan(xh)] = xa[numpy.isnan(xh)]
 
         if targobj.A_needs_converting:
-            # correct A according to e-mail Stephanie 2014-06-17
-            A = numpy.rollaxis(
+            # correct ak according to e-mail Stephanie 2014-06-17
+#            ak = numpy.rollaxis(
+#                numpy.dstack(
+#                    [numpy.diag(1/targ["CH4_apriori"][i, :]).dot(
+#                        ak[i, :, :]).dot(
+#                        numpy.diag(targ["CH4_apriori"][i, :]))
+#                    for i in range(targ.shape[0])]), 2, 0)
+            ak = numpy.rollaxis(
                 numpy.dstack(
-                    [numpy.diag(1/targ["CH4_apriori"][i, :]).dot(
-                        A[i, :, :]).dot(
-                        numpy.diag(targ["CH4_apriori"][i, :]))
+                    [pamath.convert_ak_ap2vmr(
+                        ak[i, :, :], targ["CH4_apriori"][i, :])
                     for i in range(targ.shape[0])]), 2, 0)
 
         #xs = xa + A.dot(xh-xa)
         xb = xh - xa
         # This is where the smoothing is actually performed!
         xs = numpy.vstack(
-            [xa[n, :] + A[n, :, :].dot(xb[n, :]) for n in range(A.shape[0])])
+            [xa[n, :] + ak[n, :, :].dot(xb[n, :]) for n in range(ak.shape[0])])
 #        xs = xa + numpy.core.umath_tests.matrix_multiply(A, xb[..., numpy.newaxis]).squeeze()
 
         # remove invalid data
@@ -1447,7 +1452,7 @@ class CollocationDescriber:
                 "CH4 {}, {} vs. {}".format(quantity,
                     self.cd.primary.name, self.cd.secondary.name))
             a.grid(which="major")
-            a.set_ylim([5e3, 60e3])
+            a.set_ylim([5e3, 50e3])
             ### FIXME: write data for both, will need to be in two
             ### files...
             allmask = ','.join(filter_modes)
