@@ -1361,6 +1361,52 @@ class CollocationDescriber:
 
         return self._compare_profiles(p_ch4_int, s_ch4_int, percs=percs)
 
+    def plot_aks(self):
+        """Visualise averaging kernels.
+
+        Will average all averaging kernels and plot them as lines.
+        """
+
+        if "ak" in self.cd.primary.aliases:
+            p_ak = self.p_col[self.cd.primary.aliases["ak"]].copy()
+        else:
+            p_ak = None
+
+        if "ak" in self.cd.secondary.aliases:
+            s_ak = self.s_col[self.cd.secondary.aliases["ak"]].copy()
+        else:
+            s_ak = None
+
+        f = matplotlib.pyplot.figure()
+        a1 = f.add_subplot(1, 2, 1)
+        a2 = f.add_subplot(1, 2, 2)
+        a_both = []
+
+        mx = 0
+        if "ak" in self.cd.primary.aliases:
+            #p_ak[p_ak<0] = numpy.nan
+            mean_p_ak = numpy.nanmean(p_ak, 0)
+            a1.plot(mean_p_ak.T, self.p_col["z"].mean(0))
+            a1.set_title(self.cd.primary.name)
+            a_both.append(a1)
+            mx = numpy.nanmax(mean_p_ak)
+
+        if "ak" in self.cd.secondary.aliases:
+            #s_ak[s_ak<0] = numpy.nan
+            mean_s_ak = numpy.nanmean(s_ak, 0)
+            a2.plot(mean_s_ak.T, self.s_col["z"].mean(0))
+            a2.set_title(self.cd.secondary.name)
+            a_both.append(a2)
+            mx = numpy.max([mx, numpy.nanmax(mean_s_ak)])
+
+        for a in a_both:
+            a.set_xlabel("Mean averaging kernel []")
+            a.set_xlim([0, mx])
+            a.set_ylim([0, 40e3])
+
+        graphics.print_or_show(f, False,
+            "ak_{}_{}.".format(self.cd.primary.__class__.__name__,
+                               self.cd.secondary.__class__.__name__))
 
     def visualise_profile_comparison(self, z_grid, filters=None):
         """Visualise profile comparisons.
@@ -1391,9 +1437,9 @@ class CollocationDescriber:
             prim = "Primary CH4 [ppv]",
             sec = "Secondary CH4 [ppv]")
         xlims = dict(
-            diff = (-3e-7, 3e-7),
-            rmsd = (0e-6, 5e-7),
-            ratio = (0.8, 1.2),
+            diff = (-1e-7, 1e-7),
+            rmsd = (0, 2e-7),
+            ratio = (0.9, 1.9),
             prim = (0, 2e-6),
             sec = (0, 2e-6))
         self.reset_filter()
@@ -1453,6 +1499,7 @@ class CollocationDescriber:
                     self.cd.primary.name, self.cd.secondary.name))
             a.grid(which="major")
             a.set_ylim([5e3, 50e3])
+            a.text(xlims[quantity][0]+0.1*xlims[quantity][1], 45e3, "{:d} profiles".format(self.mask.sum()))
             ### FIXME: write data for both, will need to be in two
             ### files...
             allmask = ','.join(filter_modes)

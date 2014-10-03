@@ -197,6 +197,7 @@ class Dataset(metaclass=abc.ABCMeta):
         return "Dataset:" + self.name
 
     
+    @tools.mutable_cache(maxsize=10)
     def combine(self, my_data, other_obj):
         """Combine with data from other dataset
 

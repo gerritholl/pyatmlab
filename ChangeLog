@@ -1,3 +1,18 @@
+2014-10-03  Gerrit Holl  <gerrit.holl@utoronto.ca>:
+
+	* pyatmlab/collocations.py(CollocationDescriber):
+
+	- Add method to plot aks
+	- Add no. of profiles to comparison plots
+
+	* pyatmlab/dataset.py(Dataset):
+
+	- use mutable cache for combine
+
+	* pytmlab/datasets.py:
+
+	- Add ak alias
+
 2014-09-24  Gerrit Holl  <gerrit.holl@utoronto.ca>:
 
 	* pyatmlab/collocations.py(CollocationDescriber):

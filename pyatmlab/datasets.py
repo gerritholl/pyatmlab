@@ -49,7 +49,7 @@ class TansoFTSv10x(dataset.MultiFileDataset, TansoFTSBase):
     """
 
     re = r"GOSATTFTS(?P<year>\d{4})(?P<month>\d{2})(?P<day>\d{2})_02P02TV010[01]R\d{6}[0-9A-F]{5}\.h5"
-    aliases = {"CH4_profile": "ch4_profile"}
+    aliases = {"CH4_profile": "ch4_profile", "ak": "ch4_ak"}
     n_prof = "p"
 
     # NOTE: For Tanso FTS v1.0x, there are THREE pressure profiles:
