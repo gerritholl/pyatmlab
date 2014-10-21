@@ -268,3 +268,9 @@ def rec_concatenate(seqs, ax=0):
         else:
             M[nm] = numpy.concatenate([s[nm] for s in seqs])
     return M
+
+def array_equal_with_equal_nans(A, B):
+    """Like array_equal, but nans compare equal
+    """
+
+    return numpy.all((A == B) | (numpy.isnan(A) & numpy.isnan(B)))

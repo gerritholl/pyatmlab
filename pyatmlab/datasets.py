@@ -100,6 +100,8 @@ class TansoFTSv10x(dataset.MultiFileDataset, TansoFTSBase):
         # z-grids.  Want z-grid corresponding to CH4-profile.
         p_for_T = self.p_for_T_profile # down up to 1 kPa
         p_for_CH4 = obj["p"] # down to ~50 Pa
+        p_valid = p_for_CH4>0
+        p_for_CH4 = p_for_CH4[p_valid]
         # inter- and extra-polate T and h2o onto the p_for_CH4 grid
         # This introduces an extrapolation error but between 1 kPa and 50
         # Pa I don't really care, should be insignificant.
@@ -183,7 +185,11 @@ class TansoFTSv10x(dataset.MultiFileDataset, TansoFTSBase):
         # original order, but only for those that were part of p_for_CH4
         p_i_was_CH4 = ((p_inds>=p_for_ch4_i0) & (p_inds<p_for_ch4_i1)).nonzero()[0]
 
-        return z_extp[p_i_was_CH4]#.data # no masked array...
+        z_ret = numpy.zeros(dtype="f4", shape=obj["p"].shape)
+        z_ret[p_valid] = z_extp[p_i_was_CH4]
+        z_ret[~p_valid] = numpy.nan
+        return z_ret
+        #return z_extp[p_i_was_CH4]#.data # no masked array...
 #        inv_inds[-len(p_for_CH4):]]
 
 #        z_for_T = physics.p2z_hydrostatic(

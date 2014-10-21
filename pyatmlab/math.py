@@ -6,6 +6,8 @@
 """
 
 import numpy
+import numpy.linalg
+
 from . import tools
 from .meta import expanddoc
 
@@ -108,7 +110,7 @@ def linear_interpolation_matrix(x_old, x_new):
 #            x_old, eye(x_old.size)[i, :])(x_new) 
 #                for i in range(x_old.size)])
 
-def regrid_ak(A, z_old, z_new):
+def regrid_ak(A, z_old, z_new, cut=False):
     """Regrid averaging kernel matrix.
 
     Actual regridding done in apply_W_A, following Calisesi, Soebijanta
@@ -117,11 +119,21 @@ def regrid_ak(A, z_old, z_new):
     :param A: Original averaging kernel
     :param z_old: Original z-grid
     :param z_new: New z-grid
+    :param bool cut: Cut off, i.e. flag, when any z in the new grid is
+        outside the old grid.
     :returns: New averaging kernel
     """
 
-    W = linear_interpolation_matrix(z_old, z_new)
-    return apply_W_A(W, A)
+    if cut:
+        outside = (z_new > numpy.nanmax(z_old)) | ~numpy.isfinite(z_old)
+        W = linear_interpolation_matrix(z_old, z_new[~outside])
+#        A_new = numpy.zeros(shape=(z_new.shape[0], z_new.shape[0]))
+        A_new = apply_W_A(W, A[~outside, :][:, ~outside])
+#        A_new[outside, outside] = numpy.nan
+        return A_new
+    else:
+        W = linear_interpolation_matrix(z_old, z_new)
+        return apply_W_A(W, A)
 
 def apply_W_A(W, A):
     """Regrid averaging kernel matrix using W
@@ -133,7 +145,7 @@ def apply_W_A(W, A):
     Oss (2005).
     """
 
-    Wstar = numpy.pinv(W)
+    Wstar = numpy.linalg.pinv(W)
     return W.dot(A).dot(Wstar)
 
 def convert_ak_ap2vmr(AKx, aprf):
@@ -147,3 +159,16 @@ def convert_ak_ap2vmr(AKx, aprf):
     # Source: e-mail Stephanie 2014-06-17
 
     return numpy.diag(1/aprf).dot(AKx).dot(numpy.diag(aprf))
+
+def smooth_profile(xh, ak, xa):
+    """Calculated smoothed profile.
+
+    Calculate a smoothed profile following Rodgers and Connor (2003).
+
+    :param xh: High-resolution profile
+    :param ak: Low-resolution averaging kernel [VMR]
+    :param xa: Low-resolution a priori profile
+    """
+
+    xs = xa + ak.dot(xh - xa)
+    return xs

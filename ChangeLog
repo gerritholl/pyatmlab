@@ -1,3 +1,50 @@
+2014-10-21  Gerrit Holl  <gerrit.holl@utoronto.ca>:
+
+	* pyatmlab/collocations.py:
+
+	(CollocatedDataset):
+
+	- Update error checking when primary can't be road
+
+	(CollocationDescriber):
+
+	- Do not try to extrapolate profiles, a prioris, or averaging kernels.
+	Rather, when the three do not come on identical z-grids (i.e. for
+	Tanso they don't), rather limit them all to the least common range.
+	This is not absolute, as each profile may have its own z-grid.
+	Therefore, cut them ALL off if more than a fraction (defaulting to
+	0.5) at a certain level is outside the range.
+
+	- Add a lot more comments explaining what I'm doing
+
+	- Rename extend_common_grid to regrid_profiles, to more accurately
+	describe what's going on.
+
+	- Ensure that xa, xh, ak are all on the same z-grid prior to further
+	processing
+
+	- Some related bugfixes
+
+	- Also show negative part of averaging kernels
+
+	* pyatmlab/math.py:
+
+	(regrid_ak):
+
+	- Optionall cut away when z is outside teh old grid
+
+	(apply_W_A):
+
+	- Bugfix for location of pinv
+
+	(smooth_profile):
+
+	- Centralise actual work to smoothen a single profile (no
+	vectorisation)
+
+	* pyatmlab/tools.py(array_equal_with_equal_nans):
+
+	- Like array_equal, but consider nans to be equal too.
 2014-10-03  Gerrit Holl  <gerrit.holl@utoronto.ca>:
 
 	* pyatmlab/collocations.py(CollocationDescriber):

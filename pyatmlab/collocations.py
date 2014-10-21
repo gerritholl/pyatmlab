@@ -9,6 +9,7 @@ import numpy.core.umath_tests
 import logging
 import datetime
 import pathlib
+import functools
 
 import scipy
 import scipy.stats
@@ -168,7 +169,7 @@ class CollocatedDataset(dataset.HomemadeDataset):
 #                logging.debug("New primary: {!s}".format(gran_prim))
                 try:
                     newprim = self.primary.read(gran_prim)
-                except (ValueError, IOError) as msg:
+                except (dataset.InvalidFileError) as msg:
                     logging.error("Could not read {}: {}".format(
                         gran_prim, msg.args[0]))
                     #continue
@@ -716,7 +717,8 @@ class CollocationDescriber:
     CollocatedDataset.collocate
 
     target      When smoothing profiles, smooth to this target.  It means
-                we use the averaging kernel and z-grid therefrom.
+                we use the averaging kernel and z-grid therefrom.  The
+                'target' is thus the low resolution profile.
     visualisation  Contains visualisation hints for drawing maps and so.
 
     """
@@ -753,6 +755,16 @@ class CollocationDescriber:
         "_targ{self.target}"
         "_{allmask}"
         "_{quantity}.")
+
+
+    # When removing a priori extending above the averaging kernels, or
+    # high-res profiles extending beyond the averaging kernels, remove all
+    # levels where the fraction of profiles for which this level is too
+    # high is larger than this.
+    toohigh_fraction_cutoff = 0.5
+
+
+            
     _target_vals = ["primary", "secondary"]
 
     _target = None
@@ -1104,13 +1116,17 @@ class CollocationDescriber:
 #                
 #        self.s_col
 
-    def extend_common_grid(self):
-        """Extend both profiles to common grid.
+    def regrid_profiles(self):
+        """Interpolate both profiles to grid of target.
 
-        Sets self.z_grid accordingly.
+        Take the z-grid from the target and interpolate all profiles from
+        primary and secondary to this grid.  If each profile for the
+        target has the same z-grid, the target interpolation will be a
+        no-op.  If the z-grid for the target is not unique, take the mean
+        and grid all profiles to this one.
 
-        If target does not have unique z-grid, choose average and
-        interpolate all onto that.
+        Set self.z_grid to the z_grid that is finally used, and return
+        interpolated profiles (primary, secondary).
         """
 
         targ = (self.p_col, self.s_col)[self.target]
@@ -1137,6 +1153,9 @@ class CollocationDescriber:
 #        for i in self.mask.nonzero()[0]:#range(self.p_col.size):
 #            
 
+    # This fails because it uses state information that changes between
+    # calls, and this state information is not taken into account.
+    #@functools.lru_cache(maxsize=10)
     def smooth(self):
         """Smooth one profile with the others AK
         
@@ -1151,18 +1170,50 @@ class CollocationDescriber:
         remote sounding instruments.  In: Journal of Geophysical Research,
         Vol 108, No. D3, 4116, doi:10.1029/2002JD002299
 
-        Also calls self.extend_common_grid thus setting self.z_grid.
+        Also calls self.regrid_profiles thus setting self.z_grid.
 
         Returns primary and secondary profiles, one smoothed, the other
-        unchanged
+        unchanged.
+
+        TODO:
+            - Verify the regridding of the a-priori (xa).  It seems that
+              z_xa is sometimes severely negative!
+
+            - The z-grid for the averaging kernels, z_ak, might not extend
+              all the way down to the surface.  Should verify that p-to-z
+              conversion is correct!
+
+            - Verify that the regridding of averaging kernels is now
+              correct for profiles where lowest level of low-res
+              AK is above the common z-grid to which we are trying
+              to interpolate, effectively extrapolating, which is
+              ill-conditioned.
         """
 
         targ = (self.p_col, self.s_col)[self.target][self.mask]
         targobj = (self.cd.primary, self.cd.secondary)[self.target]
         #highres = (self.prim, self.sec)[1-self.target]
-        (p_ch4_int, s_ch4_int) = self.extend_common_grid()
+
+        # Regrid primary and secondary CH4 profiles so that they share the
+        # same z_grid, that will be set to self.z_grid.
+        #
+        # NB: if a profile's z_grid does not extend to the full range of
+        # self.z_grid, any "extrapolated" values are set to numpy.nan by
+        # regrid_profiles (through scipy.interpolate.interp1d)
+        (p_ch4_int, s_ch4_int) = self.regrid_profiles()
 
         extra = xa = p_xa = z_xa = ak = p_ak = z_ak = W = None
+
+        #z_xh = targ["z"] # WRONG! Both p_ch4_int and s_ch4_int are
+        # already regridded to both be on self.z_grid (see above)
+        # Note: these are aliases that should refer to the same object;
+        # changes made to xh and xl will therefore equally apply to
+        # p_ch4_int, s_ch4_int, *even if xl is not referred to any
+        # further*.  Of course, that does not work for 'x = x[:, bla]'.
+        xh = (p_ch4_int, s_ch4_int)[1-self.target]
+        z_xh = self.z_grid
+
+        ## Look for a priori
         if not "CH4_apriori" in targ.dtype.names: # try to add
             extra = targobj.get_additional_field(targ, "(smoothing)")
             xa = extra["ch4_ap"]
@@ -1174,12 +1225,13 @@ class CollocationDescriber:
             xa = targ["CH4_apriori"]
             p_xa = targ["p"]
             z_xa = targ["z"]
-        xh = (p_ch4_int, s_ch4_int)[1-self.target]
 
-        if "CH4_ak" in targ.dtype.names:
-            ak = targ["CH4_ak"]
-            p_ak = p_xa
-            z_ak = z_xa
+        ## Look for averaging kernel
+        if "ak" in targobj.aliases:
+            #ak = targ["CH4_ak"]
+            ak = targ[targobj.aliases["ak"]]
+            p_ak = targ["p"]
+            z_ak = targ["z"]
         elif extra is None:
             ak = targobj.get_additional_field(targ, "CH4_ak")
             raise RuntimeError("Found a priori but not AK outside ?!")
@@ -1193,10 +1245,6 @@ class CollocationDescriber:
         # Should rather do this in reading routine?!
         #A = ak
         ak = ak.swapaxes(1, 2)
-
-        # I may need to regrid xh and ak to the resolution of targ
-#        if not (ak.shape[1] == ak.shape[2] == xa.shape[1]):
-#            raise ValueError("A and xa shapes don't match!")
 
         if z_xa is None: # convert from p_xa
             if (p_xa.shape == targ["p"].shape) and (p_xa - targ["p"]).max() < 1e-3: # same grid
@@ -1222,35 +1270,104 @@ class CollocationDescriber:
         if z_ak is None: # convert from p_ak
             if (p_ak.shape == targ["p"].shape) and numpy.nanmax(p_ak - targ["p"]) < 1e-3:
                 z_ak = targ["z"]
-            elif (p_ak.shape == p_xa.shape) and (p_ak - p_xa).max() < 1e-3:
+            elif (p_ak.shape == p_xa.shape) and numpy.nanmax(p_ak - p_xa) < 1e-3:
                 z_ak = z_xa
             else:
                 raise ValueError("Don't know how to get z.  Should I try harder?")
 
-        if z_ak.shape != xh.shape:
+        ## Make sure everything is on the same grid:
+        #
+        # - Actual profiles
+        #       -> regrid_profiles(), called above, guarantees those are
+        #       on the same grid, set in self.z_grid.  This should be from
+        #       the low-resolution profile (i.e. the target).
+        #       Note that z_xh == self.z_grid
+        # - Averaging kernels for low-resolution profile
+        #       -> currently on z_ak
+        # - A priori for low-resolution profile, on z_xa
+        #       -> currently on z_xa
+        #
+        # It is useless if any of those extends above any of the others,
+        # so we choose the lowest maximum z and cut off everything to
+        # that.
+
+        lowest_z_max = min(numpy.nanmax(z_ak), numpy.nanmax(z_xa),
+            z_xh.max())
+
+        if z_xh.max() > lowest_z_max:
+            # cut off actual profiles
+            toohigh = self.z_grid > lowest_z_max
+            xh = xh[:, ~toohigh]
+            z_xh = z_xh[~toohigh]
+            self.z_grid = z_xh
+            # NB: to smooth the high-res measurement `xh` with the
+            # low-resolution averaging kernel `ak` and a priori `xa`, the
+            # low--res measurement is not used.  However, it is still
+            # returned, so should still be cut off so caller can
+            # consistently process. 
+            p_ch4_int = p_ch4_int[:, ~toohigh]
+            s_ch4_int = s_ch4_int[:, ~toohigh]
+
+        if numpy.nanmax(z_ak) > lowest_z_max:
+            # Remove all levels where more than a fraction of the a priori
+            # have no information due to the levels being too high.
+            st = numpy.seterr(invalid="ignore")
+            toohigh = ((z_ak > lowest_z_max).sum(0) / z_ak.shape[0]
+                            > self.toohigh_fraction_cutoff)
+            numpy.seterr(**st)
+            # see http://stackoverflow.com/q/26259662/974555 for a
+            # rationale on this 'roundabout' way
+            ak = ak[:, ~toohigh, :][:, :, ~toohigh]
+            z_ak = z_ak[:, ~toohigh]
+
+        if numpy.nanmax(z_xa) > lowest_z_max:
+            st = numpy.seterr(invalid="ignore")
+            toohigh = ((z_xa > lowest_z_max).sum(0) / z_xa.shape[0]
+                           > self.toohigh_fraction_cutoff)
+            numpy.seterr(**st)
+            xa = xa[:, ~toohigh]
+            z_xa = z_xa[:, ~toohigh]
+
+        # WARNING: What if z_ak.shape == z_xh.shape
+        # but z_ak != z_xh?
+        if z_ak.shape == z_xh.shape and not tools.array_equal_with_equal_nans(z_ak, z_xh):
+            raise NotImplementedError("Improve z-axis checking!")
+        if z_ak.shape != z_xh.shape:
             # regrid from z_xa to z_ak
-            z_ak_new = targ["z"]
+            #z_ak_new = targ["z"]
+            z_ak_new = z_xh
             z_ak_old = z_ak
             ak_old = ak
-            W = numpy.dstack([
-                pamath.linear_interpolation_matrix(
-                    z_ak_old[i, :], z_ak_new[i, :])
+            with numpy.errstate(invalid="ignore"):
+                ak_new = numpy.dstack([pamath.regrid_ak(
+                    ak_old[i, :, :], z_ak_old[i, :], z_ak_new, cut=True)
                         for i in range(z_ak.shape[0])])
-            W = numpy.transpose(W, [2, 0, 1])
-#            z_ak_new = numpy.vstack([W[i, :, :].dot(z_ak[i, :]) for i in
-#                        range(W.shape[0])])
-            ak_new = numpy.dstack(
-                [pamath.apply_W_A(W[i, :, :], ak_old[i, :, :])
-                    for i in range(W.shape[0])])
-            ak = ak_new
+#            W = numpy.dstack([
+#                pamath.linear_interpolation_matrix(
+#                    z_ak_old[i, :], z_ak_new)
+#                        for i in range(z_ak.shape[0])])
+#            # Give W a shape analogous to ak
+#            W = numpy.transpose(W, [2, 0, 1])
+##            z_ak_new = numpy.vstack([W[i, :, :].dot(z_ak[i, :]) for i in
+##                        range(W.shape[0])])
+#            ak_new = numpy.dstack(
+#                [pamath.apply_W_A(W[i, :, :], ak_old[i, :, :])
+#                    for i in range(W.shape[0])])
+            ak = numpy.rollaxis(ak_new, 2, 0)
+            z_ak = z_ak_new
 
-        if z_xa.shape != xh.shape:
-            z_xa_new = targ["z"]
+        # WARNING: What if z_xa.shape == z_xh.shape
+        # but z_xa != z_xh?
+        if z_xa.shape == z_xh.shape and not tools.array_equal_with_equal_nans(z_xa, z_xh):
+            raise NotImplementedError("Improve z-axis checking!")
+        if z_xa.shape != z_xh.shape:
+            #z_xa_new = targ["z"]
+            z_xa_new = z_xh
             z_xa_old = z_xa
             xa_old = xa
             W = numpy.dstack([
                 pamath.linear_interpolation_matrix(
-                    z_xa_old[i, :], z_xa_new[i, :])
+                    z_xa_old[i, :], z_xa_new)
                         for i in range(z_xa.shape[0])])
             W = numpy.transpose(W, [2, 0, 1])
             xa_new = numpy.vstack([
@@ -1265,6 +1382,7 @@ class CollocationDescriber:
             #xanew_tmp.flat[outside.ravel()] = numpy.nan
             #xa_new[ok, :] = xanew_tmp
             xa = xa_new
+            z_xa = z_xa_new
 
 
         # OK :)
@@ -1273,31 +1391,35 @@ class CollocationDescriber:
         # of low-res.  For example, PEARL may go down only to 19.5 km, but
         # the low-res xa might go down to 5 km.  Then set [5, 19.5] of
         # high-res equal to a priori of other.
+
         xh[numpy.isnan(xh)] = xa[numpy.isnan(xh)]
 
         if targobj.A_needs_converting:
             # correct ak according to e-mail Stephanie 2014-06-17
-#            ak = numpy.rollaxis(
-#                numpy.dstack(
-#                    [numpy.diag(1/targ["CH4_apriori"][i, :]).dot(
-#                        ak[i, :, :]).dot(
-#                        numpy.diag(targ["CH4_apriori"][i, :]))
-#                    for i in range(targ.shape[0])]), 2, 0)
             ak = numpy.rollaxis(
                 numpy.dstack(
                     [pamath.convert_ak_ap2vmr(
-                        ak[i, :, :], targ["CH4_apriori"][i, :])
-                    for i in range(targ.shape[0])]), 2, 0)
+                        ak[i, :, :], xa[i, :])
+                    for i in range(xa.shape[0])]), 2, 0)
 
         #xs = xa + A.dot(xh-xa)
-        xb = xh - xa
         # This is where the smoothing is actually performed!
         xs = numpy.vstack(
-            [xa[n, :] + ak[n, :, :].dot(xb[n, :]) for n in range(ak.shape[0])])
+            [pamath.smooth_profile(xh[n, :], ak[n, :, :], xa[n, :])
+                for n in range(ak.shape[0])])
+#        xb = xh - xa
+#        xs = numpy.vstack(
+#            [xa[n, :] + ak[n, :, :].dot(xb[n, :]) for n in range(ak.shape[0])])
 #        xs = xa + numpy.core.umath_tests.matrix_multiply(A, xb[..., numpy.newaxis]).squeeze()
 
         # remove invalid data
         OK = numpy.isfinite(xs).any(1)
+        # I don't really know what to do with still incomplete averaging
+        # kernels (i.e. flagged levels), as I want all profiles on the
+        # same grid.  Remove those for now.
+        invalid = (ak<-10).any(1).any(1)
+        OK = OK & (~invalid)
+
         xs = xs[OK, :]
         p_ch4_int = p_ch4_int[OK, :]
         s_ch4_int = s_ch4_int[OK, :]
@@ -1368,6 +1490,7 @@ class CollocationDescriber:
         """
 
         if "ak" in self.cd.primary.aliases:
+            # make a copy because I'm going to set flagged values to 'nan'
             p_ak = self.p_col[self.cd.primary.aliases["ak"]].copy()
         else:
             p_ak = None
@@ -1382,31 +1505,39 @@ class CollocationDescriber:
         a2 = f.add_subplot(1, 2, 2)
         a_both = []
 
-        mx = 0
+        mx = mn = 0
+        data = []
         if "ak" in self.cd.primary.aliases:
-            #p_ak[p_ak<0] = numpy.nan
+            p_ak[p_ak<-100] = numpy.nan # presumed flagged
             mean_p_ak = numpy.nanmean(p_ak, 0)
             a1.plot(mean_p_ak.T, self.p_col["z"].mean(0))
             a1.set_title(self.cd.primary.name)
             a_both.append(a1)
             mx = numpy.nanmax(mean_p_ak)
+            mn = numpy.nanmin(mean_p_ak)
+            data.append(numpy.hstack(
+                (self.p_col["z"].mean(0)[:, numpy.newaxis], mean_p_ak)))
 
         if "ak" in self.cd.secondary.aliases:
-            #s_ak[s_ak<0] = numpy.nan
+            s_ak[s_ak<-100] = numpy.nan # presumed flagged
             mean_s_ak = numpy.nanmean(s_ak, 0)
             a2.plot(mean_s_ak.T, self.s_col["z"].mean(0))
             a2.set_title(self.cd.secondary.name)
             a_both.append(a2)
             mx = numpy.max([mx, numpy.nanmax(mean_s_ak)])
+            mn = numpy.min([mn, numpy.nanmin(mean_s_ak)])
+            data.append(numpy.hstack(
+                (self.s_col["z"].mean(0)[:, numpy.newaxis], mean_s_ak)))
 
         for a in a_both:
             a.set_xlabel("Mean averaging kernel []")
-            a.set_xlim([0, mx])
+            a.set_xlim([mn, mx])
             a.set_ylim([0, 40e3])
 
         graphics.print_or_show(f, False,
             "ak_{}_{}.".format(self.cd.primary.__class__.__name__,
-                               self.cd.secondary.__class__.__name__))
+                               self.cd.secondary.__class__.__name__),
+            data=data)
 
     def visualise_profile_comparison(self, z_grid, filters=None):
         """Visualise profile comparisons.
@@ -1450,11 +1581,11 @@ class CollocationDescriber:
 
         filter_modes.append(self.mask_label)
         z_grids = {}
-        profs[self.mask_label + "_smooth"] = self.smooth()
+#        profs[self.mask_label + "_smooth"] = self.smooth()
         percs[self.mask_label + "_smooth"] = self.compare_profiles_smooth(
                     z_grid, p_locs)
         z_grids["smooth"] = self.z_grid
-        profs[self.mask_label + "_raw"] = self.interpolate_profiles(z_grid)
+#        profs[self.mask_label + "_raw"] = self.interpolate_profiles(z_grid)
         percs[self.mask_label + "_raw"] = self.compare_profiles_raw(
                     z_grid, p_locs)
         z_grids["raw"] = z_grid
@@ -1499,9 +1630,12 @@ class CollocationDescriber:
                     self.cd.primary.name, self.cd.secondary.name))
             a.grid(which="major")
             a.set_ylim([5e3, 50e3])
+            # Set y-lim according to ak's
+            # (never mind for now, will set by hand in LaTeX code)
+#            p_ak = self.p_col[self.cd.primary.aliases["ak"]]
+#            s_ak = self.s_col[self.cd.secondary.aliases["ak"]]
+
             a.text(xlims[quantity][0]+0.1*xlims[quantity][1], 45e3, "{:d} profiles".format(self.mask.sum()))
-            ### FIXME: write data for both, will need to be in two
-            ### files...
             allmask = ','.join(filter_modes)
             graphics.print_or_show(f, False,
                 self.figname_compare_profiles.format(**vars()),
@@ -1513,7 +1647,6 @@ class CollocationDescriber:
         # end for quantities
 
         ## Plot all profiles
-        # FIXME: can also be done for prim/sec/...
 ##        f = matplotlib.pyplot.figure()
 ##        a = f.add_subplot(1, 1, 1)
 ##        for (w, c) in [("raw", "black"), ("smooth", "red")]:
