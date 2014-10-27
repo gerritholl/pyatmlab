@@ -1539,6 +1539,13 @@ class CollocationDescriber:
                                self.cd.secondary.__class__.__name__),
             data=data)
 
+        # And the matrices
+
+        
+        logging.info("Summarising sensitivities")
+        physics.AKStats(p_ak, name=self.cd.primary.__class__.__name__).summarise_ak()
+        physics.AKStats(s_ak, name=self.cd.secondary.__class__.__name__).summarise_ak()
+
     def visualise_profile_comparison(self, z_grid, filters=None):
         """Visualise profile comparisons.
 
@@ -1693,6 +1700,15 @@ class CollocationDescriber:
 ##                 data=numpy.vstack(
 ##                     (z_grid, iqr["prim"], iqr["sec"], iqr["diff"])).T)
 ##         matplotlib.pyplot.close(f)
+
+    def partial_columns(self):
+        """Do some stuff with partial columns.
+
+        To be written.
+        """
+
+        self.p_col
+        self.s_col
 
 def find_collocation_duplicates(p_col, s_col):
     dt = numpy.dtype([("A", "f8"), ("B", "f8"), ("C", "M8[s]"), ("D",

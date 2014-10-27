@@ -10,13 +10,123 @@ Mostly obtained from PyARTS
 import numbers
 
 import numpy
+import matplotlib
 
 import pyproj
+
 
 #from .constants import (h, k, R_d, R_v, c)
 from . import constants as c
 from . import math as pamath
 from . import tools
+from . import graphics
+
+class AKStats:
+
+    filename = "sensitivity_matrix_{name}."
+
+    def __init__(self, aks, name="UNDEFINED"):
+        self.aks = aks.copy()
+        with numpy.errstate(invalid="ignore"):
+            self.aks[self.aks<=-999] = numpy.nan
+        self.name = name
+
+    def dofs(self):
+        """Calculate degrees of freedom.
+
+        According to Rodgers (2000), equation (2.80), page 37.
+
+        This is the trace of the averaging kernels.
+        """
+
+        return self.aks.trace(axis1=1, axis2=2)
+
+    def sensitivities(self):
+        """Calculate sensitivities.
+
+        According to:
+          R. L. Batchelor et al.: Ground-based FTS comparisons ad ACE
+          validation at Eureka during IPY.  Page 57.
+        Sum of each row of the averaging kernel matrix defines sensitivity
+        to measurument.  Note that I - A is the sensitivity to the a priori,
+        soand the sum of the rows of (I - A) + the sum of the rows of A
+        equals 1; so these two could be interpreted as percentages.
+        """
+
+        return self.aks.sum(1)
+
+    def sensitivity_matrix(self,
+        sens_fractions = numpy.linspace(0, 1, 11),
+        sens_counters = None):
+        """
+        For each profile, how many layers have sensitivity of at least x?
+        
+        Creates a "sensitivity score" matrix.  How many profiles have at
+        least y layers of sensitivity >= x?
+
+        :param ndarray sens_fractions:
+            Array of shape (N,).
+            Sensitivities to consider.  Defaults to 0, 0.1, ..., 1.0.
+            Will be used to count no. of profiles with sensitivity larger
+            than this fraction.
+        :param ndarray sens_counters:
+            Integer array of shape (p,),
+            indicating the count as to how many profiles
+            have at least this many layers with sensitivity larger than x.
+            Defaults to arange(self.aks.shape[1]+1)
+        :returns:
+            Tuple (sens_fractions, sens_counters, sensmat), where sensmat
+            is an N x p matrix, N being the number of sensitivities to
+            consider, and p the counters.  In each coordinate define by
+            the ararys sens_fractions and sens_counters, it contains the
+            fraction of profiles that have at least p levels above
+            sensitivity x.
+        """
+        
+        if sens_counters is None:
+            sens_counters = numpy.arange(self.aks.shape[1]+1)
+
+        sensitivities = self.sensitivities()
+        with numpy.errstate(invalid="ignore"):
+            sensmat = numpy.vstack([((sensitivities >= x).sum(1)>=y).sum() 
+                for x in sens_fractions
+                for y in sens_counters]).reshape(
+                    sens_fractions.shape[0], sens_counters.shape[0])
+        return (sens_fractions, sens_counters, sensmat / self.aks.shape[0])
+
+       
+
+    def summarise_ak(self):
+        """Summarise characteristics of averaging kernels (N x p x q)
+
+        :param ndarray aks: nd-array of averaging kernels
+        """
+
+        # Degrees of freedom according to:
+        #   Rodgers (2000)
+        #   Equation (2.80), Page 37
+
+        dofs = self.dofs()
+
+        sensitivities = self.sensitivities()
+
+        max_sensitivities = sensitivities.max(1)
+
+        (sens_fractions, sens_counters, sensmat) = self.sensitivity_matrix()
+
+        f = matplotlib.pyplot.figure()
+        a = f.add_subplot(1, 1, 1)
+        ct = a.contourf(sens_fractions, sens_counters, sensmat.T,
+            numpy.linspace(0, 1, 11))
+        cb = f.colorbar(ct)
+        a.set_xlabel("Sensitivity")
+        a.set_ylabel("No. of levels")
+        cb.set_label("Fraction")
+        a.set_title(("Fraction of profiles with at least N layers "
+                     "sensitivity > x"))
+        graphics.print_or_show(
+            f, False, self.filename.format(name=self.name))
+
 
 def mixingratio2density(mixingratio, p, T):
     """Converts mixing ratio (e.g. kg/kg) to density (kg/m^3) for dry air.

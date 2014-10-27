@@ -1,4 +1,20 @@
+2014-10-27  Gerrit Holl  <gerrit.holl@utoronto.ca>:
+
+	* pyatmlab-0-0-49
+
+	* pyatmlab/collocations.py(CollocationDescriber):
+
+	- Visualise sensitivity matrices
+	- Started stub on partial columns, no content yet really
+
+	* pyatmlab/physics.py(AKStats):
+
+	- Added class to describe AK statistics, including a visualisation of
+	sensitivities in a sensitivity matrix
+
 2014-10-21  Gerrit Holl  <gerrit.holl@utoronto.ca>:
+
+	* pyatmlab-0-0-48
 
 	* pyatmlab/collocations.py:
 
@@ -45,7 +61,10 @@
 	* pyatmlab/tools.py(array_equal_with_equal_nans):
 
 	- Like array_equal, but consider nans to be equal too.
+
 2014-10-03  Gerrit Holl  <gerrit.holl@utoronto.ca>:
+
+	* pyatmlab-0-0-47
 
 	* pyatmlab/collocations.py(CollocationDescriber):
 
@@ -61,6 +80,8 @@
 	- Add ak alias
 
 2014-09-24  Gerrit Holl  <gerrit.holl@utoronto.ca>:
+
+	* pyatmlab-0-0-46
 
 	* pyatmlab/collocations.py(CollocationDescriber):
 
