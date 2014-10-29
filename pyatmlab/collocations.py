@@ -1543,8 +1543,19 @@ class CollocationDescriber:
 
         
         logging.info("Summarising sensitivities")
-        physics.AKStats(p_ak, name=self.cd.primary.__class__.__name__).summarise_ak()
-        physics.AKStats(s_ak, name=self.cd.secondary.__class__.__name__).summarise_ak()
+        if p_ak is not None:
+            physics.AKStats(p_ak, 
+                name="{}_from_{}".format(
+                    self.cd.primary.__class__.__name__,
+                    self.cd.secondary.__class__.__name__)).summarise_ak(
+                        z=self.p_col["z"])
+
+        if s_ak is not None:
+            physics.AKStats(s_ak, 
+            name="{}_from_{}".format(
+                self.cd.secondary.__class__.__name__,
+                self.cd.primary.__class__.__name__)).summarise_ak(
+                    z=self.s_col["z"])
 
     def visualise_profile_comparison(self, z_grid, filters=None):
         """Visualise profile comparisons.

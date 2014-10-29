@@ -21,6 +21,8 @@ from . import math as pamath
 from . import tools
 from . import graphics
 
+#import trollimage.colormap
+
 class AKStats:
 
     filename = "sensitivity_matrix_{name}."
@@ -94,12 +96,66 @@ class AKStats:
                     sens_fractions.shape[0], sens_counters.shape[0])
         return (sens_fractions, sens_counters, sensmat / self.aks.shape[0])
 
-       
+    def sensitivity_matrix_z(self, z,
+            arr_dz = numpy.linspace(0, 30e3, 11),
+            arr_sens = numpy.linspace(0, 1, 11)):
+        """Like sensitivity_matrix but with elevation units.
 
-    def summarise_ak(self):
+        Returns a matrix with the fraction of elements where sensitivity
+        exceeds 'x' for a range of elevations 'dz'.
+
+        :param z: Matrix containing elevations.  Shape must match
+            self.aks.shape[1:].
+        :param arr_dz: Array of delta-z to consider.
+        :param arr_sens: Array of sensitivities to consider.
+        :returns: (arr_dz, arr_sens, mat)
+        """
+
+        mat = numpy.zeros(shape=(arr_dz.size, arr_sens.size))
+        sensitivities = self.sensitivities()
+        with numpy.errstate(invalid="ignore"):
+            allmsk = [sensitivities > x for x in arr_sens]
+        # find highest and lowest z for each column, corresponding to msk
+        #
+        # Note: in some cases there are 'gaps', i.e. sensitivity mask
+        # looks like [True, True, False, False, False, True, True, True,
+        # True, True, True, True, True, False, False, ...].  In this case
+        # we take the 'False' along for now.  This may also yield more
+        # than one 'last'.
+
+        for (msk_i, msk) in enumerate(allmsk):
+            # first True in each column
+            mskno = msk.nonzero()
+            if not msk.any(): # all mat 0
+                continue
+            (_, ii) = numpy.unique(mskno[0], return_index=True) 
+            makes_sense = msk.any(1)
+            firsts = numpy.zeros(shape=sensitivities.shape[0])
+            firsts[makes_sense] = mskno[1][ii] # NB: goes wrong if 0 True values
+            firsts[~makes_sense] = -1
+
+            # last True in each column is element before!
+            lasts = numpy.zeros(shape=sensitivities.shape[0])
+            lasts[makes_sense] = numpy.hstack((mskno[1][ii[1:]-1], mskno[1][-1]))
+            lasts[~makes_sense] = 0
+
+            lower = numpy.array([z[i, firsts[i]] for i in range(firsts.shape[0])])
+            upper = numpy.array([z[i, lasts[i]] for i in range(lasts.shape[0])])
+            dz = upper - lower
+            # by handling > as false, nans are counted as not in range.
+            # There may be nans in z
+            with numpy.errstate(invalid="ignore"):
+                for (dz_k, dz_lim) in enumerate(arr_dz):
+                    mat[dz_k, msk_i] = (dz >= dz_lim).sum() / sensitivities.shape[0]
+
+        return (arr_dz, arr_sens, mat)
+
+
+
+    def summarise_ak(self,
+            nstep=11,
+            z=None):
         """Summarise characteristics of averaging kernels (N x p x q)
-
-        :param ndarray aks: nd-array of averaging kernels
         """
 
         # Degrees of freedom according to:
@@ -116,9 +172,11 @@ class AKStats:
 
         f = matplotlib.pyplot.figure()
         a = f.add_subplot(1, 1, 1)
-        ct = a.contourf(sens_fractions, sens_counters, sensmat.T,
-            numpy.linspace(0, 1, 11))
-        cb = f.colorbar(ct)
+        cs = a.contourf(sens_fractions, sens_counters, sensmat.T,
+            numpy.linspace(0, 1, nstep),
+            cmap="gray")
+        cs.clabel(colors="red")
+        cb = f.colorbar(cs)
         a.set_xlabel("Sensitivity")
         a.set_ylabel("No. of levels")
         cb.set_label("Fraction")
@@ -126,6 +184,23 @@ class AKStats:
                      "sensitivity > x"))
         graphics.print_or_show(
             f, False, self.filename.format(name=self.name))
+
+        (arr_dz, arr_sens, mat_z) = self.sensitivity_matrix_z(z=z)
+
+        f = matplotlib.pyplot.figure()
+        a = f.add_subplot(1, 1, 1)
+        cs = a.contourf(arr_sens, arr_dz, mat_z,
+            numpy.linspace(0, 1, nstep),
+            cmap="gray")
+        cs.clabel(colors="red")
+        cb = f.colorbar(cs)
+        a.set_xlabel("Sensitivity")
+        a.set_ylabel("Delta z [m]")
+        cb.set_label("Fraction")
+        a.set_title(("Fraction of profiles with sensitivity > x "
+                     "throughout a certain vertical range"))
+        graphics.print_or_show(
+            f, False, self.filename.format(name=self.name + "_dz"))
 
 
 def mixingratio2density(mixingratio, p, T):

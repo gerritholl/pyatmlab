@@ -1,3 +1,21 @@
+2014-10-28  Gerrit Holl  <gerrit.holl@utoronto.ca>:
+
+	* pyatmlab-0-0-50
+
+	* pyatmlab/collocations.py(CollocationDescriber):
+
+	- Uh-uh, only plot averaging kernel stuff if we actually have
+	averaging kernels.
+
+	* pyatmlab/physics.py(AKStats):
+
+	- Added method sensitivity_matrix_z.  Like sensitivity_matrix but a
+	little more involved as I want to know what vertical range this
+	corresponds to.
+
+	- Also add contour labels.  To be tweaked.
+
+
 2014-10-27  Gerrit Holl  <gerrit.holl@utoronto.ca>:
 
 	* pyatmlab-0-0-49
