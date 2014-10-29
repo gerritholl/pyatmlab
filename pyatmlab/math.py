@@ -7,6 +7,7 @@
 
 import numpy
 import numpy.linalg
+import scipy
 
 from . import tools
 from .meta import expanddoc
@@ -134,6 +135,27 @@ def regrid_ak(A, z_old, z_new, cut=False):
     else:
         W = linear_interpolation_matrix(z_old, z_new)
         return apply_W_A(W, A)
+
+def regrid_matrix(A, z_old, z_new):
+    """Regrid single matrix between grids.
+
+    Do not use for averaging kernels!
+
+    :param A:
+    :param z_old:
+    :param nd-array z_new: 1-D array
+    """
+
+    if z_old.shape[1] != A.shape[1]:
+        raise ValueError("Shapes dont match")
+    scipy.interpolate.interp1d
+    A_new = numpy.zeros(shape=(z_old.shape[0], z_new.shape[0]))
+    for i in range(z_old.shape[0]):
+        for x in range(A.shape[0]):
+            ip = scipy.interpolate.interp1d(z_old[i, :], A[x, :],
+                bounds_error=False)
+            A_new[i, :] = ip(z_new)
+    return A_new
 
 def apply_W_A(W, A):
     """Regrid averaging kernel matrix using W

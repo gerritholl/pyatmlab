@@ -8,6 +8,7 @@
 import os.path
 import datetime
 now = datetime.datetime.now
+import logging
 
 import numpy
 import matplotlib
@@ -66,7 +67,7 @@ def print_or_show(fig, show, outfile, in_plotdir=True, tikz=None, data=None):
         for outf in outfiles:
             if in_plotdir and not '/' in outf:
                 outf = os.path.join(plotdir(), outf)
-            print(now(), "Writing to file: %s" % outf)
+            logging.info("Writing to file: {}".format(outf))
             if not os.path.exists(os.path.dirname(outf)):
                 os.makedirs(os.path.dirname(outf))
             fig.canvas.print_figure(outf)

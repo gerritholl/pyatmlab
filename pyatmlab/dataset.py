@@ -72,6 +72,11 @@ class Dataset(metaclass=abc.ABCMeta):
         Dictionary whose keys may refer to other datasets with related
         information, such as DMPs.
 
+    - range::
+
+        If applicable, a tuple with (lo, hi) vertical limits of
+        sensitivity range in metre.
+
     """
 
     start_date = None
@@ -80,6 +85,7 @@ class Dataset(metaclass=abc.ABCMeta):
     aliases = {}
     unique_fields = {"time", "lat", "lon"}
     related = {}
+    range = None
 
     def __init__(self, **kwargs):
         for (k, v) in kwargs.items():

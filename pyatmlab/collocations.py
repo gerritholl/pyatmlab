@@ -1544,18 +1544,24 @@ class CollocationDescriber:
         
         logging.info("Summarising sensitivities")
         if p_ak is not None:
-            physics.AKStats(p_ak, 
+            paks = physics.AKStats(p_ak, 
                 name="{}_from_{}".format(
                     self.cd.primary.__class__.__name__,
-                    self.cd.secondary.__class__.__name__)).summarise_ak(
-                        z=self.p_col["z"])
+                    self.cd.secondary.__class__.__name__))
+            with numpy.errstate(invalid="warn"):
+                paks.plot_sensitivity_range(z=self.p_col["z"])
+                #paks.plot_sensitivity_density(z=numpy.nanmean(self.p_col["z"], 0))
+                paks.plot_sensitivity_density(z=self.p_col["z"])
 
         if s_ak is not None:
-            physics.AKStats(s_ak, 
+            saks = physics.AKStats(s_ak, 
             name="{}_from_{}".format(
                 self.cd.secondary.__class__.__name__,
-                self.cd.primary.__class__.__name__)).summarise_ak(
-                    z=self.s_col["z"])
+                self.cd.primary.__class__.__name__))
+            with numpy.errstate(invalid="warn"):
+                saks.plot_sensitivity_range(z=self.s_col["z"])
+                #saks.plot_sensitivity_density(z=numpy.nanmean(self.s_col["z"], 0))
+                saks.plot_sensitivity_density(z=self.s_col["z"])
 
     def visualise_profile_comparison(self, z_grid, filters=None):
         """Visualise profile comparisons.
@@ -1717,6 +1723,9 @@ class CollocationDescriber:
 
         To be written.
         """
+
+        self.cd.primary.range
+        self.cd.secondary.range
 
         self.p_col
         self.s_col

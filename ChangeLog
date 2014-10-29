@@ -1,3 +1,32 @@
+2014-10-29  Gerrit Holl  <gerrit.holl@utoronto.ca>:
+
+	* pyatmlab-0-0-51
+
+	* pyatmlab/collocations.py(CollocationDescriber):
+
+	- Plot both sensitivity range and dito density
+
+	* pyatmlab/dataset.py(Dataset):
+
+	- Add attribute 'range', to be set by hand
+
+	* pyatmlab/datasets.py(TansoFTSv10x):
+
+	- Set range, not really yet, placeholder
+
+	* pyatmlab/graphics.py(print_or_show):
+
+	- Use logging rather than print 
+
+	* pyatmlab/math.py(regrid_matrix):
+
+	- Added, regridding a matrix
+
+	* pyatmlab/physics.py(AKstats):
+
+	- Added method to plot sensitivity density as opposed to range.  Sort
+	of the integral of the range.
+
 2014-10-28  Gerrit Holl  <gerrit.holl@utoronto.ca>:
 
 	* pyatmlab-0-0-50

@@ -7,6 +7,7 @@
 Mostly obtained from PyARTS
 """
 
+import logging
 import numbers
 
 import numpy
@@ -25,7 +26,8 @@ from . import graphics
 
 class AKStats:
 
-    filename = "sensitivity_matrix_{name}."
+    filename = "sensitivity_{mode}_matrix_{name}."
+    cmap = "afmhot_r"
 
     def __init__(self, aks, name="UNDEFINED"):
         self.aks = aks.copy()
@@ -57,7 +59,22 @@ class AKStats:
 
         return self.aks.sum(1)
 
-    def sensitivity_matrix(self,
+    def sensitivity_density_matrix(self, sens_fractions=numpy.linspace(0, 1, 11)):
+        """What fraction of profiles have sensitivity >x at level y?
+
+        :param ndarray sens_fractions: Fractions x to consider
+        :returns: (sens_fractions, sens_mat),
+            where sens_mat is a matrix with fraction at each level with at
+            least sensitivity x.
+        """
+
+        sensitivities = self.sensitivities()
+        with numpy.errstate(invalid="ignore"):
+            sensmat = numpy.vstack([(sensitivities>x).sum(0) / sensitivities.shape[0]
+                for x in sens_fractions])
+        return (sens_fractions, sensmat)
+
+    def sensitivity_range_matrix(self,
         sens_fractions = numpy.linspace(0, 1, 11),
         sens_counters = None):
         """
@@ -96,10 +113,10 @@ class AKStats:
                     sens_fractions.shape[0], sens_counters.shape[0])
         return (sens_fractions, sens_counters, sensmat / self.aks.shape[0])
 
-    def sensitivity_matrix_z(self, z,
+    def sensitivity_range_matrix_z(self, z,
             arr_dz = numpy.linspace(0, 30e3, 11),
             arr_sens = numpy.linspace(0, 1, 11)):
-        """Like sensitivity_matrix but with elevation units.
+        """Like sensitivity_range_matrix but with elevation units.
 
         Returns a matrix with the fraction of elements where sensitivity
         exceeds 'x' for a range of elevations 'dz'.
@@ -151,11 +168,45 @@ class AKStats:
         return (arr_dz, arr_sens, mat)
 
 
-
-    def summarise_ak(self,
+    def plot_sensitivity_density(self,
             nstep=11,
             z=None):
-        """Summarise characteristics of averaging kernels (N x p x q)
+        """Visualise where sensors are typically sensitive
+        """
+
+        (sens_frac, sensmat) = self.sensitivity_density_matrix()
+
+        # regrid sensitivity matrix for z
+        if z.ndim > 1:
+            if (z.min(0) == z.max(0)).all():
+                z = z[0, :]
+            else:
+                newz = numpy.nanmean(z, 0)
+                logging.info("Regridding sensitivity matrices")
+                A_new = pamath.regrid_matrix(sensmat, z, newz)
+                logging.info("Done")
+                z = newz
+
+        #f = matplotlib.pyplot.figure()
+        (f, a) = matplotlib.pyplot.subplots() # = f.add_subplot(1, 1, 1)
+        cs = a.contourf(sens_frac, z, sensmat.T,
+            numpy.linspace(0, 1, nstep),
+            cmap=self.cmap)
+        #cs.clabel(colors="blue")
+        cb = f.colorbar(cs)
+        a.set_xlabel("Sensitivity")
+        a.set_ylabel("Elevation (approx) [m]")
+        cb.set_label("Fraction")
+        a.set_title("Elevation sensitivity density")
+        a.grid(which="major", color="white")
+        
+        graphics.print_or_show(
+            f, False, self.filename.format(mode="density_z", name=self.name))
+
+    def plot_sensitivity_range(self,
+            nstep=11,
+            z=None):
+        """Visualise vertical range of sensitivities
         """
 
         # Degrees of freedom according to:
@@ -168,14 +219,14 @@ class AKStats:
 
         max_sensitivities = sensitivities.max(1)
 
-        (sens_fractions, sens_counters, sensmat) = self.sensitivity_matrix()
+        (sens_fractions, sens_counters, sensmat) = self.sensitivity_range_matrix()
 
         f = matplotlib.pyplot.figure()
         a = f.add_subplot(1, 1, 1)
         cs = a.contourf(sens_fractions, sens_counters, sensmat.T,
             numpy.linspace(0, 1, nstep),
-            cmap="gray")
-        cs.clabel(colors="red")
+            cmap=self.cmap)
+        #cs.clabel(colors="blue")
         cb = f.colorbar(cs)
         a.set_xlabel("Sensitivity")
         a.set_ylabel("No. of levels")
@@ -183,16 +234,16 @@ class AKStats:
         a.set_title(("Fraction of profiles with at least N layers "
                      "sensitivity > x"))
         graphics.print_or_show(
-            f, False, self.filename.format(name=self.name))
+            f, False, self.filename.format(mode="range_n", name=self.name))
 
-        (arr_dz, arr_sens, mat_z) = self.sensitivity_matrix_z(z=z)
+        (arr_dz, arr_sens, mat_z) = self.sensitivity_range_matrix_z(z=z)
 
         f = matplotlib.pyplot.figure()
         a = f.add_subplot(1, 1, 1)
         cs = a.contourf(arr_sens, arr_dz, mat_z,
             numpy.linspace(0, 1, nstep),
-            cmap="gray")
-        cs.clabel(colors="red")
+            cmap=self.cmap)
+        #cs.clabel(colors="blue")
         cb = f.colorbar(cs)
         a.set_xlabel("Sensitivity")
         a.set_ylabel("Delta z [m]")
@@ -200,7 +251,7 @@ class AKStats:
         a.set_title(("Fraction of profiles with sensitivity > x "
                      "throughout a certain vertical range"))
         graphics.print_or_show(
-            f, False, self.filename.format(name=self.name + "_dz"))
+            f, False, self.filename.format(mode="range_z", name=self.name))
 
 
 def mixingratio2density(mixingratio, p, T):
