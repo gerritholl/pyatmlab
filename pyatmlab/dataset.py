@@ -72,11 +72,6 @@ class Dataset(metaclass=abc.ABCMeta):
         Dictionary whose keys may refer to other datasets with related
         information, such as DMPs.
 
-    - range::
-
-        If applicable, a tuple with (lo, hi) vertical limits of
-        sensitivity range in metre.
-
     """
 
     start_date = None
@@ -85,7 +80,6 @@ class Dataset(metaclass=abc.ABCMeta):
     aliases = {}
     unique_fields = {"time", "lat", "lon"}
     related = {}
-    range = None
 
     def __init__(self, **kwargs):
         for (k, v) in kwargs.items():
@@ -704,6 +698,14 @@ class HomemadeDataset(MultiFileDataset):
 
 class ProfileDataset(Dataset):
     """Abstract superclass with stuff for anything having profiles
+
+    Additional attributes compared to its parent::
+
+    - range::
+
+        If applicable, a tuple with (lo, hi) vertical limits of
+        sensitivity range in metre.
+
     """
 
     # source of profile sizes.  Can be a number (fixed size) or a string
@@ -713,6 +715,8 @@ class ProfileDataset(Dataset):
     # does the A priori need converting?  It does for PEARL, does not for
     # others
     A_needs_converting = tools.NotTrueNorFalse
+
+    range = None
 
     @tools.mutable_cache(maxsize=10)
     def read(self, f=None, fields="all"):

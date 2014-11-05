@@ -30,7 +30,7 @@ def layer2level(z, q, ignore_negative=False):
     if ignore_negative:
         q[q<0]=0
     y_avg = (q[1:, ...] + q[:-1, ...])/2
-    return (y_avg * dz)
+    return (y_avg * numpy.atleast_2d(dz).T)
 
 @expanddoc
 def integrate_with_height(z, q, ignore_negative=False):
@@ -126,7 +126,12 @@ def regrid_ak(A, z_old, z_new, cut=False):
     """
 
     if cut:
-        outside = (z_new > numpy.nanmax(z_old)) | ~numpy.isfinite(z_old)
+        # make sure we take care of flagged data
+        valid = ~(A<-10).all(0)
+
+        outside = ((z_new > numpy.nanmax(z_old)) | 
+                   (z_new < numpy.nanmin(z_old)) |
+                   ~numpy.isfinite(z_old))
         W = linear_interpolation_matrix(z_old, z_new[~outside])
 #        A_new = numpy.zeros(shape=(z_new.shape[0], z_new.shape[0]))
         A_new = apply_W_A(W, A[~outside, :][:, ~outside])

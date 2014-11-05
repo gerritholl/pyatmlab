@@ -51,7 +51,12 @@ class TansoFTSv10x(dataset.MultiFileDataset, TansoFTSBase):
     re = r"GOSATTFTS(?P<year>\d{4})(?P<month>\d{2})(?P<day>\d{2})_02P02TV010[01]R\d{6}[0-9A-F]{5}\.h5"
     aliases = {"CH4_profile": "ch4_profile", "ak": "ch4_ak"}
     n_prof = "p"
-    range = (0, 0)
+    # For TANSO collocating with PEARL, 50% of profiles have > 40%
+    # sensitivity between 5.3 km and 9.7 km.
+    #
+    # For TANSO collocating with ACE, 20% of profiles have > 30%
+    # sensitivity between 5.2 km and 9.5 km.
+    range = (5e3, 10e3)
 
     # NOTE: For Tanso FTS v1.0x, there are THREE pressure profiles:
     #
@@ -543,6 +548,7 @@ class ACEFTS(dataset.SingleMeasurementPerFileDataset,
     filename_fields = {"orbit": "u4", "version": "S3"}
     unique_fields = {"orbit", "time"}
     n_prof = "z"
+    range = (5e3, 150e3)
 
     @staticmethod
     def read_header(fp):

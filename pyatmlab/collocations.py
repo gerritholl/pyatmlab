@@ -756,6 +756,11 @@ class CollocationDescriber:
         "_{allmask}"
         "_{quantity}.")
 
+    figname_compare_pc = ("compare_partial_columns_ch4"
+        "_{self.cd.primary.__class__.__name__}"
+        "_{self.cd.secondary.__class__.__name__}"
+        "_targ{self.target}.")
+
 
     # When removing a priori extending above the averaging kernels, or
     # high-res profiles extending beyond the averaging kernels, remove all
@@ -1156,13 +1161,14 @@ class CollocationDescriber:
     # This fails because it uses state information that changes between
     # calls, and this state information is not taken into account.
     #@functools.lru_cache(maxsize=10)
-    def smooth(self):
+    _p_smooth = _s_smooth = None
+    def smooth(self, reload=False):
         """Smooth one profile with the others AK
         
         Normally the profile with the largest information content should
         be smoothed according to the AK of the other.  This is not
-        determined automatically but determined by self.target which is
-        set upon object creation.
+        determined automatically but determined by self.target which
+        should set upon object creation.
 
         Source is equation 4 in:
         
@@ -1177,22 +1183,34 @@ class CollocationDescriber:
 
         TODO:
             - Verify the regridding of the a-priori (xa).  It seems that
-              z_xa is sometimes severely negative!
-
-            - The z-grid for the averaging kernels, z_ak, might not extend
-              all the way down to the surface.  Should verify that p-to-z
-              conversion is correct!
+              z_xa is sometimes severely negative?  Is this still true?
 
             - Verify that the regridding of averaging kernels is now
               correct for profiles where lowest level of low-res
               AK is above the common z-grid to which we are trying
               to interpolate, effectively extrapolating, which is
               ill-conditioned.
+
+            - For calculating partial columns, any regridding needs to be
+              also applied to (at least) T and P!  Better set p_smooth,
+              s_smooth as ndarrays containing several types...
+
+            - Should turn around AK axes in reading routine, not here!
+              And/or only if really needed!
+
+            - Clean up the code... should first decide on a z-grid and
+              then regrid everything (raw, smoothed, p, T, etc.) onto
+              this?  And split in smaller methods/functions, this method
+              is too large!
         """
+
+        # Cache results "by hand"; it appears lru_cache doesn't work well
+        # with methods depending on the state of a (mutable) object
+        if not reload and (self._p_smooth is not None) and (self._s_smooth is not None):
+            return (self._p_smooth, self._s_smooth)
 
         targ = (self.p_col, self.s_col)[self.target][self.mask]
         targobj = (self.cd.primary, self.cd.secondary)[self.target]
-        #highres = (self.prim, self.sec)[1-self.target]
 
         # Regrid primary and secondary CH4 profiles so that they share the
         # same z_grid, that will be set to self.z_grid.
@@ -1202,78 +1220,27 @@ class CollocationDescriber:
         # regrid_profiles (through scipy.interpolate.interp1d)
         (p_ch4_int, s_ch4_int) = self.regrid_profiles()
 
-        extra = xa = p_xa = z_xa = ak = p_ak = z_ak = W = None
-
-        #z_xh = targ["z"] # WRONG! Both p_ch4_int and s_ch4_int are
+        # Both p_ch4_int and s_ch4_int are
         # already regridded to both be on self.z_grid (see above)
-        # Note: these are aliases that should refer to the same object;
-        # changes made to xh and xl will therefore equally apply to
-        # p_ch4_int, s_ch4_int, *even if xl is not referred to any
-        # further*.  Of course, that does not work for 'x = x[:, bla]'.
+
         xh = (p_ch4_int, s_ch4_int)[1-self.target]
         z_xh = self.z_grid
 
-        ## Look for a priori
-        if not "CH4_apriori" in targ.dtype.names: # try to add
-            extra = targobj.get_additional_field(targ, "(smoothing)")
-            xa = extra["ch4_ap"]
-            p_xa = extra["p_ch4_ap"]
-            if "z_ch4_ap" in extra.dtype.names:
-                z_xa = extra["z_ch4_ap"]
-            #xa = targobj.get_additional_field(targ, "CH4_apriori")
-        else:
-            xa = targ["CH4_apriori"]
-            p_xa = targ["p"]
-            z_xa = targ["z"]
+        # Get "pure" a priori and averaging kernels.  May or may not be on
+        # the same grid as target objects.
+        (xa, z_xa, ak, z_ak) = self._get_xa_ak(targ, targobj)
 
-        ## Look for averaging kernel
-        if "ak" in targobj.aliases:
-            #ak = targ["CH4_ak"]
-            ak = targ[targobj.aliases["ak"]]
-            p_ak = targ["p"]
-            z_ak = targ["z"]
-        elif extra is None:
-            ak = targobj.get_additional_field(targ, "CH4_ak")
-            raise RuntimeError("Found a priori but not AK outside ?!")
-        else:
-            ak = extra["ch4_ak"]
-            p_ak = extra["p_ch4_ak"]
-            if "z_ch4_ak" in extra.dtype.names:
-                z_ak = extra["z_ch4_ap"]
-
-        # axes tend to be turned around?  FIXME VERIFY
-        # Should rather do this in reading routine?!
-        #A = ak
-        ak = ak.swapaxes(1, 2)
-
-        if z_xa is None: # convert from p_xa
-            if (p_xa.shape == targ["p"].shape) and (p_xa - targ["p"]).max() < 1e-3: # same grid
-                z_xa = targ["z"]
-            elif (p_xa.shape == targ["T"].shape == targ["h2o"].shape):
-                # cannot be vectorised :(
-                filler = numpy.empty(shape=(p_xa.shape[1],), dtype="f4")
-                filler.fill(numpy.nan)
-                z_xa = [(physics.p2z_hydrostatic(
-                            p_xa[i, :],
-                            targ[i]["T"],
-                            targ[i]["h2o"],
-                            targ[i]["p0"],
-                            targ[i]["z0"],
-                            targ[i]["lat"],
-                            -1, extend=True)
-                                if numpy.isfinite(xa[i]).any() else filler)
-                            for i in range(targ.shape[0])]
-                z_xa = numpy.vstack(z_xa)
-            else:
-                raise ValueError("Can't find z.  Should I try harder?")
-
-        if z_ak is None: # convert from p_ak
-            if (p_ak.shape == targ["p"].shape) and numpy.nanmax(p_ak - targ["p"]) < 1e-3:
-                z_ak = targ["z"]
-            elif (p_ak.shape == p_xa.shape) and numpy.nanmax(p_ak - p_xa) < 1e-3:
-                z_ak = z_xa
-            else:
-                raise ValueError("Don't know how to get z.  Should I try harder?")
+        # FIXME: Should rather do this in reading routine...?
+        # but: needs a priori that may be available only "elsewhere"
+        # FIXME: Separate conversion and swapping
+        if targobj.A_needs_converting:
+            # correct ak according to e-mail Stephanie 2014-06-17
+            ak = ak.swapaxes(1, 2)
+            ak = numpy.rollaxis(
+                numpy.dstack(
+                    [pamath.convert_ak_ap2vmr(
+                        ak[i, :, :], xa[i, :])
+                    for i in range(xa.shape[0])]), 2, 0)
 
         ## Make sure everything is on the same grid:
         #
@@ -1291,101 +1258,25 @@ class CollocationDescriber:
         # so we choose the lowest maximum z and cut off everything to
         # that.
 
-        lowest_z_max = min(numpy.nanmax(z_ak), numpy.nanmax(z_xa),
-            z_xh.max())
+        (xa, z_xa, ak, z_ak, xh, z_xh, p_ch4_int, s_ch4_int) = \
+            self._limit_to_shared_range(xa, z_xa, ak, z_ak, xh, z_xh, 
+                p_ch4_int, s_ch4_int)
 
-        if z_xh.max() > lowest_z_max:
-            # cut off actual profiles
-            toohigh = self.z_grid > lowest_z_max
-            xh = xh[:, ~toohigh]
-            z_xh = z_xh[~toohigh]
-            self.z_grid = z_xh
-            # NB: to smooth the high-res measurement `xh` with the
-            # low-resolution averaging kernel `ak` and a priori `xa`, the
-            # low--res measurement is not used.  However, it is still
-            # returned, so should still be cut off so caller can
-            # consistently process. 
-            p_ch4_int = p_ch4_int[:, ~toohigh]
-            s_ch4_int = s_ch4_int[:, ~toohigh]
-
-        if numpy.nanmax(z_ak) > lowest_z_max:
-            # Remove all levels where more than a fraction of the a priori
-            # have no information due to the levels being too high.
-            st = numpy.seterr(invalid="ignore")
-            toohigh = ((z_ak > lowest_z_max).sum(0) / z_ak.shape[0]
-                            > self.toohigh_fraction_cutoff)
-            numpy.seterr(**st)
-            # see http://stackoverflow.com/q/26259662/974555 for a
-            # rationale on this 'roundabout' way
-            ak = ak[:, ~toohigh, :][:, :, ~toohigh]
-            z_ak = z_ak[:, ~toohigh]
-
-        if numpy.nanmax(z_xa) > lowest_z_max:
-            st = numpy.seterr(invalid="ignore")
-            toohigh = ((z_xa > lowest_z_max).sum(0) / z_xa.shape[0]
-                           > self.toohigh_fraction_cutoff)
-            numpy.seterr(**st)
-            xa = xa[:, ~toohigh]
-            z_xa = z_xa[:, ~toohigh]
-
-        # WARNING: What if z_ak.shape == z_xh.shape
-        # but z_ak != z_xh?
-        if z_ak.shape == z_xh.shape and not tools.array_equal_with_equal_nans(z_ak, z_xh):
-            raise NotImplementedError("Improve z-axis checking!")
-        if z_ak.shape != z_xh.shape:
-            # regrid from z_xa to z_ak
-            #z_ak_new = targ["z"]
-            z_ak_new = z_xh
-            z_ak_old = z_ak
-            ak_old = ak
-            with numpy.errstate(invalid="ignore"):
-                ak_new = numpy.dstack([pamath.regrid_ak(
-                    ak_old[i, :, :], z_ak_old[i, :], z_ak_new, cut=True)
-                        for i in range(z_ak.shape[0])])
-#            W = numpy.dstack([
-#                pamath.linear_interpolation_matrix(
-#                    z_ak_old[i, :], z_ak_new)
-#                        for i in range(z_ak.shape[0])])
-#            # Give W a shape analogous to ak
-#            W = numpy.transpose(W, [2, 0, 1])
-##            z_ak_new = numpy.vstack([W[i, :, :].dot(z_ak[i, :]) for i in
-##                        range(W.shape[0])])
-#            ak_new = numpy.dstack(
-#                [pamath.apply_W_A(W[i, :, :], ak_old[i, :, :])
-#                    for i in range(W.shape[0])])
-            ak = numpy.rollaxis(ak_new, 2, 0)
-            z_ak = z_ak_new
-
-        # WARNING: What if z_xa.shape == z_xh.shape
-        # but z_xa != z_xh?
-        if z_xa.shape == z_xh.shape and not tools.array_equal_with_equal_nans(z_xa, z_xh):
-            raise NotImplementedError("Improve z-axis checking!")
-        if z_xa.shape != z_xh.shape:
-            #z_xa_new = targ["z"]
-            z_xa_new = z_xh
-            z_xa_old = z_xa
-            xa_old = xa
-            W = numpy.dstack([
-                pamath.linear_interpolation_matrix(
-                    z_xa_old[i, :], z_xa_new)
-                        for i in range(z_xa.shape[0])])
-            W = numpy.transpose(W, [2, 0, 1])
-            xa_new = numpy.vstack([
-                W[i, :, :].T.dot(xa_old[i, :]) for i in range(W.shape[0])])
-            # interpolation above sets values outside the range to the
-            # edge of the range, leading to a weird constant in CH4(z).
-            # We don't want that, set to nan instead.
-            # (disable temporarily so I have SOME result to show for PAHA)
-            #ok = numpy.isfinite(xa_new).any(1)
-            #outside = z_xa_new[ok, :] > z_xa_old.max(1)[ok, numpy.newaxis]
-            #xanew_tmp = xa_new[ok, :]
-            #xanew_tmp.flat[outside.ravel()] = numpy.nan
-            #xa_new[ok, :] = xanew_tmp
-            xa = xa_new
-            z_xa = z_xa_new
+        (xa, z_xa, ak, z_ak) = self._regrid_xa_ak(xa, z_xa, ak, z_ak, z_xh)
 
 
-        # OK :)
+        # OK :).  Now everything should be on the same z-grid!
+        #
+        # Prepare the ndarrays to populate.
+
+        (nprof, nlev) = p_ch4_int.shape
+        p = numpy.zeros(shape=nprof,
+            dtype=[("CH4", "f4", nlev),
+                   ("p", "f4", nlev),
+                   ("T", "f4", nlev),
+                   ("z", "f4", nlev)])
+        s = numpy.zeros_like(p)
+
 
         # where high-res profile is outside its z-range, set to a-priori
         # of low-res.  For example, PEARL may go down only to 19.5 km, but
@@ -1394,23 +1285,10 @@ class CollocationDescriber:
 
         xh[numpy.isnan(xh)] = xa[numpy.isnan(xh)]
 
-        if targobj.A_needs_converting:
-            # correct ak according to e-mail Stephanie 2014-06-17
-            ak = numpy.rollaxis(
-                numpy.dstack(
-                    [pamath.convert_ak_ap2vmr(
-                        ak[i, :, :], xa[i, :])
-                    for i in range(xa.shape[0])]), 2, 0)
-
-        #xs = xa + A.dot(xh-xa)
         # This is where the smoothing is actually performed!
         xs = numpy.vstack(
             [pamath.smooth_profile(xh[n, :], ak[n, :, :], xa[n, :])
                 for n in range(ak.shape[0])])
-#        xb = xh - xa
-#        xs = numpy.vstack(
-#            [xa[n, :] + ak[n, :, :].dot(xb[n, :]) for n in range(ak.shape[0])])
-#        xs = xa + numpy.core.umath_tests.matrix_multiply(A, xb[..., numpy.newaxis]).squeeze()
 
         # remove invalid data
         OK = numpy.isfinite(xs).any(1)
@@ -1424,9 +1302,22 @@ class CollocationDescriber:
         p_ch4_int = p_ch4_int[OK, :]
         s_ch4_int = s_ch4_int[OK, :]
 
+        if not all(numpy.array_equal(self.z_grid, z) for z in
+            (z_xa, z_ak, z_xh)):
+            raise RuntimeError("z_grids should be equal by now!")
+
+        self.z_smooth = z_xa
         if self.target == 0:
+            p["CH4"] = p_ch4_int
+            s["CH4"] = xs
+            self._p_smooth = p_ch4_int
+            self._s_smooth = xs
             return (p_ch4_int, xs)
         elif self.target == 1:
+            p["CH4"] = xs
+            s["CH4"] = s_ch4_int
+            self._p_smooth = xs
+            self._s_smooth = s_ch4_int
             return (xs, s_ch4_int)
         else:
             raise RuntimeError("Impossible!")
@@ -1718,17 +1609,217 @@ class CollocationDescriber:
 ##                     (z_grid, iqr["prim"], iqr["sec"], iqr["diff"])).T)
 ##         matplotlib.pyplot.close(f)
 
-    def partial_columns(self):
-        """Do some stuff with partial columns.
+    def partial_columns(self, smoothed=True):
+        """Calculate partial columns.
 
-        To be written.
         """
 
-        self.cd.primary.range
-        self.cd.secondary.range
+        shared_range = (max(self.cd.primary.range[0],
+                            self.cd.secondary.range[0]),
+                        min(self.cd.primary.range[1],
+                            self.cd.secondary.range[1]))
 
-        self.p_col
-        self.s_col
+        if smoothed:
+            (p, s) = self.smooth()
+            z = self.z_smooth
+        else:
+            raise NotImplementedError()
+
+        # levels in 'z' within shared_range
+        valid_range = (z > shared_range[0]) & (z < shared_range[1])
+
+        z_valid = z[valid_range]
+        p_valid_vmr = p.T[valid_range, :]
+        s_valid_vmr = s.T[valid_range, :]
+
+        p_valid_nd = physics.vmr2nd(p_valid_vmr, p_T, p_p)
+        s_valid_nd = physics.vmr2nd(s_valid_vmr, s_T, s_p)
+
+        p_parcol = pamath.integrate_with_height(
+            z_valid, p_valid_nd)
+        s_parcol = pamath.integrate_with_height(
+            z_valid, s_valid_nd)
+
+        return (p_parcol, s_parcol, (z[valid_range].min(), z[valid_range].max()))
+
+    def visualise_pc_comparison(self):
+        """Visualise comparison for partial columns
+        """
+        (p_parcol, s_parcol, valid_range) = self.partial_columns(smoothed=True)
+
+        (f, a) = matplotlib.pyplot.subplots()
+        valid = numpy.isfinite(p_parcol) & numpy.isfinite(s_parcol)
+        a.plot(p_parcol[valid], s_parcol[valid], '.')
+        mx = max(p_parcol[valid].max(), s_parcol[valid].max())
+        mn = min(p_parcol[valid].min(), s_parcol[valid].min())
+        a.plot([0, 2*mx], [0, 2*mx], linewidth=2, color="black")
+        a.set_xlim(0.9*mn, 1.1*mx)
+        a.set_ylim(0.9*mn, 1.1*mx)
+        a.set_xlabel("CH4 {:s} [unit]".format(self.cd.primary.name))
+        a.set_ylabel("CH4 {:s} [unit]".format(self.cd.secondary.name))
+        a.set_title(("Partial columns {:.1f}--{:.1f}, "
+                     "difference {:s}-{:s}").format(
+                        valid_range[0]/1e3, valid_range[1]/1e3,
+                        self.cd.primary.name, self.cd.secondary.name))
+        graphics.print_or_show(f, None, self.figname_compare_pc.format(**vars()))
+
+    def _get_xa_ak(self, targ, targobj):
+        """Helper for smooth(...)
+        """
+
+        z_xa = z_ak = None
+
+        ## Look for a priori and z-grid (will need to regrid later)
+        if "ap" in targobj.aliases:
+            xa = targ[targobj.aliases["ap"]]
+            p_xa = targ["p"]
+            z_xa = targ["z"]
+        else:
+            extra = targobj.get_additional_field(targ, "(smoothing)")
+            xa = extra["ch4_ap"]
+            p_xa = extra["p_ch4_ap"]
+            if "z_ch4_ap" in extra.dtype.names:
+                z_xa = extra["z_ch4_ap"]
+            #xa = targobj.get_additional_field(targ, "CH4_apriori")
+
+        ## Look for averaging kernel and z-grid (will need to regrid later)
+        if "ak" in targobj.aliases:
+            ak = targ[targobj.aliases["ak"]]
+            p_ak = targ["p"]
+            z_ak = targ["z"]
+        elif extra is None:
+            ak = targobj.get_additional_field(targ, "CH4_ak")
+            raise RuntimeError("Found a priori but not AK outside ?!")
+        else:
+            ak = extra["ch4_ak"]
+            p_ak = extra["p_ch4_ak"]
+            if "z_ch4_ak" in extra.dtype.names:
+                z_ak = extra["z_ch4_ap"]
+
+        if z_xa is None: # convert from p_xa
+            if (p_xa.shape == targ["p"].shape) and (p_xa - targ["p"]).max() < 1e-3: # same grid
+                z_xa = targ["z"]
+            elif (p_xa.shape == targ["T"].shape == targ["h2o"].shape):
+                # cannot be vectorised :(
+                filler = numpy.empty(shape=(p_xa.shape[1],), dtype="f4")
+                filler.fill(numpy.nan)
+                z_xa = [(physics.p2z_hydrostatic(
+                            p_xa[i, :],
+                            targ[i]["T"],
+                            targ[i]["h2o"],
+                            targ[i]["p0"],
+                            targ[i]["z0"],
+                            targ[i]["lat"],
+                            -1, extend=True)
+                                if numpy.isfinite(xa[i]).any() else filler)
+                            for i in range(targ.shape[0])]
+                z_xa = numpy.vstack(z_xa)
+            else:
+                raise ValueError("Can't find z.  Should I try harder?")
+
+        if z_ak is None: # convert from p_ak
+            if (p_ak.shape == targ["p"].shape) and numpy.nanmax(p_ak - targ["p"]) < 1e-3:
+                z_ak = targ["z"]
+            elif (p_ak.shape == p_xa.shape) and numpy.nanmax(p_ak - p_xa) < 1e-3:
+                z_ak = z_xa
+            else:
+                raise ValueError("Don't know how to get z.  Should I try harder?")
+        return (xa, z_xa, ak, z_ak)
+
+
+    def _limit_to_shared_range(self, xa, z_xa, ak, z_ak, xh, z_xh,
+        p_ch4_int, s_ch4_int):
+        """Helper for smooth(...)
+        """
+        lowest_z_max = min(numpy.nanmax(z_ak), numpy.nanmax(z_xa),
+            z_xh.max())
+
+        if z_xh.max() > lowest_z_max:
+            # cut off actual profiles
+            toohigh = self.z_grid > lowest_z_max
+            xh = xh[:, ~toohigh]
+            z_xh = z_xh[~toohigh]
+            self.z_grid = z_xh
+            # NB: to smooth the high-res measurement `xh` with the
+            # low-resolution averaging kernel `ak` and a priori `xa`, the
+            # low--res measurement is not used.  However, it is still
+            # returned, so should still be cut off so caller can
+            # consistently process. 
+            p_ch4_int = p_ch4_int[:, ~toohigh]
+            s_ch4_int = s_ch4_int[:, ~toohigh]
+
+        if numpy.nanmax(z_ak) > lowest_z_max:
+            # Remove all levels where more than a fraction of the a priori
+            # have no information due to the levels being too high.
+            st = numpy.seterr(invalid="ignore")
+            toohigh = ((z_ak > lowest_z_max).sum(0) / z_ak.shape[0]
+                            > self.toohigh_fraction_cutoff)
+            numpy.seterr(**st)
+            # see http://stackoverflow.com/q/26259662/974555 for a
+            # rationale on this 'roundabout' way
+            ak = ak[:, ~toohigh, :][:, :, ~toohigh]
+            z_ak = z_ak[:, ~toohigh]
+
+        if numpy.nanmax(z_xa) > lowest_z_max:
+            st = numpy.seterr(invalid="ignore")
+            toohigh = ((z_xa > lowest_z_max).sum(0) / z_xa.shape[0]
+                           > self.toohigh_fraction_cutoff)
+            numpy.seterr(**st)
+            xa = xa[:, ~toohigh]
+            z_xa = z_xa[:, ~toohigh]
+
+        return (xa, z_xa, ak, z_ak, xh, z_xh, p_ch4_int, s_ch4_int)
+
+    def _regrid_xa_ak(self, xa, z_xa, ak, z_ak, z_xh):
+        """Helper for smooth(...)
+        """
+        # WARNING: What if z_ak.shape == z_xh.shape
+        # but z_ak != z_xh?
+        if z_ak.shape == z_xh.shape and not tools.array_equal_with_equal_nans(z_ak, z_xh):
+            raise NotImplementedError("Improve z-axis checking!")
+        if z_ak.shape != z_xh.shape:
+            # regrid from z_xa to z_ak
+            #z_ak_new = targ["z"]
+            z_ak_new = z_xh
+            z_ak_old = z_ak
+            ak_old = ak
+            with numpy.errstate(invalid="ignore"):
+                ak_new = numpy.dstack([pamath.regrid_ak(
+                    ak_old[i, :, :], z_ak_old[i, :], z_ak_new, cut=True)
+                        for i in range(z_ak.shape[0])])
+            ak = numpy.rollaxis(ak_new, 2, 0)
+            z_ak = z_ak_new
+
+        # WARNING: What if z_xa.shape == z_xh.shape
+        # but z_xa != z_xh?
+        if z_xa.shape == z_xh.shape and not tools.array_equal_with_equal_nans(z_xa, z_xh):
+            raise NotImplementedError("Improve z-axis checking!")
+        if z_xa.shape != z_xh.shape:
+            #z_xa_new = targ["z"]
+            z_xa_new = z_xh
+            z_xa_old = z_xa
+            xa_old = xa
+            W = numpy.dstack([
+                pamath.linear_interpolation_matrix(
+                    z_xa_old[i, :], z_xa_new)
+                        for i in range(z_xa.shape[0])])
+            W = numpy.transpose(W, [2, 0, 1])
+            xa_new = numpy.vstack([
+                W[i, :, :].T.dot(xa_old[i, :]) for i in range(W.shape[0])])
+            # interpolation above sets values outside the range to the
+            # edge of the range, leading to a weird constant in CH4(z).
+            # We don't want that, set to nan instead.
+            # (disable temporarily so I have SOME result to show for PAHA)
+            # FIXME find a proper solution for this!
+            #ok = numpy.isfinite(xa_new).any(1)
+            #outside = z_xa_new[ok, :] > z_xa_old.max(1)[ok, numpy.newaxis]
+            #xanew_tmp = xa_new[ok, :]
+            #xanew_tmp.flat[outside.ravel()] = numpy.nan
+            #xa_new[ok, :] = xanew_tmp
+            xa = xa_new
+            z_xa = z_xa_new
+
+        return (xa, z_xa, ak, z_ak)
 
 def find_collocation_duplicates(p_col, s_col):
     dt = numpy.dtype([("A", "f8"), ("B", "f8"), ("C", "M8[s]"), ("D",

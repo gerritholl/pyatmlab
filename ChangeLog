@@ -1,3 +1,38 @@
+2014-11-05  Gerrit Holl  <gerrit.holl@utoronto.ca>:
+
+	* pyatmlab-0-0-52
+
+	* pyatmlab/collocations.py(CollocationDescriber):
+
+	- Continued work on partial columns.  Remains unfinished.
+
+	- Split smoothing method in smaller methods
+
+	* pyatmlab/dataset.py:
+
+	(Dataset): Move 'range' attribute to ProfileDataset
+
+	(ProfileDataset): Move 'range' attribute here.
+
+	* pyatmlab/datasets.py:
+
+	- Based on partial column sensitivity studies, write an estimated
+	range for TANSO and ACE
+
+	* pyatmlab/math.py:
+
+	(layer2level):
+
+	- Improve vectorisability
+
+	(regrid_ak):
+
+	- Make sure we take care of flagged/invalid data
+
+	* pyatmlab/physics.py(AKStats):
+
+	- When doing sensitivity studies, write some diagnostics
+
 2014-10-29  Gerrit Holl  <gerrit.holl@utoronto.ca>:
 
 	* pyatmlab-0-0-51

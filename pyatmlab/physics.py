@@ -187,6 +187,20 @@ class AKStats:
                 logging.info("Done")
                 z = newz
 
+        # write some diagnostics
+        for (i, f) in enumerate(sens_frac):
+            for p in (0.2, 0.5, 0.8):
+                makes_sense = z[sensmat[i, :]>p]
+                if makes_sense.any():
+                    logging.info(("Altitude range with at least "
+                        "{:.0%} >{:.0%} sensitive: {:.1f}--{:.1f} km").format(
+                            p, f, makes_sense.min()/1e3,
+                            makes_sense.max()/1e3))
+                else:
+                    logging.info(("Never more than {:.0%} with "
+                        "sensitivity {:.0%} :(").format(
+                        sensmat[i, :].max(), f))
+            
         #f = matplotlib.pyplot.figure()
         (f, a) = matplotlib.pyplot.subplots() # = f.add_subplot(1, 1, 1)
         cs = a.contourf(sens_frac, z, sensmat.T,
@@ -195,9 +209,9 @@ class AKStats:
         #cs.clabel(colors="blue")
         cb = f.colorbar(cs)
         a.set_xlabel("Sensitivity")
-        a.set_ylabel("Elevation (approx) [m]")
+        a.set_ylabel("Elevation [m]")
         cb.set_label("Fraction")
-        a.set_title("Elevation sensitivity density")
+        a.set_title("Elevation sensitivity density {}".format(self.name))
         a.grid(which="major", color="white")
         
         graphics.print_or_show(
