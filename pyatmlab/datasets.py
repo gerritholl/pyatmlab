@@ -97,17 +97,22 @@ class TansoFTSv10x(dataset.MultiFileDataset, TansoFTSBase):
                 A[k] = D[k][:]
         return A if fields=="all" else A[fields]
 
-    def get_z(self, obj):
-        try:
-            return super().get_z(obj)
-        except IndexError:
-            pass # parent failed, continue here
+    def get_z(self, obj, field=None):
+        if field is None:
+            try:
+                return super().get_z(obj)
+            except IndexError:
+                pass # parent failed, continue here
+        elif field != "T":
+            raise ValueError("No special case for {}".format(field))
         # See comment near top of this class; different p-grids, different
         # z-grids.  Want z-grid corresponding to CH4-profile.
         p_for_T = self.p_for_T_profile # down up to 1 kPa
         p_for_CH4 = obj["p"] # down to ~50 Pa
-        p_valid = p_for_CH4>0
-        p_for_CH4 = p_for_CH4[p_valid]
+        p_CH4_valid = p_for_CH4>0
+        p_for_CH4 = p_for_CH4[p_CH4_valid]
+        p_T_valid = p_for_T>0
+        p_valid = p_T_valid if field == "T" else p_CH4_valid
         # inter- and extra-polate T and h2o onto the p_for_CH4 grid
         # This introduces an extrapolation error but between 1 kPa and 50
         # Pa I don't really care, should be insignificant.
@@ -145,7 +150,9 @@ class TansoFTSv10x(dataset.MultiFileDataset, TansoFTSBase):
         # with the merged grid?!
         p_full = []
         p_full.append(obj["p0"])
+        p_for_T_i0 = len(p_full)
         p_full.extend(p_for_T)
+        p_for_T_i1 = len(p_full)
         p_for_ch4_i0 = len(p_full)
         p_full.extend(p_for_CH4)
         p_for_ch4_i1 = len(p_full)
@@ -190,9 +197,11 @@ class TansoFTSv10x(dataset.MultiFileDataset, TansoFTSBase):
         # this yields the "inverse" sorting indices to get back the
         # original order, but only for those that were part of p_for_CH4
         p_i_was_CH4 = ((p_inds>=p_for_ch4_i0) & (p_inds<p_for_ch4_i1)).nonzero()[0]
+        p_i_was_T   = ((p_inds>=p_for_T_i0)   & (p_inds<p_for_T_i1)).nonzero()[0]
 
-        z_ret = numpy.zeros(dtype="f4", shape=obj["p"].shape)
-        z_ret[p_valid] = z_extp[p_i_was_CH4]
+        z_ret = numpy.zeros(dtype="f4", 
+            shape=(p_for_T if field=="T" else p_for_CH4).shape)
+        z_ret[p_valid] = z_extp[p_i_was_T if field=="T" else p_i_was_CH4]
         z_ret[~p_valid] = numpy.nan
         return z_ret
         #return z_extp[p_i_was_CH4]#.data # no masked array...
@@ -201,6 +210,9 @@ class TansoFTSv10x(dataset.MultiFileDataset, TansoFTSBase):
 #        z_for_T = physics.p2z_hydrostatic(
 #            self.p_for_T_profile, obj["T"], obj["h2o"], 
 #            obj["p0"], obj["z0"], obj["lat"], -1)
+    
+    def get_z_for(self, obj, field):
+        return self.get_z(obj, field)
 
     def get_time_from_granule_contents(self, p):
         M = self.read(p, fields={"time"})
@@ -544,7 +556,7 @@ class ACEFTS(dataset.SingleMeasurementPerFileDataset,
     subdir = "{year:04d}-{month:02d}"
     re = r"(?P<type>s[sr])(?P<orbit>\d{5})v(?P<version>\d\.\d)\.asc"
     _time_format = "%Y-%m-%d %H:%M:%S"
-    aliases = {"CH4_profile": "CH4"}
+    aliases = {"CH4_profile": "CH4", "p": "P_atm"}
     filename_fields = {"orbit": "u4", "version": "S3"}
     unique_fields = {"orbit", "time"}
     n_prof = "z"

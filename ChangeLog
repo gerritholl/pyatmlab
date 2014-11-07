@@ -1,3 +1,36 @@
+2014-11-07  Gerrit Holl  <gerrit.holl@utoronto.ca>:
+
+	* pyatmlab-0-0-53
+
+	* pyatmlab/collocations.py(CollocationDescriber):
+
+	- When interpolating profiles and further processing them, don't only
+	hard-coded interpolate CH4 profiles, but also consider other fields,
+	such as p and T.
+
+	- A number of bugfixes
+
+	* pyatmlab/dataset.py:
+
+	(DataFileError):
+
+	- Superclass for InvalidFileError and InvalidDataError.
+
+	(Dataset): Give up on masked arrays
+
+	(ProfileDataset): Implemented get_z_for = get_z by default
+
+	* pyatmlab/datasets.py:
+
+	(TansoFTSv10x):
+
+	- When getting z, get either the z for the CH4 profile or for the T
+	profile.
+
+	(ACEFTS):
+
+	- Describe aliase p -> P_atm
+
 2014-11-05  Gerrit Holl  <gerrit.holl@utoronto.ca>:
 
 	* pyatmlab-0-0-52

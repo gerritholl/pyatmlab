@@ -20,11 +20,15 @@ import numpy.lib.recfunctions
 
 from . import tools
 
-class InvalidFileError(Exception):
+class DataFileError(Exception):
+    """Superclass for any datafile issues
+    """
+
+class InvalidFileError(DataFileError):
     """Raised when the requested information cannot be obtained from the file
     """
 
-class InvalidDataError(Exception):
+class InvalidDataError(DataFileError):
     """Raised when data is not how it should be.
     """
 
@@ -137,7 +141,7 @@ class Dataset(metaclass=abc.ABCMeta):
             try:
                 logging.debug("Reading {!s}".format(gran))
                 cont = self.read(str(gran), fields=fields)
-            except (OSError, ValueError) as exc:
+            except DataFileError as exc:
                 if onerror == "skip":
                     print("Could not read file {}: {}".format(
                         gran, exc.args[0], file=sys.stderr))
@@ -147,9 +151,11 @@ class Dataset(metaclass=abc.ABCMeta):
             else:
                 contents.append(cont)
         # retain type of first result, ordinary array of masked array
-        arr = (numpy.ma.concatenate 
-            if isinstance(contents[0], numpy.ma.MaskedArray)
-            else numpy.concatenate)(contents)
+        # Actually, I've given up on masked arrays
+#        arr = (numpy.ma.concatenate 
+#            if isinstance(contents[0], numpy.ma.MaskedArray)
+#            else numpy.concatenate)(contents)
+        arr = numpy.concatenate(contents)
         return arr if fields == "all" else arr[fields]
 #        return numpy.ma.concatenate(list(
 #            self.read(f) for f in self.find_granules(start, end)))
@@ -744,6 +750,15 @@ class ProfileDataset(Dataset):
         its own reading routine.
         """
         return dt["z"]
+
+    def get_z_for(self, dt, field):
+        """Get z-profile for particular field.
+
+        Takes as argument a single measurement and a field name.  This is
+        different from get_z because sometimes, some fields are on
+        different grids (such as T for Tanso).
+        """
+        return self.get_z(dt)
 
 class StationaryDataset(Dataset):
     """Abstract superclass for any ground-station dataset

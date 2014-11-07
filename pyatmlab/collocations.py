@@ -1061,67 +1061,96 @@ class CollocationDescriber:
                "{:.2f} km, {:.0f}°").format(mean_dist, mean_dir))
 
 
-    def interpolate_profiles(self, z_grid):
+    def interpolate_profiles(self, z_grid,
+            prim_fields=("CH4_profile",),
+            sec_fields=("CH4_profile",),
+            prim_filters=None,
+            sec_filters=None):
         """Interpolate profiles on a common z-grid
 
-        Currently hardcoded for CH4, linear.
+        (Currently hardcoded for CH4, linear.)
 
         :param z_grid: Altitude grid to compare on.  Both products will be
             interpolated onto this grid (may be a no-op for one).
+        :param tuple prim_fields: Fields from primary to interpolate
+        :param tuple sec_fields: Fields from secondary to interpolate
+        :param dict prim_filters: Filters to apply to primary fields.
+            The keys of the dict correspond to prim_fields.  The values
+            are tuples with (forward, backward) which should be a pair of
+            functions for the forward and backward transformation, for
+            example, (log, exp)
+        :param dict sec_filters: Filters to apply to secondary fields.
+            Contents as for prim_filters.
         :returns: (p_ch4, s_ch4) interpolated profiles
         """
 
         # do not apply mask here, rather loop only through unmasked
         # elements further down.
 
-        p_ch4 = self.p_col[self.cd.primary.aliases["CH4_profile"]]
+        prims = [self.cd.primary.aliases.get(p, p) for p in prim_fields]
+        secs = [self.cd.secondary.aliases.get(s, s) for s in sec_fields]
 
-        s_ch4 = self.s_col[self.cd.secondary.aliases["CH4_profile"]]
+        p = {"orig": self.p_col}
+        #p_ch4 = self.p_col[self.cd.primary.aliases["CH4_profile"]]
+
+        s = {"orig": self.s_col}
+        #s_ch4 = self.s_col[self.cd.secondary.aliases["CH4_profile"]]
 
         # interpolate profiles onto a common grid
         val_ind = self.mask.nonzero()[0]
-        p_ch4_int = numpy.zeros(shape=(val_ind.size, z_grid.size),
-            dtype=p_ch4.dtype)
-        s_ch4_int = numpy.zeros_like(p_ch4_int)
+        p["int"] = numpy.zeros(shape=(val_ind.size,),
+            dtype=[(x[0], x[1], z_grid.size) for x in p["orig"].dtype.descr
+                        if x[0] in prims])
+        s["int"] = numpy.zeros_like(p["int"], 
+            dtype=[(x[0], x[1], z_grid.size) for x in s["orig"].dtype.descr
+                        if x[0] in secs])
+
+        p["filters"] = prim_filters or {}
+        s["filters"] = sec_filters or {}
+        p["obj"] = self.cd.primary
+        s["obj"] = self.cd.secondary
 
         k = 0
-        for i in self.mask.nonzero()[0]:#range(self.p_col.size):
-            p_z_i = self.cd.primary.get_z(self.p_col[i])
-            s_z_i = self.cd.secondary.get_z(self.s_col[i])
-            # workaround https://github.com/numpy/numpy/issues/2972
-            p_valid = (p_ch4[i] > 0) & numpy.isfinite(p_z_i)
-            s_valid = (s_ch4[i] > 0) & numpy.isfinite(s_z_i)
-            p_ch4_i = (p_ch4[i].data 
-                if isinstance(p_ch4, numpy.ma.MaskedArray)
-                else p_ch4[i])[p_valid]
-            s_ch4_i = (s_ch4[i].data
-                if isinstance(s_ch4, numpy.ma.MaskedArray)
-                else s_ch4[i])[s_valid]
-            if p_valid.shape == p_z_i.shape:
-                p_z_i = p_z_i[p_valid]
-            if s_valid.shape == s_z_i.shape:
-                s_z_i = s_z_i[s_valid]
+        for i in self.mask.nonzero()[0]:
+            p["z_i"] = self.cd.primary.get_z(self.p_col[i])
+            s["z_i"] = self.cd.secondary.get_z(self.s_col[i])
+            # masked arrays buggy https://github.com/numpy/numpy/issues/2972
+            p["valid"] = numpy.isfinite(p["z_i"])
+            s["valid"] = numpy.isfinite(s["z_i"])
+            p["z_i"] = p["z_i"][p["valid"]]
+            s["z_i"] = s["z_i"][s["valid"]]
             #
-            if not p_valid.any() or not s_valid.any():
-                p_ch4_int[k, :] = numpy.nan
-                s_ch4_int[k, :] = numpy.nan
+            if not p["valid"].any() or not s["valid"].any():
+                p["int"][k].fill(numpy.nan)
+                s["int"][k].fill(numpy.nan)
                 k += 1
                 continue
 
-            p_interp = scipy.interpolate.interp1d(p_z_i, p_ch4_i,
-                bounds_error=False)
-            s_interp = scipy.interpolate.interp1d(s_z_i, s_ch4_i,
-                bounds_error=False)
+            for arr in (p, s):
+                for f in arr["int"].dtype.names:
+                    y = arr["orig"][f][i, :]
+                    if arr["orig"][f].shape[1] == arr["valid"].size:
+                        z = arr["z_i"]
+                        val = arr["valid"] & numpy.isfinite(y)
+                    else:
+                        z = arr["obj"].get_z_for(arr["orig"][i], f)
+                        val = numpy.isfinite(z) & numpy.isfinite(y)
+                    y = y[val]
+                    if f in arr["filters"]:
+                        y = arr["filters"][f][0](y)
+                    interp = scipy.interpolate.interp1d(
+                        z, y, bounds_error=False)
+                    yp = interp(z_grid)
+                    if f in arr["filters"]:
+                        yp = arr["filters"][f][1](yp)
+                    arr["int"][f][i, :] = yp
 
-            p_ch4_int[k, :] = p_interp(z_grid)
-            s_ch4_int[k, :] = s_interp(z_grid)
             k += 1
 
-        return (p_ch4_int, s_ch4_int)
-#                
-#        self.s_col
+        return (p["int"], s["int"])
 
-    def regrid_profiles(self):
+    def regrid_profiles(self,
+            *args, **kwargs):
         """Interpolate both profiles to grid of target.
 
         Take the z-grid from the target and interpolate all profiles from
@@ -1132,6 +1161,8 @@ class CollocationDescriber:
 
         Set self.z_grid to the z_grid that is finally used, and return
         interpolated profiles (primary, secondary).
+
+        Arguments as for interpolate_profiles.
         """
 
         targ = (self.p_col, self.s_col)[self.target]
@@ -1143,7 +1174,9 @@ class CollocationDescriber:
 #        z = targ["z"][0, :]
         z = numpy.nanmean(numpy.array(z_all, dtype="f8"), 0)
 
-        (p_ch4_int, s_ch4_int) = self.interpolate_profiles(z)
+        (p_int, s_int) = self.interpolate_profiles(z, 
+            *args, **kwargs)
+
 #        xa = targ["CH4_apriori"]
 #
 #        targ_ch4_int = (p_ch4_int, s_ch4_int)[self.target]
@@ -1151,7 +1184,7 @@ class CollocationDescriber:
 #        xh[numpy.isnan(xh)] = xa[numpy.isnan(xh)]
 
         self.z_grid = z
-        return (p_ch4_int, s_ch4_int)
+        return (p_int, s_int)
 
 
         # fill up 'nans' using a priori
@@ -1211,6 +1244,7 @@ class CollocationDescriber:
 
         targ = (self.p_col, self.s_col)[self.target][self.mask]
         targobj = (self.cd.primary, self.cd.secondary)[self.target]
+        nontargobj = (self.cd.primary, self.cd.secondary)[1-self.target]
 
         # Regrid primary and secondary CH4 profiles so that they share the
         # same z_grid, that will be set to self.z_grid.
@@ -1218,7 +1252,15 @@ class CollocationDescriber:
         # NB: if a profile's z_grid does not extend to the full range of
         # self.z_grid, any "extrapolated" values are set to numpy.nan by
         # regrid_profiles (through scipy.interpolate.interp1d)
-        (p_ch4_int, s_ch4_int) = self.regrid_profiles()
+        flds = ("CH4_profile", "T", "p")
+        filts = dict(p=(numpy.log, numpy.exp))
+        (p_int, s_int) = self.regrid_profiles(
+            prim_fields=flds,
+            sec_fields=flds,
+            prim_filters=filts,
+            sec_filters=filts)
+        p_ch4_int = p_int[self.cd.primary.aliases["CH4_profile"]]
+        s_ch4_int = s_int[self.cd.secondary.aliases["CH4_profile"]]
 
         # Both p_ch4_int and s_ch4_int are
         # already regridded to both be on self.z_grid (see above)
@@ -1258,25 +1300,14 @@ class CollocationDescriber:
         # so we choose the lowest maximum z and cut off everything to
         # that.
 
-        (xa, z_xa, ak, z_ak, xh, z_xh, p_ch4_int, s_ch4_int) = \
+        (xa, z_xa, ak, z_ak, xh, z_xh, p_int, s_int) = \
             self._limit_to_shared_range(xa, z_xa, ak, z_ak, xh, z_xh, 
-                p_ch4_int, s_ch4_int)
+                p_int, s_int)
 
         (xa, z_xa, ak, z_ak) = self._regrid_xa_ak(xa, z_xa, ak, z_ak, z_xh)
 
 
         # OK :).  Now everything should be on the same z-grid!
-        #
-        # Prepare the ndarrays to populate.
-
-        (nprof, nlev) = p_ch4_int.shape
-        p = numpy.zeros(shape=nprof,
-            dtype=[("CH4", "f4", nlev),
-                   ("p", "f4", nlev),
-                   ("T", "f4", nlev),
-                   ("z", "f4", nlev)])
-        s = numpy.zeros_like(p)
-
 
         # where high-res profile is outside its z-range, set to a-priori
         # of low-res.  For example, PEARL may go down only to 19.5 km, but
@@ -1299,28 +1330,31 @@ class CollocationDescriber:
         OK = OK & (~invalid)
 
         xs = xs[OK, :]
-        p_ch4_int = p_ch4_int[OK, :]
-        s_ch4_int = s_ch4_int[OK, :]
+        p_int = p_int[OK]
+        s_int = s_int[OK]
 
         if not all(numpy.array_equal(self.z_grid, z) for z in
             (z_xa, z_ak, z_xh)):
             raise RuntimeError("z_grids should be equal by now!")
 
         self.z_smooth = z_xa
-        if self.target == 0:
-            p["CH4"] = p_ch4_int
-            s["CH4"] = xs
-            self._p_smooth = p_ch4_int
-            self._s_smooth = xs
-            return (p_ch4_int, xs)
-        elif self.target == 1:
-            p["CH4"] = xs
-            s["CH4"] = s_ch4_int
-            self._p_smooth = xs
-            self._s_smooth = s_ch4_int
-            return (xs, s_ch4_int)
-        else:
-            raise RuntimeError("Impossible!")
+        (p_int, s_int)[1-self.target][nontargobj.aliases["CH4_profile"]] = xs
+#        if self.target == 0:
+#            #p["CH4_profile"] = p_ch4_int
+#            s["CH4_profile"] = xs
+#            #self._p_smooth = p_ch4_int
+#            #self._s_smooth = xs
+#            #return (p_ch4_int, xs)
+#        elif self.target == 1:
+#            p["CH4_profile"] = xs
+#            #s["CH4_profile"] = s_ch4_int
+#            #self._p_smooth = xs
+#            #self._s_smooth = s_ch4_int
+#            #return (xs, s_ch4_int)
+#        else:
+#            raise RuntimeError("Impossible!")
+
+        return (p_int, s_int)
 
 
     def _compare_profiles(self, p_ch4_int, s_ch4_int,
@@ -1349,17 +1383,18 @@ class CollocationDescriber:
 
         Currently hardcoded for CH4.
 
-        Arguments as for interpolate_profiles.
-
         Returns percentiles (5, 25, 50, 75, 95) for difference, 
         root mean square difference, ratio, and original values, as a
         dictionary.
         """
 
-        (p_ch4_int, s_ch4_int) = self.interpolate_profiles(z_grid)
+        (p_int, s_int) = self.interpolate_profiles(z_grid,
+            prim_fields=("CH4_profile",),
+            sec_fields=("CH4_profile",))
 
-        return self._compare_profiles(p_ch4_int, s_ch4_int,
-            percs=percs)
+        return self._compare_profiles(
+            p_int[self.cd.primary.aliases["CH4_profile"]],
+            s_int[self.cd.secondary.aliases["CH4_profile"]], percs=percs)
 
     def compare_profiles_smooth(self, _,
             percs=(5, 25, 50, 75, 95)):
@@ -1370,9 +1405,11 @@ class CollocationDescriber:
         # use averaging kernel and a priori of dataset with less vertical
         # resolution
 
-        (p_ch4_int, s_ch4_int) = self.smooth()
+        (p_int, s_int) = self.smooth()
 
-        return self._compare_profiles(p_ch4_int, s_ch4_int, percs=percs)
+        return self._compare_profiles(
+            p_int[self.cd.primary.aliases["CH4_profile"]],
+            s_int[self.cd.secondary.aliases["CH4_profile"]], percs=percs)
 
     def plot_aks(self):
         """Visualise averaging kernels.
@@ -1459,7 +1496,7 @@ class CollocationDescriber:
 
         Currently hardcoded for CH4.
 
-        Arguments as for compare_profiles and interpolate_profiles, plus
+        Arguments as for compare_profiles, plus
         an additional argument `filters` that will be passed on to
         self.filter plus a color keyword arg, colour keyword arg must be a
         tuple for (raw, smooth).
@@ -1500,7 +1537,6 @@ class CollocationDescriber:
         percs[self.mask_label + "_smooth"] = self.compare_profiles_smooth(
                     z_grid, p_locs)
         z_grids["smooth"] = self.z_grid
-#        profs[self.mask_label + "_raw"] = self.interpolate_profiles(z_grid)
         percs[self.mask_label + "_raw"] = self.compare_profiles_raw(
                     z_grid, p_locs)
         z_grids["raw"] = z_grid
@@ -1629,11 +1665,15 @@ class CollocationDescriber:
         valid_range = (z > shared_range[0]) & (z < shared_range[1])
 
         z_valid = z[valid_range]
-        p_valid_vmr = p.T[valid_range, :]
-        s_valid_vmr = s.T[valid_range, :]
+        p_valid_vmr = p[self.cd.primary.aliases["CH4_profile"]].T[valid_range, :]
+        s_valid_vmr = s[self.cd.secondary.aliases["CH4_profile"]].T[valid_range, :]
 
-        p_valid_nd = physics.vmr2nd(p_valid_vmr, p_T, p_p)
-        s_valid_nd = physics.vmr2nd(s_valid_vmr, s_T, s_p)
+        p_valid_nd = physics.vmr2nd(p_valid_vmr,
+            p[self.cd.primary.aliases.get("T", "T")].T[valid_range, :],
+            p[self.cd.primary.aliases.get("p", "p")].T[valid_range, :])
+        s_valid_nd = physics.vmr2nd(p_valid_vmr,
+            s[self.cd.secondary.aliases.get("T", "T")].T[valid_range, :],
+            s[self.cd.secondary.aliases.get("p", "p")].T[valid_range, :])
 
         p_parcol = pamath.integrate_with_height(
             z_valid, p_valid_nd)
@@ -1672,8 +1712,8 @@ class CollocationDescriber:
         ## Look for a priori and z-grid (will need to regrid later)
         if "ap" in targobj.aliases:
             xa = targ[targobj.aliases["ap"]]
-            p_xa = targ["p"]
-            z_xa = targ["z"]
+            p_xa = targ[targobj.aliases.get("p", "p")]
+            z_xa = targ[targobj.aliases.get("z", "z")]
         else:
             extra = targobj.get_additional_field(targ, "(smoothing)")
             xa = extra["ch4_ap"]
@@ -1685,8 +1725,8 @@ class CollocationDescriber:
         ## Look for averaging kernel and z-grid (will need to regrid later)
         if "ak" in targobj.aliases:
             ak = targ[targobj.aliases["ak"]]
-            p_ak = targ["p"]
-            z_ak = targ["z"]
+            p_ak = targ[targobj.aliases.get("p", "p")]
+            z_ak = targ[targobj.aliases.get("z", "z")]
         elif extra is None:
             ak = targobj.get_additional_field(targ, "CH4_ak")
             raise RuntimeError("Found a priori but not AK outside ?!")
@@ -1697,7 +1737,9 @@ class CollocationDescriber:
                 z_ak = extra["z_ch4_ap"]
 
         if z_xa is None: # convert from p_xa
-            if (p_xa.shape == targ["p"].shape) and (p_xa - targ["p"]).max() < 1e-3: # same grid
+            if ((p_xa.shape == targ[targobj.aliases.get("p", "p")].shape)
+                and (p_xa - targ[targobj.aliases.get("p", "p")]).max()
+                < 1e-3): # same grid
                 z_xa = targ["z"]
             elif (p_xa.shape == targ["T"].shape == targ["h2o"].shape):
                 # cannot be vectorised :(
@@ -1718,7 +1760,9 @@ class CollocationDescriber:
                 raise ValueError("Can't find z.  Should I try harder?")
 
         if z_ak is None: # convert from p_ak
-            if (p_ak.shape == targ["p"].shape) and numpy.nanmax(p_ak - targ["p"]) < 1e-3:
+            if ((p_ak.shape == targ[targobj.aliases.get("p", "p")].shape)
+                and numpy.nanmax(p_ak - targ[targobj.aliases.get("p", "p")])
+                < 1e-3):
                 z_ak = targ["z"]
             elif (p_ak.shape == p_xa.shape) and numpy.nanmax(p_ak - p_xa) < 1e-3:
                 z_ak = z_xa
@@ -1728,7 +1772,7 @@ class CollocationDescriber:
 
 
     def _limit_to_shared_range(self, xa, z_xa, ak, z_ak, xh, z_xh,
-        p_ch4_int, s_ch4_int):
+        p_int, s_int):
         """Helper for smooth(...)
         """
         lowest_z_max = min(numpy.nanmax(z_ak), numpy.nanmax(z_xa),
@@ -1745,8 +1789,19 @@ class CollocationDescriber:
             # low--res measurement is not used.  However, it is still
             # returned, so should still be cut off so caller can
             # consistently process. 
-            p_ch4_int = p_ch4_int[:, ~toohigh]
-            s_ch4_int = s_ch4_int[:, ~toohigh]
+            p_int_new = numpy.zeros(shape=p_int.shape, dtype=
+                [(x[0], x[1], (~toohigh).sum())
+                    for x in p_int.dtype.descr])
+            s_int_new = numpy.zeros(shape=s_int.shape, dtype=
+                [(x[0], x[1], (~toohigh).sum())
+                    for x in s_int.dtype.descr])
+            for f in p_int.dtype.names:
+                p_int_new[f] = p_int[f][:, ~toohigh]
+            for f in s_int.dtype.names:
+                s_int_new[f] = s_int[f][:, ~toohigh]
+            (p_int, s_int) = (p_int_new, s_int_new)
+            #p_ch4_int = p_ch4_int[:, ~toohigh]
+            #s_ch4_int = s_ch4_int[:, ~toohigh]
 
         if numpy.nanmax(z_ak) > lowest_z_max:
             # Remove all levels where more than a fraction of the a priori
@@ -1768,7 +1823,7 @@ class CollocationDescriber:
             xa = xa[:, ~toohigh]
             z_xa = z_xa[:, ~toohigh]
 
-        return (xa, z_xa, ak, z_ak, xh, z_xh, p_ch4_int, s_ch4_int)
+        return (xa, z_xa, ak, z_ak, xh, z_xh, p_int, s_int)
 
     def _regrid_xa_ak(self, xa, z_xa, ak, z_ak, z_xh):
         """Helper for smooth(...)
