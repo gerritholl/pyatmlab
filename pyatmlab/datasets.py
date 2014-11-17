@@ -12,8 +12,9 @@ import scipy.interpolate
 import h5py
 from . import dataset
 from . import physics
-from . import math
+from . import math as pamath
 from . import geo
+from . import constants
 from .constants import ppm as PPM, hecto as HECTO
 
 class TansoFTSBase(dataset.ProfileDataset):
@@ -112,6 +113,7 @@ class TansoFTSv10x(dataset.MultiFileDataset, TansoFTSBase):
         p_CH4_valid = p_for_CH4>0
         p_for_CH4 = p_for_CH4[p_CH4_valid]
         p_T_valid = p_for_T>0
+        p_for_T = p_for_T[p_T_valid]
         p_valid = p_T_valid if field == "T" else p_CH4_valid
         # inter- and extra-polate T and h2o onto the p_for_CH4 grid
         # This introduces an extrapolation error but between 1 kPa and 50
@@ -200,7 +202,7 @@ class TansoFTSv10x(dataset.MultiFileDataset, TansoFTSBase):
         p_i_was_T   = ((p_inds>=p_for_T_i0)   & (p_inds<p_for_T_i1)).nonzero()[0]
 
         z_ret = numpy.zeros(dtype="f4", 
-            shape=(p_for_T if field=="T" else p_for_CH4).shape)
+            shape=(p_T_valid if field=="T" else p_CH4_valid).shape)
         z_ret[p_valid] = z_extp[p_i_was_T if field=="T" else p_i_was_CH4]
         z_ret[~p_valid] = numpy.nan
         return z_ret
@@ -307,8 +309,8 @@ class TansoFTSv001(dataset.SingleFileDataset, TansoFTSBase):
                 z0=data["z0"][n],
                 lat=data["lat"][n])[dummy:]
 
-            ncd[n] = math.integrate_with_height(z, nd)
-            ncd_e[n] = math.integrate_with_height(z, nd_e)
+            ncd[n] = pamath.integrate_with_height(z, nd)
+            ncd_e[n] = pamath.integrate_with_height(z, nd_e)
 
         return (ncd, ncd_e)
 
@@ -556,7 +558,7 @@ class ACEFTS(dataset.SingleMeasurementPerFileDataset,
     subdir = "{year:04d}-{month:02d}"
     re = r"(?P<type>s[sr])(?P<orbit>\d{5})v(?P<version>\d\.\d)\.asc"
     _time_format = "%Y-%m-%d %H:%M:%S"
-    aliases = {"CH4_profile": "CH4", "p": "P_atm"}
+    aliases = {"CH4_profile": "CH4", "p": "P_pa"}
     filename_fields = {"orbit": "u4", "version": "S3"}
     unique_fields = {"orbit", "time"}
     n_prof = "z"
@@ -595,7 +597,7 @@ class ACEFTS(dataset.SingleMeasurementPerFileDataset,
             # https://github.com/numpy/numpy/issues/4583
             #D = numpy.ma.empty((150,),
             D = numpy.empty((150,),
-                list(zip(names, ["f8"]*len(names))))
+                list(zip(names, ["f4"]*len(names))) + [("P_pa", "f4")])
 
             for (n, line) in enumerate(fp):
                 # why does this not work?
@@ -612,6 +614,7 @@ class ACEFTS(dataset.SingleMeasurementPerFileDataset,
 
         # km -> m
         D["z"] *= 1e3
+        D["P_pa"] = D["P_atm"] * constants.atm
 
         head["lat"] = float(head["latitude"])
         head["lon"] = float(head["longitude"])

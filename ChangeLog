@@ -1,3 +1,38 @@
+2014-11-17  Gerrit Holl  <gerrit.holl@utoronto.ca>:
+
+	* pyatmlab-0-0-54
+
+	* pyatmlab/collocations.py(CollocationDescriber):
+
+	- In updated profile intercomparison, fix bug when some fields have
+	more flagged data than others.
+
+	- Write out z-grid after smoothing
+
+	- Add y-label to ak-plots
+
+	- Plot DOF histograms
+
+	- Plot scatterplots as difference vs. reference 
+
+	* pyatmlab/constants.py:
+
+	- Add atm = 101325 # Pa
+
+	* pyatmlab/datasets.py:
+
+	(TansoFTSBase):
+
+	- Fix bug, consider flags also for p_for_T
+
+	(TansoFTSv10x):
+
+	- Fix bug with flagging
+
+	(ACEFTS):
+
+	- Convert P_atm to P_pa
+
 2014-11-07  Gerrit Holl  <gerrit.holl@utoronto.ca>:
 
 	* pyatmlab-0-0-53

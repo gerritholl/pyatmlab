@@ -1117,8 +1117,8 @@ class CollocationDescriber:
             # masked arrays buggy https://github.com/numpy/numpy/issues/2972
             p["valid"] = numpy.isfinite(p["z_i"])
             s["valid"] = numpy.isfinite(s["z_i"])
-            p["z_i"] = p["z_i"][p["valid"]]
-            s["z_i"] = s["z_i"][s["valid"]]
+            #p["z_i"] = p["z_i"][p["valid"]]
+            #s["z_i"] = s["z_i"][s["valid"]]
             #
             if not p["valid"].any() or not s["valid"].any():
                 p["int"][k].fill(numpy.nan)
@@ -1129,17 +1129,26 @@ class CollocationDescriber:
             for arr in (p, s):
                 for f in arr["int"].dtype.names:
                     y = arr["orig"][f][i, :]
+                    # FIXME: to determine validity, don't simply say
+                    # 'y>0', rather consider actual flagged values, should
+                    # be documented... this will cause a bug when y can
+                    # really be smaller than 0!
                     if arr["orig"][f].shape[1] == arr["valid"].size:
-                        z = arr["z_i"]
-                        val = arr["valid"] & numpy.isfinite(y)
+                        z = arr["z_i"].copy()
+                        val = arr["valid"] & numpy.isfinite(y) & (y>=0)
                     else:
                         z = arr["obj"].get_z_for(arr["orig"][i], f)
-                        val = numpy.isfinite(z) & numpy.isfinite(y)
-                    y = y[val]
+                        val = numpy.isfinite(z) & numpy.isfinite(y) & (y>=0)
+                    #y = y[val]
+                    y[~val] = numpy.nan
+                    z[~val] = numpy.nan
+                    if not val.any():
+                        arr["int"][f][i, :] = numpy.nan
+                        continue
                     if f in arr["filters"]:
-                        y = arr["filters"][f][0](y)
+                        y[val] = arr["filters"][f][0](y[val])
                     interp = scipy.interpolate.interp1d(
-                        z, y, bounds_error=False)
+                        z[val], y[val], bounds_error=False)
                     yp = interp(z_grid)
                     if f in arr["filters"]:
                         yp = arr["filters"][f][1](yp)
@@ -1316,6 +1325,7 @@ class CollocationDescriber:
 
         xh[numpy.isnan(xh)] = xa[numpy.isnan(xh)]
 
+
         # This is where the smoothing is actually performed!
         xs = numpy.vstack(
             [pamath.smooth_profile(xh[n, :], ak[n, :, :], xa[n, :])
@@ -1338,6 +1348,7 @@ class CollocationDescriber:
             raise RuntimeError("z_grids should be equal by now!")
 
         self.z_smooth = z_xa
+        logging.info("Z-grid after smoothing: {!s}".format(z_xa))
         (p_int, s_int)[1-self.target][nontargobj.aliases["CH4_profile"]] = xs
 #        if self.target == 0:
 #            #p["CH4_profile"] = p_ch4_int
@@ -1459,6 +1470,7 @@ class CollocationDescriber:
 
         for a in a_both:
             a.set_xlabel("Mean averaging kernel []")
+            a.set_ylabel("Elevation [m]")
             a.set_xlim([mn, mx])
             a.set_ylim([0, 40e3])
 
@@ -1490,6 +1502,36 @@ class CollocationDescriber:
                 saks.plot_sensitivity_range(z=self.s_col["z"])
                 #saks.plot_sensitivity_density(z=numpy.nanmean(self.s_col["z"], 0))
                 saks.plot_sensitivity_density(z=self.s_col["z"])
+
+
+        # and dof histograms
+
+
+        logging.info("Histogramming degrees of freedom")
+        if p_ak is not None:
+            dofs = p_ak.trace(axis1=1, axis2=2)
+            (f, a) = matplotlib.pyplot.subplots()
+            a.hist(dofs[numpy.isfinite(dofs)], 20)
+            a.set_xlabel("DOFs")
+            a.set_ylabel("count")
+            a.set_title("histogram DOF collocated {}".format(
+                self.cd.primary.name))
+            graphics.print_or_show(f, False,
+                "hist_dof_{}_from_{}.".format(self.cd.primary.__class__.__name__,
+                    self.cd.secondary.__class__.__name__))
+
+        if s_ak is not None:
+            dofs = s_ak.trace(axis1=1, axis2=2)
+            (f, a) = matplotlib.pyplot.subplots()
+            a.hist(dofs[numpy.isfinite(dofs)], 20)
+            a.set_xlabel("DOFs")
+            a.set_ylabel("count")
+            a.set_title("histogram DOF collocated {}".format(
+                self.cd.secondary.name))
+            graphics.print_or_show(f, False,
+                "hist_dof_{}_from_{}.".format(self.cd.secondary.__class__.__name__,
+                    self.cd.primary.__class__.__name__))
+
 
     def visualise_profile_comparison(self, z_grid, filters=None):
         """Visualise profile comparisons.
@@ -1689,16 +1731,19 @@ class CollocationDescriber:
 
         (f, a) = matplotlib.pyplot.subplots()
         valid = numpy.isfinite(p_parcol) & numpy.isfinite(s_parcol)
-        a.plot(p_parcol[valid], s_parcol[valid], '.')
+        #a.plot(p_parcol[valid], s_parcol[valid], '.')
+        a.plot(p_parcol[valid], s_parcol[valid]-p_parcol[valid], '.')
         mx = max(p_parcol[valid].max(), s_parcol[valid].max())
         mn = min(p_parcol[valid].min(), s_parcol[valid].min())
-        a.plot([0, 2*mx], [0, 2*mx], linewidth=2, color="black")
+        #a.plot([0, 2*mx], [0, 2*mx], linewidth=2, color="black")
+        a.plot([0, 2*mx], [0, 0], linewidth=2, color="black")
         a.set_xlim(0.9*mn, 1.1*mx)
-        a.set_ylim(0.9*mn, 1.1*mx)
-        a.set_xlabel("CH4 {:s} [unit]".format(self.cd.primary.name))
-        a.set_ylabel("CH4 {:s} [unit]".format(self.cd.secondary.name))
+        #a.set_ylim(0.9*mn, 1.1*mx)
+        a.set_xlabel("CH4 {:s} [mol/m^2]".format(self.cd.primary.name))
+        a.set_ylabel("CH4 {:s} - {:s} [mol/m^2]".format(
+            self.cd.primary.name, self.cd.secondary.name))
         a.set_title(("Partial columns {:.1f}--{:.1f}, "
-                     "difference {:s}-{:s}").format(
+                     "difference {:s} - {:s}").format(
                         valid_range[0]/1e3, valid_range[1]/1e3,
                         self.cd.primary.name, self.cd.secondary.name))
         graphics.print_or_show(f, None, self.figname_compare_pc.format(**vars()))
