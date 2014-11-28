@@ -15,7 +15,7 @@ from . import physics
 from . import math as pamath
 from . import geo
 from . import constants
-from .constants import ppm as PPM, hecto as HECTO
+from .constants import ppm as PPM, hecto as HECTO, kilo as KILO
 
 class TansoFTSBase(dataset.ProfileDataset):
     """Applicable to both Tanso FTS versions
@@ -50,7 +50,9 @@ class TansoFTSv10x(dataset.MultiFileDataset, TansoFTSBase):
     """
 
     re = r"GOSATTFTS(?P<year>\d{4})(?P<month>\d{2})(?P<day>\d{2})_02P02TV010[01]R\d{6}[0-9A-F]{5}\.h5"
-    aliases = {"CH4_profile": "ch4_profile", "ak": "ch4_ak"}
+    aliases = {"CH4_profile": "ch4_profile",
+               "ak": "ch4_ak",
+               "delta_CH4_profile": "ch4_profile_e"}
     n_prof = "p"
     # For TANSO collocating with PEARL, 50% of profiles have > 40%
     # sensitivity between 5.3 km and 9.7 km.
@@ -110,9 +112,11 @@ class TansoFTSv10x(dataset.MultiFileDataset, TansoFTSBase):
         # z-grids.  Want z-grid corresponding to CH4-profile.
         p_for_T = self.p_for_T_profile # down up to 1 kPa
         p_for_CH4 = obj["p"] # down to ~50 Pa
-        p_CH4_valid = p_for_CH4>0
+        p_CH4_valid = numpy.isfinite(p_for_CH4)
+        p_CH4_valid[p_CH4_valid] = p_for_CH4[p_CH4_valid] > 0
         p_for_CH4 = p_for_CH4[p_CH4_valid]
-        p_T_valid = p_for_T>0
+        p_T_valid = numpy.isfinite(p_for_T)
+        p_T_valid[p_T_valid] = p_for_T[p_T_valid] > 0
         p_for_T = p_for_T[p_T_valid]
         p_valid = p_T_valid if field == "T" else p_CH4_valid
         # inter- and extra-polate T and h2o onto the p_for_CH4 grid
@@ -558,7 +562,9 @@ class ACEFTS(dataset.SingleMeasurementPerFileDataset,
     subdir = "{year:04d}-{month:02d}"
     re = r"(?P<type>s[sr])(?P<orbit>\d{5})v(?P<version>\d\.\d)\.asc"
     _time_format = "%Y-%m-%d %H:%M:%S"
-    aliases = {"CH4_profile": "CH4", "p": "P_pa"}
+    aliases = {"CH4_profile": "CH4",
+        "delta_CH4_profile": "CH4_err",
+        "p": "P_pa"}
     filename_fields = {"orbit": "u4", "version": "S3"}
     unique_fields = {"orbit", "time"}
     n_prof = "z"
@@ -654,6 +660,112 @@ class ACEFTS(dataset.SingleMeasurementPerFileDataset,
             return m * 1e3
         else:
             return m
+            
+
+class EurekaHDF(dataset.SingleFileDataset, dataset.ProfileDataset):
+    # NOTE: there is a bug in older versions of Python-hdf4 that causes it to
+    # crash on some HDF files.  The Eureka Bruker CH4 HDF files happen to
+    # have a crash on
+    # CH4.MIXING.RATIO.VOLUME_ABSORPTION.SOLAR_UNCERTAINTY.SYSTEMATIC.COVARIANCE
+    # The bug was fixed 2014-11-26
+    _nlev = 47
+    _dtp = [("time", "datetime64[s]"),
+            ("lat", "f4"),
+            ("lon", "f4"),
+            ("p0", "f4"),
+            ("z0", "f4"),
+            ("z", "f4", _nlev),
+            ("p", "f4", _nlev),
+            ("T", "f4", _nlev),
+            ("CH4_VMR", "f4", _nlev),
+            ("CH4_ak", "f4", (_nlev, _nlev)),
+            ("CH4_SA_random", "f4", (_nlev, _nlev)),
+            ("CH4_SA_system", "f4", (_nlev, _nlev)),
+            ("CH4_pc", "f4", _nlev),
+            ("CH4_ap_pc", "f4", _nlev),
+            ("CH4_tc", "f4"),
+            ("CH4_ap_tc", "f4"),
+            ("CH4_ak_tc", "f4", _nlev),
+            ("delta_CH4_tc_random", "f4"),
+            ("delta_CH4_tc_system", "f4"),
+            ("sza", "f4"),
+            ("saa", "f4"),
+            ("H2O_VMR", "f4", _nlev)
+            ]
+
+    _trans = {"DATETIME": "time",
+        "LATITUDE.INSTRUMENT": "lat",
+        "LONGITUDE.INSTRUMENT": "lon",
+        "ALTITUDE.INSTRUMENT": "z0",
+        "SURFACE.PRESSURE_INDEPENDENT": "p0",
+        "SURFACE.TEMPERATURE_INDEPENDENT": "T0",
+        "ALTITUDE": "z",
+        "PRESSURE_INDEPENDENT": "p",
+        "TEMPERATURE_INDEPENDENT": "T",
+        "CH4.MIXING.RATIO.VOLUME_ABSORPTION.SOLAR": "CH4_VMR",
+        "CH4.MIXING.RATIO.VOLUME_ABSORPTION.SOLAR_AVK": "CH4_ak",
+        "CH4.MIXING.RATIO.VOLUME_ABSORPTION.SOLAR_UNCERTAINTY.RANDOM.COVARIANCE":
+            "CH4_SA_random",
+        "CH4.MIXING.RATIO.VOLUME_ABSORPTION.SOLAR_UNCERTAINTY.SYSTEMATIC.COVARIANCE":
+           "CH4_SA_system",
+        "CH4.COLUMN.PARTIAL_ABSORPTION.SOLAR": "CH4_pc",
+        "CH4.COLUMN.PARTIAL_ABSORPTION.SOLAR_APRIORI": "CH4_ap_pc",
+        "CH4.COLUMN_ABSORPTION.SOLAR": "CH4_tc",
+        "CH4.COLUMN_ABSORPTION.SOLAR_APRIORI": "CH4_ap_tc",
+        "CH4.COLUMN_ABSORPTION.SOLAR_AVK": "CH4_ak_tc",
+        "CH4.COLUMN_ABSORPTION.SOLAR_UNCERTAINTY.RANDOM.STANDARD":
+            "delta_CH4_tc_random",
+        "CH4.COLUMN_ABSORPTION.SOLAR_UNCERTAINTY.SYSTEMATIC.STANDARD":
+            "delta_CH4_tc_system",
+        "ANGLE.SOLAR_ZENITH.ASTRONOMICAL": "sza",
+        "ANGLE.SOLAR_AZIMUTH": "saa",
+        "H2O.MIXING.RATIO.VOLUME_ABSORPTION.SOLAR": "H2O_VMR"}
+    #_invtrans = {v: k for k, v in _trans.items()}
+    _fld_copy_scal = {"lat", "lon", "p0", "T0", "z0", "CH4_tc",
+        "CH4_ap_tc", "sza", "saa"}
+    _fld_copy_vec = {"z", "p", "T", "CH4_VMR", "CH4_pc", "CH4_ap_pc",
+        "CH4_ak_tc", "H2O_VMR"}
+    _fld_copy_mat = {"CH4_ak", "CH4_SA_system", "CH4_SA_random"}
+    def _read(self, path=None, fields="all"):
+        """Read granule"""
+        if path is None:
+            path = self.srcfile
+
+        sd = pyhdf.SD.SD(path)
+        (n_ds, n_attr) = sd.info()
+
+        # FIXME: crashes on no. 15...
+        L = range(n_ds)
+        L.remove(15)
+        n_elem = sd.select(0).info()[2]
+        M = numpy.empty(shape=(n_elem,), dtype=self._dtp)
+        dtm_mjd2k = sd.select(sd.name2index("DATETIME")).get()
+        dtm_mjd2k_s = dtm_mjd2k * 86400
+        M["time"] = numpy.datetime64(datetime.datetime(2000, 1, 1, 0, 0, 0) +
+                             dtm_mjd2k_s.astype("timedelta64[s]"))
+        # simple copy
+        for (full, short) in self._trans.items():
+            if short in self._fld_copy_scal:
+                M[short] = sd.select(sd.name2index(full)).get()
+            if short in self._fld_copy_vec:
+                M[short] = sd.select(sd.name2index(full)).get()[
+                    :, numpy.newaxis]
+
+        self.altitude_boundaries = sd.select(
+            sd.name2index("ALTITUDE.BOUNDARIES")).get()
+
+        M["p0"] *= HECTO
+        M["p"] *= HECTO
+        M["z"] *= KILO
+        M["z0"] *= KILO
+        M["VMR_CH4"] *= PPM
+
+        for i in L:
+            (nm, rank, dims, tp, n_attr) = sd.select(i).info()
+            if (rank==1 and dims==n_elem):
+                dtp.append((nm, "<f4"))
+            elif (rank>1 and dims[0]==n_elem):
+                dtp.append((nm, "<f4", dims[1:]))
             
 
 def collect_values(fp, N, dtp):

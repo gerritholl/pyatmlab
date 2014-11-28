@@ -1110,8 +1110,8 @@ class CollocationDescriber:
         p["obj"] = self.cd.primary
         s["obj"] = self.cd.secondary
 
-        k = 0
-        for i in self.mask.nonzero()[0]:
+        k = 0 # loops over output array
+        for i in val_ind: # loops over input array
             p["z_i"] = self.cd.primary.get_z(self.p_col[i])
             s["z_i"] = self.cd.secondary.get_z(self.s_col[i])
             # masked arrays buggy https://github.com/numpy/numpy/issues/2972
@@ -1128,22 +1128,24 @@ class CollocationDescriber:
 
             for arr in (p, s):
                 for f in arr["int"].dtype.names:
-                    y = arr["orig"][f][i, :]
+                    y = arr["orig"][f][i, :].copy()
                     # FIXME: to determine validity, don't simply say
                     # 'y>0', rather consider actual flagged values, should
                     # be documented... this will cause a bug when y can
                     # really be smaller than 0!
                     if arr["orig"][f].shape[1] == arr["valid"].size:
                         z = arr["z_i"].copy()
-                        val = arr["valid"] & numpy.isfinite(y) & (y>=0)
+                        val = arr["valid"] & numpy.isfinite(y)
+                        val[numpy.isfinite(y)] = (y[numpy.isfinite(y)]>=0)
                     else:
-                        z = arr["obj"].get_z_for(arr["orig"][i], f)
-                        val = numpy.isfinite(z) & numpy.isfinite(y) & (y>=0)
+                        z = arr["obj"].get_z_for(arr["orig"][i], f).copy()
+                        val = numpy.isfinite(z) & numpy.isfinite(y)
+                        val[numpy.isfinite(y)] = (y[numpy.isfinite(y)]>=0)
                     #y = y[val]
                     y[~val] = numpy.nan
                     z[~val] = numpy.nan
                     if not val.any():
-                        arr["int"][f][i, :] = numpy.nan
+                        arr["int"][f][k, :] = numpy.nan
                         continue
                     if f in arr["filters"]:
                         y[val] = arr["filters"][f][0](y[val])
@@ -1152,7 +1154,7 @@ class CollocationDescriber:
                     yp = interp(z_grid)
                     if f in arr["filters"]:
                         yp = arr["filters"][f][1](yp)
-                    arr["int"][f][i, :] = yp
+                    arr["int"][f][k, :] = yp
 
             k += 1
 
@@ -1242,8 +1244,9 @@ class CollocationDescriber:
 
             - Clean up the code... should first decide on a z-grid and
               then regrid everything (raw, smoothed, p, T, etc.) onto
-              this?  And split in smaller methods/functions, this method
-              is too large!
+              this?
+
+            - Consider errors!
         """
 
         # Cache results "by hand"; it appears lru_cache doesn't work well
@@ -1261,7 +1264,7 @@ class CollocationDescriber:
         # NB: if a profile's z_grid does not extend to the full range of
         # self.z_grid, any "extrapolated" values are set to numpy.nan by
         # regrid_profiles (through scipy.interpolate.interp1d)
-        flds = ("CH4_profile", "T", "p")
+        flds = ("CH4_profile", "delta_CH4_profile", "T", "p")
         filts = dict(p=(numpy.log, numpy.exp))
         (p_int, s_int) = self.regrid_profiles(
             prim_fields=flds,
@@ -1309,9 +1312,10 @@ class CollocationDescriber:
         # so we choose the lowest maximum z and cut off everything to
         # that.
 
-        (xa, z_xa, ak, z_ak, xh, z_xh, p_int, s_int) = \
+        p_sa = s_sa = None # FIXME
+        (xa, z_xa, ak, z_ak, xh, z_xh, p_int, s_int, p_sa, s_sa) = \
             self._limit_to_shared_range(xa, z_xa, ak, z_ak, xh, z_xh, 
-                p_int, s_int)
+                p_int, s_int, p_sa, s_sa)
 
         (xa, z_xa, ak, z_ak) = self._regrid_xa_ak(xa, z_xa, ak, z_ak, z_xh)
 
@@ -1817,7 +1821,7 @@ class CollocationDescriber:
 
 
     def _limit_to_shared_range(self, xa, z_xa, ak, z_ak, xh, z_xh,
-        p_int, s_int):
+        p_int, s_int, p_sa, s_sa):
         """Helper for smooth(...)
         """
         lowest_z_max = min(numpy.nanmax(z_ak), numpy.nanmax(z_xa),
@@ -1868,7 +1872,9 @@ class CollocationDescriber:
             xa = xa[:, ~toohigh]
             z_xa = z_xa[:, ~toohigh]
 
-        return (xa, z_xa, ak, z_ak, xh, z_xh, p_int, s_int)
+        # FIXME: do something with p_sa, s_sa?
+
+        return (xa, z_xa, ak, z_ak, xh, z_xh, p_int, s_int, p_sa, s_sa)
 
     def _regrid_xa_ak(self, xa, z_xa, ak, z_ak, z_xh):
         """Helper for smooth(...)

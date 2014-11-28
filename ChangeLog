@@ -1,3 +1,22 @@
+2014-11-28  Gerrit Holl  <gerrit.holl@utoronto.ca>:
+
+	* pyatmlab-0-0-55
+
+	* pyatmlab/collocations.py(CollocationDescriber):
+
+	- Fix bug when flagging data, flag on a copy not on the original,
+	oops.
+
+	- Start working toward treating errors.  Work in progress.
+
+	* pyatmlab/constants.py:
+
+	- Add avogadro constant and kilo
+
+	* pyatmlab/datasets.py:
+
+	- Started reading routine for HDF4-based Eureka data
+
 2014-11-17  Gerrit Holl  <gerrit.holl@utoronto.ca>:
 
 	* pyatmlab-0-0-54
