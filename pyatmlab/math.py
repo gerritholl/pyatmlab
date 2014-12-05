@@ -101,9 +101,11 @@ def linear_interpolation_matrix(x_old, x_new):
     :returns ndarray W: Interpolation transformation matrix.
     """
     
-    return numpy.vstack(
+    W = numpy.vstack(
         [numpy.interp(x_new, x_old, numpy.eye(x_old.size)[i, :])    
             for i in range(x_old.size)])
+    #return W
+    return W.T
 
 
 #    return numpy.vstack(
@@ -129,12 +131,18 @@ def regrid_ak(A, z_old, z_new, cut=False):
         # make sure we take care of flagged data
         valid = ~(A<-10).all(0)
 
-        outside = ((z_new > numpy.nanmax(z_old)) | 
-                   (z_new < numpy.nanmin(z_old)) |
-                   ~numpy.isfinite(z_old))
-        W = linear_interpolation_matrix(z_old, z_new[~outside])
+        # Not on the new one!  We must output the same size for A every
+        # time.
+#        new_outside = ((z_new > numpy.nanmax(z_old)) | 
+#                       (z_new < numpy.nanmin(z_old)))
+        #               ~numpy.isfinite(z_old))
+        z_old_valid = numpy.isfinite(z_old)
+        if z_old[z_old_valid].max() < z_new.max():
+            raise ValueError("z_new not a subset of z_old!")
+        #W = linear_interpolation_matrix(z_old[z_old_valid], z_new[~new_outside])
+        W = linear_interpolation_matrix(z_old[z_old_valid], z_new)
 #        A_new = numpy.zeros(shape=(z_new.shape[0], z_new.shape[0]))
-        A_new = apply_W_A(W, A[~outside, :][:, ~outside])
+        A_new = apply_W_A(W, A[z_old_valid, :][:, z_old_valid])
 #        A_new[outside, outside] = numpy.nan
         return A_new
     else:

@@ -734,9 +734,6 @@ class EurekaHDF(dataset.SingleFileDataset, dataset.ProfileDataset):
         sd = pyhdf.SD.SD(path)
         (n_ds, n_attr) = sd.info()
 
-        # FIXME: crashes on no. 15...
-        L = range(n_ds)
-        L.remove(15)
         n_elem = sd.select(0).info()[2]
         M = numpy.empty(shape=(n_elem,), dtype=self._dtp)
         dtm_mjd2k = sd.select(sd.name2index("DATETIME")).get()
@@ -760,7 +757,7 @@ class EurekaHDF(dataset.SingleFileDataset, dataset.ProfileDataset):
         M["z0"] *= KILO
         M["VMR_CH4"] *= PPM
 
-        for i in L:
+        for i in range(n_ds):
             (nm, rank, dims, tp, n_attr) = sd.select(i).info()
             if (rank==1 and dims==n_elem):
                 dtp.append((nm, "<f4"))

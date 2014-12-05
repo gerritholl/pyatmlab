@@ -1,3 +1,36 @@
+2014-12-04  Gerrit Holl  <gerrit.holl@utoronto.ca>:
+
+	* pyatmlab-0-0-56
+
+	* pyatmlab/collocations.py(CollocationDescriber):
+
+	- Fig bug with regridding.  No need to "remove data above range".  I'm
+	going to interpolate on the new grid *anyway*.  Removing just risks
+	removing too much and extrapolating where there is no need.  It's
+	extrapolation I want to avoid, the way to do this is to set the target
+	grid (from z_xh) small enough and not to remove data wherever I'm
+	above lowest_z_max.
+
+	- Write out all DOFs to get a histogram with pgfplots
+
+	- Move get_shared_range into its own routine.  I might have to look at
+	lower limits as well.
+
+	* pyatmlab/datasets.py(EurekaHDF):
+
+	- Remove workaround for reading PEARL HDF4 file, after bugfix in
+	Python-hdf4.
+
+	* pyatmlab/math.py:
+
+	(linear_interpolation_matrix):
+
+	- Oops, W was turned around.  Fixed.
+
+	(regrid_ak):
+
+	- Don't mess with the new grid.  Only with the old.
+
 2014-11-28  Gerrit Holl  <gerrit.holl@utoronto.ca>:
 
 	* pyatmlab-0-0-55

@@ -761,15 +761,6 @@ class CollocationDescriber:
         "_{self.cd.secondary.__class__.__name__}"
         "_targ{self.target}.")
 
-
-    # When removing a priori extending above the averaging kernels, or
-    # high-res profiles extending beyond the averaging kernels, remove all
-    # levels where the fraction of profiles for which this level is too
-    # high is larger than this.
-    toohigh_fraction_cutoff = 0.5
-
-
-            
     _target_vals = ["primary", "secondary"]
 
     _target = None
@@ -1317,6 +1308,7 @@ class CollocationDescriber:
             self._limit_to_shared_range(xa, z_xa, ak, z_ak, xh, z_xh, 
                 p_int, s_int, p_sa, s_sa)
 
+        # regrid xa(z_xa) and ak(z_ak) onto the grid of z_xh
         (xa, z_xa, ak, z_ak) = self._regrid_xa_ak(xa, z_xa, ak, z_ak, z_xh)
 
 
@@ -1459,7 +1451,7 @@ class CollocationDescriber:
             mx = numpy.nanmax(mean_p_ak)
             mn = numpy.nanmin(mean_p_ak)
             data.append(numpy.hstack(
-                (self.p_col["z"].mean(0)[:, numpy.newaxis], mean_p_ak)))
+                (self.p_col["z"].mean(0)[:, numpy.newaxis], mean_p_ak.T)))
 
         if "ak" in self.cd.secondary.aliases:
             s_ak[s_ak<-100] = numpy.nan # presumed flagged
@@ -1470,7 +1462,7 @@ class CollocationDescriber:
             mx = numpy.max([mx, numpy.nanmax(mean_s_ak)])
             mn = numpy.min([mn, numpy.nanmin(mean_s_ak)])
             data.append(numpy.hstack(
-                (self.s_col["z"].mean(0)[:, numpy.newaxis], mean_s_ak)))
+                (self.s_col["z"].mean(0)[:, numpy.newaxis], mean_s_ak.T)))
 
         for a in a_both:
             a.set_xlabel("Mean averaging kernel []")
@@ -1515,26 +1507,28 @@ class CollocationDescriber:
         if p_ak is not None:
             dofs = p_ak.trace(axis1=1, axis2=2)
             (f, a) = matplotlib.pyplot.subplots()
-            a.hist(dofs[numpy.isfinite(dofs)], 20)
+            (N, x, p) = a.hist(dofs[numpy.isfinite(dofs)], 20)
             a.set_xlabel("DOFs")
             a.set_ylabel("count")
             a.set_title("histogram DOF collocated {}".format(
                 self.cd.primary.name))
             graphics.print_or_show(f, False,
                 "hist_dof_{}_from_{}.".format(self.cd.primary.__class__.__name__,
-                    self.cd.secondary.__class__.__name__))
+                    self.cd.secondary.__class__.__name__),
+                    data = dofs[numpy.isfinite(dofs)]) # let pgfplots do the hist
 
         if s_ak is not None:
             dofs = s_ak.trace(axis1=1, axis2=2)
             (f, a) = matplotlib.pyplot.subplots()
-            a.hist(dofs[numpy.isfinite(dofs)], 20)
+            (N, x, p) = a.hist(dofs[numpy.isfinite(dofs)], 20)
             a.set_xlabel("DOFs")
             a.set_ylabel("count")
             a.set_title("histogram DOF collocated {}".format(
                 self.cd.secondary.name))
             graphics.print_or_show(f, False,
                 "hist_dof_{}_from_{}.".format(self.cd.secondary.__class__.__name__,
-                    self.cd.primary.__class__.__name__))
+                    self.cd.primary.__class__.__name__),
+                    data = dofs[numpy.isfinite(dofs)]) # see above
 
 
     def visualise_profile_comparison(self, z_grid, filters=None):
@@ -1750,7 +1744,9 @@ class CollocationDescriber:
                      "difference {:s} - {:s}").format(
                         valid_range[0]/1e3, valid_range[1]/1e3,
                         self.cd.primary.name, self.cd.secondary.name))
-        graphics.print_or_show(f, None, self.figname_compare_pc.format(**vars()))
+        graphics.print_or_show(f, None, self.figname_compare_pc.format(**vars()),
+            data=numpy.vstack((p_parcol[valid],
+                s_parcol[valid]-p_parcol[valid])).T)
 
     def _get_xa_ak(self, targ, targobj):
         """Helper for smooth(...)
@@ -1820,12 +1816,43 @@ class CollocationDescriber:
         return (xa, z_xa, ak, z_ak)
 
 
+    def _get_shared_range(self, z_xa, z_ak, z_xh):
+        """_get_shared_range(z_xa, z_ak, z_xh)
+
+        Returns (highest_z_min, highest_z_min_index,
+                 lowest_z_max, lowest_z_max_index),
+        where index means 0 for z_xa, 1 for z_ak, 2 for z_xh.
+        """
+
+        each_z_max = numpy.array((
+            (numpy.nanmin(numpy.nanmax(z_ak, 1)) if z_ak.ndim > 1
+                     else numpy.nanmax(z_ak, 0)),
+            (numpy.nanmin(numpy.nanmax(z_xa, 1)) if z_xa.ndim > 1
+                     else numpy.nanmax(z_xa, 0)),
+            (numpy.nanmin(numpy.nanmax(z_xh, 1)) if z_xh.ndim > 1
+                     else numpy.nanmax(z_xh, 0))))
+
+        each_z_min = numpy.array((
+            (numpy.nanmax(numpy.nanmin(z_ak, 1)) if z_ak.ndim > 1
+                     else numpy.nanmin(z_ak, 0)),
+            (numpy.nanmax(numpy.nanmin(z_xa, 1)) if z_xa.ndim > 1
+                     else numpy.nanmin(z_xa, 0)),
+            (numpy.nanmax(numpy.nanmin(z_xh, 1)) if z_xh.ndim > 1
+                     else numpy.nanmin(z_xh, 0))))
+
+        lowest_z_max_i = each_z_max.argmin()
+        highest_z_min_i = each_z_min.argmin()
+
+        return (each_z_min[highest_z_min_i], highest_z_min_i,
+                each_z_max[lowest_z_max_i], lowest_z_max_i)
+
+
     def _limit_to_shared_range(self, xa, z_xa, ak, z_ak, xh, z_xh,
         p_int, s_int, p_sa, s_sa):
         """Helper for smooth(...)
         """
-        lowest_z_max = min(numpy.nanmax(z_ak), numpy.nanmax(z_xa),
-            z_xh.max())
+        (highest_z_min, _, lowest_z_max, _) = self._get_shared_range(
+            z_xa, z_ak, z_xh)
 
         if z_xh.max() > lowest_z_max:
             # cut off actual profiles
@@ -1852,32 +1879,20 @@ class CollocationDescriber:
             #p_ch4_int = p_ch4_int[:, ~toohigh]
             #s_ch4_int = s_ch4_int[:, ~toohigh]
 
-        if numpy.nanmax(z_ak) > lowest_z_max:
-            # Remove all levels where more than a fraction of the a priori
-            # have no information due to the levels being too high.
-            st = numpy.seterr(invalid="ignore")
-            toohigh = ((z_ak > lowest_z_max).sum(0) / z_ak.shape[0]
-                            > self.toohigh_fraction_cutoff)
-            numpy.seterr(**st)
-            # see http://stackoverflow.com/q/26259662/974555 for a
-            # rationale on this 'roundabout' way
-            ak = ak[:, ~toohigh, :][:, :, ~toohigh]
-            z_ak = z_ak[:, ~toohigh]
-
-        if numpy.nanmax(z_xa) > lowest_z_max:
-            st = numpy.seterr(invalid="ignore")
-            toohigh = ((z_xa > lowest_z_max).sum(0) / z_xa.shape[0]
-                           > self.toohigh_fraction_cutoff)
-            numpy.seterr(**st)
-            xa = xa[:, ~toohigh]
-            z_xa = z_xa[:, ~toohigh]
-
-        # FIXME: do something with p_sa, s_sa?
-
+        ########################
+        #
+        # I'm going to have to regrid from z_ak to z_xh and from z_xa to
+        # z_xh.  That means I want the largest values of z_xa and z_ak
+        # to be LARGER # than the one for z_xh, not smaller!  Return now
+        # and DO NOT remove levels from those!
+        #
+        ########################
         return (xa, z_xa, ak, z_ak, xh, z_xh, p_int, s_int, p_sa, s_sa)
 
     def _regrid_xa_ak(self, xa, z_xa, ak, z_ak, z_xh):
         """Helper for smooth(...)
+
+        Regrids xa(z_xa) and ak(z_ak) onto the grid of z_xh
         """
         # WARNING: What if z_ak.shape == z_xh.shape
         # but z_ak != z_xh?
@@ -1911,17 +1926,7 @@ class CollocationDescriber:
                         for i in range(z_xa.shape[0])])
             W = numpy.transpose(W, [2, 0, 1])
             xa_new = numpy.vstack([
-                W[i, :, :].T.dot(xa_old[i, :]) for i in range(W.shape[0])])
-            # interpolation above sets values outside the range to the
-            # edge of the range, leading to a weird constant in CH4(z).
-            # We don't want that, set to nan instead.
-            # (disable temporarily so I have SOME result to show for PAHA)
-            # FIXME find a proper solution for this!
-            #ok = numpy.isfinite(xa_new).any(1)
-            #outside = z_xa_new[ok, :] > z_xa_old.max(1)[ok, numpy.newaxis]
-            #xanew_tmp = xa_new[ok, :]
-            #xanew_tmp.flat[outside.ravel()] = numpy.nan
-            #xa_new[ok, :] = xanew_tmp
+                W[i, :, :].dot(xa_old[i, :]) for i in range(W.shape[0])])
             xa = xa_new
             z_xa = z_xa_new
 
