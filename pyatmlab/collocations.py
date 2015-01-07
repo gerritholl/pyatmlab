@@ -1689,6 +1689,7 @@ class CollocationDescriber:
         """Calculate partial columns.
 
         """
+        # FIXME: consider filtering here!
 
         shared_range = (max(self.cd.primary.range[0],
                             self.cd.secondary.range[0]),
@@ -1729,16 +1730,17 @@ class CollocationDescriber:
 
         (f, a) = matplotlib.pyplot.subplots()
         valid = numpy.isfinite(p_parcol) & numpy.isfinite(s_parcol)
+        d_parcol = (s_parcol[valid] - p_parcol[valid])
         #a.plot(p_parcol[valid], s_parcol[valid], '.')
-        a.plot(p_parcol[valid], s_parcol[valid]-p_parcol[valid], '.')
+        a.plot(p_parcol[valid], d_parcol, '.')
         mx = max(p_parcol[valid].max(), s_parcol[valid].max())
         mn = min(p_parcol[valid].min(), s_parcol[valid].min())
         #a.plot([0, 2*mx], [0, 2*mx], linewidth=2, color="black")
         a.plot([0, 2*mx], [0, 0], linewidth=2, color="black")
         a.set_xlim(0.9*mn, 1.1*mx)
         #a.set_ylim(0.9*mn, 1.1*mx)
-        a.set_xlabel("CH4 {:s} [mol/m^2]".format(self.cd.primary.name))
-        a.set_ylabel("CH4 {:s} - {:s} [mol/m^2]".format(
+        a.set_xlabel("CH4 {:s} [molec./m^2]".format(self.cd.primary.name))
+        a.set_ylabel("CH4 {:s} - {:s} [molec./m^2]".format(
             self.cd.primary.name, self.cd.secondary.name))
         a.set_title(("Partial columns {:.1f}--{:.1f}, "
                      "difference {:s} - {:s}").format(
@@ -1747,6 +1749,16 @@ class CollocationDescriber:
         graphics.print_or_show(f, None, self.figname_compare_pc.format(**vars()),
             data=numpy.vstack((p_parcol[valid],
                 s_parcol[valid]-p_parcol[valid])).T)
+
+        # also print some stats
+        diff = {}
+        diff["mean"] = d_parcol.mean()
+        diff["std"] = d_parcol.std()
+        diff["median"] = numpy.median(d_parcol)
+        diff["sem"] = scipy.stats.sem(d_parcol)
+        diff["mad"] = numpy.median(abs(d_parcol - numpy.median(d_parcol)))
+        for (k, v) in diff.items():
+            logging.info("Statistic: {:s}: {:.3e} molecules/m^2".format(k, v))
 
     def _get_xa_ak(self, targ, targobj):
         """Helper for smooth(...)

@@ -1,3 +1,11 @@
+2014-12-??  Gerrit Holl  <gerrit.holl@utoronto.ca>:
+
+	* pyatmab-0-0-57
+
+	* pyatmlab/collocations.py(CollocationDescriber):
+
+	- Some very small changes
+	
 2014-12-04  Gerrit Holl  <gerrit.holl@utoronto.ca>:
 
 	* pyatmlab-0-0-56
