@@ -9,6 +9,8 @@ Mostly obtained from PyARTS
 
 import logging
 import numbers
+import datetime
+import calendar
 
 import numpy
 import matplotlib
@@ -21,6 +23,7 @@ from . import constants as c
 from . import math as pamath
 from . import tools
 from . import graphics
+from . import stats
 
 #import trollimage.colormap
 
@@ -34,6 +37,16 @@ class AKStats:
         with numpy.errstate(invalid="ignore"):
             self.aks[self.aks<=-999] = numpy.nan
         self.name = name
+
+    def summarise(self, data):
+        """Look at various statistics.
+        """
+
+        with numpy.errstate(invalid="warn"):
+            self.plot_sensitivity_range(z=data["z"])
+            self.plot_sensitivity_density(z=data["z"])
+        self.plot_histogram()
+        self.summarise_dof_stats(data)
 
     def dofs(self):
         """Calculate degrees of freedom.
@@ -267,7 +280,67 @@ class AKStats:
         graphics.print_or_show(
             f, False, self.filename.format(mode="range_z", name=self.name))
 
+    def plot_histogram(self):
+        dofs = self.dofs()
+        (f, a) = matplotlib.pyplot.subplots()
+        (N, x, p) = a.hist(dofs[numpy.isfinite(dofs)], 20)
+        a.set_xlabel("DOFs")
+        a.set_ylabel("count")
+        a.set_title("histogram DOF collocated {}".format(self.name))
+        graphics.print_or_show(f, False,
+            "hist_dof_{}.".format(self.name),
+                data = dofs[numpy.isfinite(dofs)]) # let pgfplots do the hist
 
+    def summarise_dof_stats(self, data):
+        """Make and plot some DOF summaries
+        """
+
+        dofs = self.dofs()
+
+        # get day of year and mean local solar time
+        dt = [dt for dt in data["time"].astype(datetime.datetime)]
+        utctime = [dt.time() for dt in dt]
+        mlst = [mean_local_solar_time(u, l) for (u, l) in zip(utctime, data["lon"])]
+        frac_mlst = numpy.array(
+            [m.hour + m.minute/60 + m.second/3600 for m in mlst])
+        dd = [dt.date() for dt in dt]
+        doy = numpy.array([(d - d.replace(month=1, day=1)).days + 1
+                                for d in dd])
+        frac_year = doy / (365 + numpy.array(
+            [calendar.isleap(d.year) for d in dd]))
+
+        binners = [frac_year, frac_mlst, data["lat"], data["lon"]]
+        bins = [numpy.linspace(frac_year.min()*0.99, frac_year.max()*1.01, 8),
+                numpy.linspace(frac_mlst.min()*0.99, frac_mlst.max()*1.01, 9),
+                numpy.linspace(data["lat"].min()*0.99, data["lat"].max()*1.01, 10),
+                numpy.linspace(data["lon"].min()*0.99, data["lon"].max()*1.01, 11)]
+        names = ["Frac. year", "MLST", "latitude", "longitude"]
+        binned_indices = stats.bin_nd(binners, bins)
+
+        merged = numpy.array([numpy.concatenate(binned_indices[i, j,
+            ...].ravel())
+                for i in range(binned_indices.shape[0])
+                for j in range(binned_indices.shape[1])]
+                        ).reshape(binned_indices.shape[0],
+                                  binned_indices.shape[1])
+
+        combis = [tuple(x) for x in {frozenset(x) for x in itertools.product(range(4), range(4))} if len(x)>1]
+        for i in combis:
+            merged2 = stats.bins_4D_to_2D(binned_indices, combis[i][0], combis[i][1])
+        
+            median_dof_per_bin = numpy.array(
+                [(numpy.median(dofs[merged.flat[i]])
+                        if merged.flat[i].size>0
+                        else numpy.nan)
+                    for i in range(merged.size)]
+                ).reshape(merged.shape)
+
+            # plot it!
+
+            # TBD
+
+        pass
+        
 def mixingratio2density(mixingratio, p, T):
     """Converts mixing ratio (e.g. kg/kg) to density (kg/m^3) for dry air.
 
@@ -747,3 +820,21 @@ def lat2g0(lat):
     return 9.780327 * ( 1 + 5.3024e-3*numpy.sin(numpy.deg2rad(x))**2 
                           + 5.8e-6*numpy.sin(numpy.deg2rad(2*x)**2 ))
 
+def mean_local_solar_time(utctime, lon):
+    """Calculate mean local solar time.
+
+    Calculates the mean local solar time for a specific longitude.
+    This is not the true local solar time because it does not take into
+    account the equation of time.  It is purely based on the hour angle of
+    the Sun.  Do not use for astronomical calculations!
+
+    :param time utctime: Time in UTC.  Should be a datetime.time object.
+    :param float lon: Longitude in degrees.  Can be either in [-180, 180]
+        or in [0, 360].
+    :returns time: Time in mean local solar time.
+    """
+
+    hours_offset = lon/15
+    dummy_datetime = datetime.datetime.combine(datetime.date.today(), utctime)
+    new_dummy = dummy_datetime + datetime.timedelta(hours=hours_offset)
+    return new_dummy.time()

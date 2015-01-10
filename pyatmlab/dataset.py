@@ -18,6 +18,8 @@ import numpy
 import numpy.lib.arraysetops
 import numpy.lib.recfunctions
 
+import pytz
+
 from . import tools
 
 class DataFileError(Exception):
@@ -84,6 +86,7 @@ class Dataset(metaclass=abc.ABCMeta):
     aliases = {}
     unique_fields = {"time", "lat", "lon"}
     related = {}
+    timezone = pytz.UTC
 
     def __init__(self, **kwargs):
         for (k, v) in kwargs.items():

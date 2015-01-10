@@ -1,6 +1,37 @@
+2015-01-09  Gerrit Holl  <gerrit.holl@utoronto.ca>:
+
+	* pyatmlab-0-0-58
+
+	* pyatmlab/collocations.py(CollocationDescriber):
+
+	- More consistent with names in plots and files
+	- Move dof histograms to AKStats
+
+	* pyatmlab/dataset.py(Dataset):
+
+	- Always have a timezone, defaulting to UTC
+
+	* pyatmlab/physics.py:
+
+	(AKStats.summarise): Overall function doing all stuff
+
+	(plot_histogram): Plot DOF histograms, moved from CollocationDescriber
+
+	(summarise_dof_stats): Worked on investigated DOF stats
+
+	(mean_local_solar_time): Calc. from lon. and utctime
+
+	* pyatmlab/stats.py:
+
+	(bins_4D_to_2D): Downmerge 4D bin thingy to 2D.  Should be more
+	generic...
+
+	(iter_bins4D): Helper for above
+
+
 2014-12-??  Gerrit Holl  <gerrit.holl@utoronto.ca>:
 
-	* pyatmab-0-0-57
+	* pyatmlab-0-0-57
 
 	* pyatmlab/collocations.py(CollocationDescriber):
 

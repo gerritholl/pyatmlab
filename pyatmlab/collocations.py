@@ -1484,51 +1484,47 @@ class CollocationDescriber:
                 name="{}_from_{}".format(
                     self.cd.primary.__class__.__name__,
                     self.cd.secondary.__class__.__name__))
-            with numpy.errstate(invalid="warn"):
-                paks.plot_sensitivity_range(z=self.p_col["z"])
-                #paks.plot_sensitivity_density(z=numpy.nanmean(self.p_col["z"], 0))
-                paks.plot_sensitivity_density(z=self.p_col["z"])
+            paks.summarise(data=self.p_col)
 
         if s_ak is not None:
             saks = physics.AKStats(s_ak, 
-            name="{}_from_{}".format(
-                self.cd.secondary.__class__.__name__,
-                self.cd.primary.__class__.__name__))
-            with numpy.errstate(invalid="warn"):
-                saks.plot_sensitivity_range(z=self.s_col["z"])
-                #saks.plot_sensitivity_density(z=numpy.nanmean(self.s_col["z"], 0))
-                saks.plot_sensitivity_density(z=self.s_col["z"])
+                name="{}_from_{}".format(
+                    self.cd.secondary.__class__.__name__,
+                    self.cd.primary.__class__.__name__))
+            saks.summarise(data=self.s_col)
 
 
         # and dof histograms
+        #
+        # Now done above!
 
 
-        logging.info("Histogramming degrees of freedom")
-        if p_ak is not None:
-            dofs = p_ak.trace(axis1=1, axis2=2)
-            (f, a) = matplotlib.pyplot.subplots()
-            (N, x, p) = a.hist(dofs[numpy.isfinite(dofs)], 20)
-            a.set_xlabel("DOFs")
-            a.set_ylabel("count")
-            a.set_title("histogram DOF collocated {}".format(
-                self.cd.primary.name))
-            graphics.print_or_show(f, False,
-                "hist_dof_{}_from_{}.".format(self.cd.primary.__class__.__name__,
-                    self.cd.secondary.__class__.__name__),
-                    data = dofs[numpy.isfinite(dofs)]) # let pgfplots do the hist
-
-        if s_ak is not None:
-            dofs = s_ak.trace(axis1=1, axis2=2)
-            (f, a) = matplotlib.pyplot.subplots()
-            (N, x, p) = a.hist(dofs[numpy.isfinite(dofs)], 20)
-            a.set_xlabel("DOFs")
-            a.set_ylabel("count")
-            a.set_title("histogram DOF collocated {}".format(
-                self.cd.secondary.name))
-            graphics.print_or_show(f, False,
-                "hist_dof_{}_from_{}.".format(self.cd.secondary.__class__.__name__,
-                    self.cd.primary.__class__.__name__),
-                    data = dofs[numpy.isfinite(dofs)]) # see above
+#        logging.info("Histogramming degrees of freedom")
+#        if p_ak is not None:
+#            dofs = p_ak.trace(axis1=1, axis2=2)
+#            (f, a) = matplotlib.pyplot.subplots()
+#            (N, x, p) = a.hist(dofs[numpy.isfinite(dofs)], 20)
+#            a.set_xlabel("DOFs")
+#            a.set_ylabel("count")
+#            a.set_title("histogram DOF collocated {}".format(
+#                self.cd.primary.name))
+#            graphics.print_or_show(f, False,
+#                "hist_dof_{}_from_{}.".format(self.cd.primary.__class__.__name__,
+#                    self.cd.secondary.__class__.__name__),
+#                    data = dofs[numpy.isfinite(dofs)]) # let pgfplots do the hist
+#
+#        if s_ak is not None:
+#            dofs = s_ak.trace(axis1=1, axis2=2)
+#            (f, a) = matplotlib.pyplot.subplots()
+#            (N, x, p) = a.hist(dofs[numpy.isfinite(dofs)], 20)
+#            a.set_xlabel("DOFs")
+#            a.set_ylabel("count")
+#            a.set_title("histogram DOF collocated {}".format(
+#                self.cd.secondary.name))
+#            graphics.print_or_show(f, False,
+#                "hist_dof_{}_from_{}.".format(self.cd.secondary.__class__.__name__,
+#                    self.cd.primary.__class__.__name__),
+#                    data = dofs[numpy.isfinite(dofs)]) # see above
 
 
     def visualise_profile_comparison(self, z_grid, filters=None):

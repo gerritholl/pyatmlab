@@ -118,3 +118,48 @@ def bin_nd(binners, bins, data=None):
         B = numpy.empty(shape=len(binned), dtype=numpy.object_)
         B[:] = binned
         return B
+
+def bins_4D_to_2D(bins, ax1, ax2):
+    """Small helper to concatenate bin contents.
+
+    For example:
+
+    >> bins_2D = cat_bins(bins_4D, 0, 1)
+
+    See also iter_bins4D.
+
+    A more generic bin concatenation is not currently implemented.
+    """
+
+    # Not sure how to implement this generically — will stick with only
+    # 4D-to-2D for now
+
+    merged = numpy.array(list(iter_bins4D(bins, ax1, ax2))).reshape(
+        bins.shape[ax1], bins.shape[ax2])
+    return merged
+#    for i in range(binned_indices.shape[ax1]):
+#        for j in range(binned_indices.shape[ax2]):
+#            slc[ax1] = i
+#            slc[ax2] = j
+
+#    merged = numpy.array(
+#        [numpy.concatenate(binned_indices[i, j, :, :].ravel())
+#            for i in range(binned_indices.shape[0])
+#            for j in range(binned_indices.shape[1])]).reshape(binned_indices.shape[:2])              
+#
+#    (i, j, Ellipsis)
+
+def iter_bins4D(bins, ax1, ax2):
+    """Helper for bins_4D_to_2D
+
+    Taking a 4D array with arrays (such as returned by bin_nD), slicing it
+    around axes ax1 and ax2.  For example, iter_bins4D(bins, 1, 2) where
+    bins is [k, l, m, n] will result in a [k, n] array; i.e. [i, j] will
+    contain [i, :, :, j].
+    """
+    slc = [slice(None)] * 4 
+    for i in range(bins.shape[ax1]):
+        for j in range(bins.shape[ax2]):
+            slc[ax1] = i
+            slc[ax2] = j
+            yield numpy.concatenate(bins[slc].ravel())
