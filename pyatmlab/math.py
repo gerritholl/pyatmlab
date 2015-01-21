@@ -207,3 +207,9 @@ def smooth_profile(xh, ak, xa):
 
     xs = xa + ak.dot(xh - xa)
     return xs
+
+def mad(x):
+    """Median absolute deviation
+    """
+
+    return numpy.median(numpy.abs(x - numpy.median(x)))

@@ -11,9 +11,11 @@ import logging
 import numbers
 import datetime
 import calendar
+import itertools
 
 import numpy
 import matplotlib
+import matplotlib.dates
 
 import pyproj
 
@@ -21,6 +23,7 @@ import pyproj
 #from .constants import (h, k, R_d, R_v, c)
 from . import constants as c
 from . import math as pamath
+from . import time as pytime
 from . import tools
 from . import graphics
 from . import stats
@@ -291,6 +294,39 @@ class AKStats:
             "hist_dof_{}.".format(self.name),
                 data = dofs[numpy.isfinite(dofs)]) # let pgfplots do the hist
 
+    _dof_binners = dict(
+        doy = dict(
+            label = "Day of year",
+            bins = numpy.linspace(0, 366, 24),
+            invert = False,
+            timeax = False),
+        mlst = dict(
+            label = "Mean local solar time",
+            bins = numpy.linspace(0, 24, 24),
+            invert = False,
+            timeax = False),
+        time = dict(
+            label = "Date",
+            invert = False,
+            timeax = True),
+        lat = dict(
+            label = "Latitude",
+            invert = False,
+            timeax = False),
+        lon = dict(
+            label = "Longitude",
+            timeax = False,
+            invert = True),
+        parcol = dict(
+            label = "Par. col. CH4",
+            timeax = False,
+            invert = False),
+#        dof = dict(
+#            label = "DOF",
+#            timeax = False,
+#            invert = False),
+        )
+
     def summarise_dof_stats(self, data):
         """Make and plot some DOF summaries
         """
@@ -298,48 +334,114 @@ class AKStats:
         dofs = self.dofs()
 
         # get day of year and mean local solar time
-        dt = [dt for dt in data["time"].astype(datetime.datetime)]
-        utctime = [dt.time() for dt in dt]
-        mlst = [mean_local_solar_time(u, l) for (u, l) in zip(utctime, data["lon"])]
-        frac_mlst = numpy.array(
-            [m.hour + m.minute/60 + m.second/3600 for m in mlst])
-        dd = [dt.date() for dt in dt]
-        doy = numpy.array([(d - d.replace(month=1, day=1)).days + 1
-                                for d in dd])
-        frac_year = doy / (365 + numpy.array(
-            [calendar.isleap(d.year) for d in dd]))
-
-        binners = [frac_year, frac_mlst, data["lat"], data["lon"]]
-        bins = [numpy.linspace(frac_year.min()*0.99, frac_year.max()*1.01, 8),
-                numpy.linspace(frac_mlst.min()*0.99, frac_mlst.max()*1.01, 9),
-                numpy.linspace(data["lat"].min()*0.99, data["lat"].max()*1.01, 10),
-                numpy.linspace(data["lon"].min()*0.99, data["lon"].max()*1.01, 11)]
-        names = ["Frac. year", "MLST", "latitude", "longitude"]
-        binned_indices = stats.bin_nd(binners, bins)
-
-        merged = numpy.array([numpy.concatenate(binned_indices[i, j,
-            ...].ravel())
-                for i in range(binned_indices.shape[0])
-                for j in range(binned_indices.shape[1])]
-                        ).reshape(binned_indices.shape[0],
-                                  binned_indices.shape[1])
-
-        combis = [tuple(x) for x in {frozenset(x) for x in itertools.product(range(4), range(4))} if len(x)>1]
-        for i in combis:
-            merged2 = stats.bins_4D_to_2D(binned_indices, combis[i][0], combis[i][1])
         
-            median_dof_per_bin = numpy.array(
-                [(numpy.median(dofs[merged.flat[i]])
-                        if merged.flat[i].size>0
+        # (NB: outer zip effectively unzips)
+        (doy, mlst) = zip(*(pytime.dt_to_doy_mlst(
+                                dt.astype(datetime.datetime),
+                                lon)
+                for (dt, lon) in zip(data["time"], data["lon"])))
+
+        # Prepare matplotlib date axes
+        ml = matplotlib.dates.DayLocator(bymonthday=[1, 15])
+        datefmt = matplotlib.dates.DateFormatter("%m/%d")
+
+        D = dict(doy={}, mlst={}, lat={}, lon={}, parcol={}, dof={})
+        D["doy"]["data"] = numpy.array(doy)
+        D["mlst"]["data"] = numpy.array(mlst)
+        D["lat"]["data"] = data["lat"]
+        D["lon"]["data"] = data["lon"]
+        D["parcol"]["data"] = data["parcol_CH4"]
+#        D["dof"]["data"] = dofs
+
+        for k in D.keys():
+            if "bins" in self._dof_binners[k]:
+                D[k]["bins"] = self._dof_binners[k]["bins"]
+            else:
+                D[k]["bins"] = numpy.linspace(
+                    D[k]["data"].min()*0.99, D[k]["data"].max()*1.01, 10)
+
+        binners = sorted(D.keys())
+        binned_indices = stats.bin_nd(
+                            [D[k]["data"] for k in binners],
+                            [D[k]["bins"] for k in binners])
+        # make "fake" date range where I will use only month and day,
+        # so I can use date-based plotting
+        D["time"] = dict(data=numpy.array([(datetime.date(2015, 1, 1)
+                        + datetime.timedelta(days=int(d))).toordinal()
+                        for d in D["doy"]["data"]]))
+        D["time"]["bins"] = numpy.array([(datetime.date(2015, 1, 1)
+                        + datetime.timedelta(days=int(d))).toordinal()
+                        for d in D["doy"]["bins"]])
+        # replace "doy" by "time"
+        binners[binners.index("doy")] = "time"
+
+        combis = sorted([tuple(x) for x in 
+                    {frozenset(x)
+                        for x in itertools.product(
+                            range(binned_indices.ndim),
+                            range(binned_indices.ndim))} if len(x)>1])
+        # combis = [(0, 1), (0, 2), (0, 3), (1, 2), (1, 3), (2, 3), ...]
+        for (i1, i2) in combis:
+            names = dict(x=binners[i1], y=binners[i2])
+
+            merged = stats.binsnD_to_2d(binned_indices, i1, i2)
+        
+            stat = {}
+            for (nm, func) in [
+                    ("median", numpy.median),
+                    ("mad", pamath.mad)]:
+                stat[nm] = numpy.array(
+                    [(func(dofs[merged.flat[k]])
+                        if merged.flat[k].size>0
                         else numpy.nan)
-                    for i in range(merged.size)]
-                ).reshape(merged.shape)
+                            for k in range(merged.size)]
+                    ).reshape(merged.shape)
+            stat["count"] = numpy.array(
+                [merged.flat[k].size for k in range(merged.size)]
+                    ).reshape(merged.shape)
+            stat[""] = None # special value for scatter
 
-            # plot it!
+            if (stat["count"]>1).sum() < 2:
+                continue # all in one bin, don't plot
+            #
 
-            # TBD
+            for (statname, val) in stat.items():
 
-        pass
+#                for mode in ("pcolor", "scatter"):
+                (f, a) = matplotlib.pyplot.subplots()
+#                    if mode == "pcolor":
+                if statname == "":
+                    pc = a.scatter(D[names["x"]]["data"],
+                                   D[names["y"]]["data"], 
+                                   c=dofs,
+                                   s=50)
+                else:
+                    val_masked = numpy.ma.masked_array(val,
+                        numpy.isnan(val))
+                    pc = a.pcolor(D[names["x"]]["bins"],
+                                  D[names["y"]]["bins"],
+                                  val_masked.T)
+#                    elif mode == "scatter":
+                cb = f.colorbar(pc)
+
+                #for (axname, axis, fmt) in [
+                for axlt in "xy":
+                    axname = names[axlt]
+                    axis = getattr(a, "{}axis".format(axlt))
+                    if self._dof_binners[axname]["timeax"]:
+                        axis.set_major_locator(ml)
+                        axis.set_major_formatter(datefmt)
+                        getattr(f, "autofmt_{}date".format(axlt))()
+                    if self._dof_binners[axname]["invert"]:
+                        getattr(a, "invert_{}axis".format(axlt))()
+                    getattr(a, "set_{}label".format(axlt))(
+                        self._dof_binners[axname]["label"])
+
+                cb.set_label("DOF " + statname)
+                a.set_title("DOF " + self.name)
+                graphics.print_or_show(f, False,
+                    "DOF_{}_{}_{}_{}.".format(
+                    self.name, names["x"], names["y"], statname))
         
 def mixingratio2density(mixingratio, p, T):
     """Converts mixing ratio (e.g. kg/kg) to density (kg/m^3) for dry air.
@@ -820,21 +922,3 @@ def lat2g0(lat):
     return 9.780327 * ( 1 + 5.3024e-3*numpy.sin(numpy.deg2rad(x))**2 
                           + 5.8e-6*numpy.sin(numpy.deg2rad(2*x)**2 ))
 
-def mean_local_solar_time(utctime, lon):
-    """Calculate mean local solar time.
-
-    Calculates the mean local solar time for a specific longitude.
-    This is not the true local solar time because it does not take into
-    account the equation of time.  It is purely based on the hour angle of
-    the Sun.  Do not use for astronomical calculations!
-
-    :param time utctime: Time in UTC.  Should be a datetime.time object.
-    :param float lon: Longitude in degrees.  Can be either in [-180, 180]
-        or in [0, 360].
-    :returns time: Time in mean local solar time.
-    """
-
-    hours_offset = lon/15
-    dummy_datetime = datetime.datetime.combine(datetime.date.today(), utctime)
-    new_dummy = dummy_datetime + datetime.timedelta(hours=hours_offset)
-    return new_dummy.time()

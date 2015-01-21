@@ -1,3 +1,53 @@
+2015-01-20  Gerrit Holl  <gerrit.holl@utoronto.ca>:
+
+	* pyatmlab-0-0-59
+
+	* pyatmlab/collocations.py(CollocationsDescriber):
+
+	(plot_aks):
+
+	- Make sure that partial columns are added before AKStats.summarise is
+	  called, as this data will be needed
+	
+	(partial_columns):
+
+	- Add parcol_CH4 to self.p_col and self.s_col after calculating it.
+
+	* pyatmlab/db.py(SimilarityLookupTable):
+
+	- New class used to construct a set of diverse TANSO profiles
+
+	* pyatmlab/math.py(mad):
+
+	- Added function to calculate median absolute deviation
+	
+	* pyatmlab/physics.py:
+	
+	(AKStats.summarise_dof_stats):
+
+	- Rewrite and improve this method
+
+	(mean_local_solar_time):
+
+	- Move to new module `time`
+
+	* pyatmlab/stats.py:
+
+	(bin_nd_sparse):
+
+	- Special version of bin_nd for sparse data (i.e. if we want only a
+	few data points)
+
+	(binsnD_t_2D):
+
+	- Improved version of bins4D_to_2D, working from any number of
+	dimensions, but reducing always to 2-D still
+
+	* pyatmlab/time.py:
+
+	- New module with mean_local_solar_time moved from physics, and
+	dt_to_doy_mlst newly created to split datetime in doy and mlst.
+	
 2015-01-09  Gerrit Holl  <gerrit.holl@utoronto.ca>:
 
 	* pyatmlab-0-0-58

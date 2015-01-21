@@ -1476,7 +1476,6 @@ class CollocationDescriber:
             data=data)
 
         # And the matrices
-
         
         logging.info("Summarising sensitivities")
         if p_ak is not None:
@@ -1484,6 +1483,8 @@ class CollocationDescriber:
                 name="{}_from_{}".format(
                     self.cd.primary.__class__.__name__,
                     self.cd.secondary.__class__.__name__))
+            if not "parcol_CH4" in self.p_col.dtype.names:
+                self.partial_columns()
             paks.summarise(data=self.p_col)
 
         if s_ak is not None:
@@ -1491,6 +1492,8 @@ class CollocationDescriber:
                 name="{}_from_{}".format(
                     self.cd.secondary.__class__.__name__,
                     self.cd.primary.__class__.__name__))
+            if not "parcol_CH4" in self.s_col.dtype.names:
+                self.partial_columns()
             saks.summarise(data=self.s_col)
 
 
@@ -1681,10 +1684,17 @@ class CollocationDescriber:
 ##                     (z_grid, iqr["prim"], iqr["sec"], iqr["diff"])).T)
 ##         matplotlib.pyplot.close(f)
 
-    def partial_columns(self, smoothed=True):
+    z_range = None
+    def partial_columns(self, smoothed=True, reload=False):
         """Calculate partial columns.
 
         """
+        if ("parcol_CH4" in self.p_col.dtype.names and
+            "parcol_CH4" in self.s_col.dtype.names and
+            not reload):
+            return (self.p_col["parcol_CH4"],
+                    self.s_col["parcol_CH4"],
+                    self.z_range)
         # FIXME: consider filtering here!
 
         shared_range = (max(self.cd.primary.range[0],
@@ -1717,6 +1727,15 @@ class CollocationDescriber:
         s_parcol = pamath.integrate_with_height(
             z_valid, s_valid_nd)
 
+        self.p_col = numpy.lib.recfunctions.append_fields(self.p_col,
+            names=["parcol_CH4"],
+            data=[p_parcol],
+            usemask=False)
+        self.s_col = numpy.lib.recfunctions.append_fields(self.s_col,
+            names=["parcol_CH4"],
+            data=[s_parcol],
+            usemask=False)
+        self.z_range = (z[valid_range].min(), z[valid_range].max())
         return (p_parcol, s_parcol, (z[valid_range].min(), z[valid_range].max()))
 
     def visualise_pc_comparison(self):

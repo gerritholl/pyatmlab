@@ -9,6 +9,8 @@ Mostly obtained from PyARTS.
 """
 
 import copy
+import random
+import itertools
 
 import numpy
 import datetime
@@ -21,8 +23,8 @@ import scipy.io
 #import matplotlib.pyplot
 #import matplotlib.cm
 
-#from . import arts_math
 from . import tools
+from . import stats
 
 class AtmosphericDatabase:
     """Represents an atmospheric database
@@ -518,3 +520,102 @@ class AtmosphericDatabase:
                                   ice_axis=self.ice_axis),
                          appendmat=False,
                          do_compression=True, oned_as="column")
+
+class SimilarityLookupTable:
+    """Use a lookup table to consider similar measurements
+
+    This table is used to represent a large set of measurements by a small
+    set.  It takes as input a particular measurement, and returns as
+    output a canonical measurements.  A measurement is n-dimensional,
+    consisting of lat, lon, time of day, day of year, partial column,
+    degrees of freedom.
+
+    A use case is when we have a large set of measurements, but only error
+    estimates for a subset of those.
+
+    Implemented using a lookup table based on stats.bin_nd.  Bins are
+    based on training data.  If newly presented data does not look like
+    any pre-trained data, an error is raised.
+
+    Attributes::
+
+        axdata.  Dictionary with keys corresponding to the axes to be
+            considered in the lookup table; names should correspond to
+            fields in data.  Each value is itself a dictionary with keys::
+
+                nsteps: Number of steps in linspace
+
+        bins
+        db
+    """
+
+    #axes = ("doy", "mlst", "lat", "lon", "parcol")
+    # higher for doy as this has the largest control.
+    #axsizes = dict(doy=20, mlst=10, lat=10, lon=10, parcol=10)
+
+    _loaded = False
+    axdata = bins = db = None
+
+    @classmethod
+    def fromFile(self, file):
+        with open(file, 'rb') as fp:
+            (axdata, bins, db) = pickle.load(file)
+        self.axdata = axdata
+        self.bins = bins
+        self.db = db
+        self._loaded = True
+
+    def toFile(self, file):
+        """Store lookup table to a file
+        """
+        with open(file, 'wb') as fp:
+            pickle.dump((self.axdata, self.bins, self.db), file,
+                    protocol=4)
+
+    @classmethod
+    def fromData(cls, data, axdata):
+        """Build lookup table from data
+
+        `data` should be a structured ndarray with dtype fields `lat`,
+        `lon`, 
+
+        `axdata` should be a `collections.OrderedDict` where the keys
+            refer to fields from `data` to use, and the values are
+            dictionaries with at least the keys:
+                `nsteps`, number of steps in binning data
+        """
+        self = cls()
+        bins = [numpy.linspace(data[ax].min()*0.99, data[ax].max()*1.01,
+                    axdata[ax]["nsteps"]) for ax in list(axdata.keys())]
+        binned_indices = stats.bin_nd(
+            [data[ax] for ax in axdata.keys()], bins)
+        db = {}
+        # select one wherever there is at least one
+        for ii in itertools.product(*(range(i) for i in
+                binned_indices.shape)):
+            # ii should be a tuple that can be passed directly
+            if binned_indices[ii].size > 0:
+                db[ii] = data[self._choose(binned_indices[ii])]
+
+        self.axdata = axdata
+        self.bins = bins
+        self.db = db
+        self._loaded = True
+        return self
+
+    @staticmethod
+    def _choose(data):
+        """Choose one of the data to use for building the db
+        """
+
+        return random.choice(data)
+
+    def get_index_tuple(self, data):
+        """Get a tuple of indices for use in the lookup table
+        """
+        return [tuple(row) for row in
+                stats.bin_nd_sparse([data[ax]
+                        for ax in list(self.axdata.keys())], self.bins)]
+
+    def lookup(self, data):
+        return [self.db[tup] for tup in self.get_index_tuple(data)]

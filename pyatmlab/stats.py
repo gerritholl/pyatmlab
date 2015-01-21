@@ -119,47 +119,46 @@ def bin_nd(binners, bins, data=None):
         B[:] = binned
         return B
 
-def bins_4D_to_2D(bins, ax1, ax2):
-    """Small helper to concatenate bin contents.
+def bin_nd_sparse(binners, bins):
+    """Similar to bin_nd, but for very sparse data
 
-    For example:
-
-    >> bins_2D = cat_bins(bins_4D, 0, 1)
-
-    See also iter_bins4D.
-
-    A more generic bin concatenation is not currently implemented.
+    When the number of entries to be binned is much smaller than the
+    number of bins, it is very inefficient to go through all the bins as
+    bin_nd does.  This function takes the same arguments but instead of
+    returning an n-dimensional array, it will return an n*p array where n
+    are the number of dimensions and p the number of datapoints, returning
+    the coordinates that each point would be in.
     """
 
-    # Not sure how to implement this generically — will stick with only
-    # 4D-to-2D for now
+    M = numpy.empty(shape=(binners[0].shape[0], len(binners)))
+    for (i, (binner, bin_n)) in enumerate(zip(binners, bins)):
+        M[:, i] = numpy.digitize(binner, bin_n)
+    return M
+        
 
-    merged = numpy.array(list(iter_bins4D(bins, ax1, ax2))).reshape(
-        bins.shape[ax1], bins.shape[ax2])
-    return merged
-#    for i in range(binned_indices.shape[ax1]):
-#        for j in range(binned_indices.shape[ax2]):
-#            slc[ax1] = i
-#            slc[ax2] = j
+def binsnD_to_2d(bins, ax1, ax2):
+    """Collapse n-D bucketing array to 2-D, merging buckets for other dims.
 
-#    merged = numpy.array(
-#        [numpy.concatenate(binned_indices[i, j, :, :].ravel())
-#            for i in range(binned_indices.shape[0])
-#            for j in range(binned_indices.shape[1])]).reshape(binned_indices.shape[:2])              
-#
-#    (i, j, Ellipsis)
+    Take a n-D bucketing array (n>=2), such as returned by bin_nD, and
+    merge all buckets thus reducing it to 2D, retaining ax1 and ax2.
+    For examble, binsnD_flatiter(bins, 1, 2) will return a bins-array of
+    shape (bins.shape[1], bins.shape[2]), where each bucket [i, j] will
+    contain all elements in bins[:, i, j, ...].
 
-def iter_bins4D(bins, ax1, ax2):
-    """Helper for bins_4D_to_2D
-
-    Taking a 4D array with arrays (such as returned by bin_nD), slicing it
-    around axes ax1 and ax2.  For example, iter_bins4D(bins, 1, 2) where
-    bins is [k, l, m, n] will result in a [k, n] array; i.e. [i, j] will
-    contain [i, :, :, j].
+    :param bins: n-Dimensional array containing buckets.  As returned by
+        bin_nD.
+    :param ax1: First axis to keep.
+    :param ax2: Second axis to keep.
+    :returns: 2-Dimensional array of shape (bins.shape[ax1],
+        bins.shape[ax2]) with all other dimensions merged.
     """
-    slc = [slice(None)] * 4 
+    slc = [slice(None)] * bins.ndim # NB: slice(None) corresponds to :
+    Z = numpy.empty(shape=(bins.shape[ax1], bins.shape[ax2]),
+                    dtype="object")
     for i in range(bins.shape[ax1]):
         for j in range(bins.shape[ax2]):
             slc[ax1] = i
             slc[ax2] = j
-            yield numpy.concatenate(bins[slc].ravel())
+            Z[i, j] = numpy.concatenate(bins[slc].ravel())
+
+    return Z
