@@ -11,6 +11,7 @@ Mostly obtained from PyARTS.
 import copy
 import random
 import itertools
+import pickle
 
 import numpy
 import datetime
@@ -557,19 +558,39 @@ class SimilarityLookupTable:
     axdata = bins = db = None
 
     @classmethod
-    def fromFile(self, file):
+    def fromFile(cls, file):
         with open(file, 'rb') as fp:
-            (axdata, bins, db) = pickle.load(file)
+            (axdata, bins, db) = pickle.load(fp)
+        self = cls()
         self.axdata = axdata
         self.bins = bins
         self.db = db
         self._loaded = True
+        return self
+
+    def compact_summary(self):
+        """Return string with compact summary
+
+        Suitable in filename
+        """
+
+        s = "".join(
+                ["{:s}{:d}".format(k,v["nsteps"])
+                    for (k, v) in self.axdata.items()])
+        return s
+
+    def __repr__(self):
+        return "<{}:{}>".format(self.__class__.__name__,
+            self.compact_summary())
+
+    def propose_filename(self):
+        return "tanso_similarity_db_{}".format(self.compact_summary())
 
     def toFile(self, file):
         """Store lookup table to a file
         """
         with open(file, 'wb') as fp:
-            pickle.dump((self.axdata, self.bins, self.db), file,
+            pickle.dump((self.axdata, self.bins, self.db), fp,
                     protocol=4)
 
     @classmethod
@@ -585,8 +606,10 @@ class SimilarityLookupTable:
                 `nsteps`, number of steps in binning data
         """
         self = cls()
-        bins = [numpy.linspace(data[ax].min()*0.99, data[ax].max()*1.01,
-                    axdata[ax]["nsteps"]) for ax in list(axdata.keys())]
+        bins = [numpy.linspace(numpy.nanmin(data[ax])*0.99,
+                               numpy.nanmax(data[ax])*1.01,
+                               axdata[ax]["nsteps"])
+                    for ax in list(axdata.keys())]
         binned_indices = stats.bin_nd(
             [data[ax] for ax in axdata.keys()], bins)
         db = {}

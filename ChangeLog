@@ -1,3 +1,15 @@
+2015-01-21  Gerrit Holl  <gerrit.holl@utoronto.ca>:
+
+	* pyatmlab-0-0-60
+
+	* pyatmlab/db.py(SimilarityLookupTable):
+
+	- Added methods for string representations
+
+	- Fix bug in pickling in toFile and fromFile
+
+	- Don't be fooled by nans
+
 2015-01-20  Gerrit Holl  <gerrit.holl@utoronto.ca>:
 
 	* pyatmlab-0-0-59
