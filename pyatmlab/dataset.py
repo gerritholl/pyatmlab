@@ -296,6 +296,9 @@ class SingleFileDataset(Dataset):
     def get_times_for_granule(self, gran=None):
         return (self.start_date, self.end_date)
 
+    def read(self, f=None, fields="all"):
+        return super().read(f or self.srcfile, fields)
+
 class MultiFileDataset(Dataset):
     """Represents a dataset where measurements are spread over multiple
     files.

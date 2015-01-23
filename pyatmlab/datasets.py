@@ -5,10 +5,12 @@ import ast
 import itertools
 import calendar
 import collections
+import logging
 
 import numpy
 import scipy.interpolate
 
+import pyhdf.SD
 import h5py
 from . import dataset
 from . import physics
@@ -662,18 +664,22 @@ class ACEFTS(dataset.SingleMeasurementPerFileDataset,
             return m
             
 
-class EurekaHDF(dataset.SingleFileDataset, dataset.ProfileDataset):
+class Eureka_PRL_CH4_HDF(dataset.SingleFileDataset, dataset.ProfileDataset):
     # NOTE: there is a bug in older versions of Python-hdf4 that causes it to
     # crash on some HDF files.  The Eureka Bruker CH4 HDF files happen to
     # have a crash on
     # CH4.MIXING.RATIO.VOLUME_ABSORPTION.SOLAR_UNCERTAINTY.SYSTEMATIC.COVARIANCE
     # The bug was fixed 2014-11-26
+
+    altitude_boundaries = None
+
     _nlev = 47
     _dtp = [("time", "datetime64[s]"),
             ("lat", "f4"),
             ("lon", "f4"),
             ("p0", "f4"),
             ("z0", "f4"),
+            ("T0", "f4"),
             ("z", "f4", _nlev),
             ("p", "f4", _nlev),
             ("T", "f4", _nlev),
@@ -722,10 +728,12 @@ class EurekaHDF(dataset.SingleFileDataset, dataset.ProfileDataset):
         "H2O.MIXING.RATIO.VOLUME_ABSORPTION.SOLAR": "H2O_VMR"}
     #_invtrans = {v: k for k, v in _trans.items()}
     _fld_copy_scal = {"lat", "lon", "p0", "T0", "z0", "CH4_tc",
-        "CH4_ap_tc", "sza", "saa"}
+        "CH4_ap_tc", "sza", "saa",
+        "delta_CH4_tc_random", "delta_CH4_tc_system"}
     _fld_copy_vec = {"z", "p", "T", "CH4_VMR", "CH4_pc", "CH4_ap_pc",
         "CH4_ak_tc", "H2O_VMR"}
     _fld_copy_mat = {"CH4_ak", "CH4_SA_system", "CH4_SA_random"}
+    _fld_copy_not = {"time"} # specially treated
     def _read(self, path=None, fields="all"):
         """Read granule"""
         if path is None:
@@ -736,33 +744,44 @@ class EurekaHDF(dataset.SingleFileDataset, dataset.ProfileDataset):
 
         n_elem = sd.select(0).info()[2]
         M = numpy.empty(shape=(n_elem,), dtype=self._dtp)
-        dtm_mjd2k = sd.select(sd.name2index("DATETIME")).get()
+        dtm_mjd2k = sd.select(sd.nametoindex("DATETIME")).get()
         dtm_mjd2k_s = dtm_mjd2k * 86400
-        M["time"] = numpy.datetime64(datetime.datetime(2000, 1, 1, 0, 0, 0) +
-                             dtm_mjd2k_s.astype("timedelta64[s]"))
+        M["time"] = (numpy.datetime64(datetime.datetime(2000, 1,
+                                                         1, 0, 0, 0)) +
+                         dtm_mjd2k_s.astype("timedelta64[s]"))
         # simple copy
         for (full, short) in self._trans.items():
             if short in self._fld_copy_scal:
-                M[short] = sd.select(sd.name2index(full)).get()
-            if short in self._fld_copy_vec:
-                M[short] = sd.select(sd.name2index(full)).get()[
-                    :, numpy.newaxis]
+                M[short] = sd.select(sd.nametoindex(full)).get()
+            elif short in self._fld_copy_vec:
+                # FIXME: why was this here?  Expect to go wrong!
+                M[short] = sd.select(sd.nametoindex(full)).get()
+#                M[short] = sd.select(sd.nametoindex(full)).get()[
+#                    :, numpy.newaxis]
+            elif short in self._fld_copy_mat:
+                M[short] = sd.select(sd.nametoindex(full)).get()
+            elif short in self._fld_copy_not:
+                pass
+            else:
+                logging.error("Don't know where to put {} ({})!".format(full, short))
 
         self.altitude_boundaries = sd.select(
-            sd.name2index("ALTITUDE.BOUNDARIES")).get()
+            sd.nametoindex("ALTITUDE.BOUNDARIES")).get()
 
         M["p0"] *= HECTO
         M["p"] *= HECTO
         M["z"] *= KILO
         M["z0"] *= KILO
-        M["VMR_CH4"] *= PPM
+        M["CH4_VMR"] *= PPM
 
-        for i in range(n_ds):
-            (nm, rank, dims, tp, n_attr) = sd.select(i).info()
-            if (rank==1 and dims==n_elem):
-                dtp.append((nm, "<f4"))
-            elif (rank>1 and dims[0]==n_elem):
-                dtp.append((nm, "<f4", dims[1:]))
+#        for i in range(n_ds):
+#            (nm, rank, dims, tp, n_attr) = sd.select(i).info()
+#            if (rank==1 and dims==n_elem):
+#                dtp.append((nm, "<f4"))
+#            elif (rank>1 and dims[0]==n_elem):
+#                dtp.append((nm, "<f4", dims[1:]))
+
+        return M
             
 
 def collect_values(fp, N, dtp):

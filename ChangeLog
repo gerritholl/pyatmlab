@@ -1,3 +1,18 @@
+2015-01-22  Gerrit Holl  <gerrit.holl@utoronto.ca>:
+
+	* pyatmlab-0-0-61
+
+	* pyatmlab/dataset.py(SingleFileDataset.read):
+
+	- Make sure we pass self.srcfile to super().read() if nothing is
+	given.  This in turn ensures it will be converted from Path to str if
+	needed.
+
+	* pyatmlab/datasets.py(Eureka_PRL_CH4_HDF):
+
+	- Adapted from EurekaHDF.  Fixed remaining bugs in reading routine.
+	It appears everything works now.
+
 2015-01-21  Gerrit Holl  <gerrit.holl@utoronto.ca>:
 
 	* pyatmlab-0-0-60
