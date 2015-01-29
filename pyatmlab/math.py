@@ -124,7 +124,7 @@ def regrid_ak(A, z_old, z_new, cut=False):
     :param z_new: New z-grid
     :param bool cut: Cut off, i.e. flag, when any z in the new grid is
         outside the old grid.
-    :returns: New averaging kernel
+    :returns: (New averaging kernel, W)
     """
 
     if cut:
@@ -140,14 +140,18 @@ def regrid_ak(A, z_old, z_new, cut=False):
         if z_old[z_old_valid].max() < z_new.max():
             raise ValueError("z_new not a subset of z_old!")
         #W = linear_interpolation_matrix(z_old[z_old_valid], z_new[~new_outside])
-        W = linear_interpolation_matrix(z_old[z_old_valid], z_new)
+        #W = linear_interpolation_matrix(z_old[z_old_valid], z_new)
+        # Keep full W (unflagged) because I want to put them all in a
+        # single ndarray later
+        # TODO: retry with masked arrays after the bugfixes
+        W = linear_interpolation_matrix(z_old, z_new)
 #        A_new = numpy.zeros(shape=(z_new.shape[0], z_new.shape[0]))
-        A_new = apply_W_A(W, A[z_old_valid, :][:, z_old_valid])
+        A_new = apply_W_A(W[:, z_old_valid], A[z_old_valid, :][:, z_old_valid])
 #        A_new[outside, outside] = numpy.nan
-        return A_new
+        return (A_new, W)
     else:
         W = linear_interpolation_matrix(z_old, z_new)
-        return apply_W_A(W, A)
+        return (apply_W_A(W, A), W)
 
 def regrid_matrix(A, z_old, z_new):
     """Regrid single matrix between grids.

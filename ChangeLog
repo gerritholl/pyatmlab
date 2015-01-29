@@ -1,3 +1,42 @@
+2015-01-28  Gerrit Holl  <gerrit.holl@utoronto.ca>:
+
+	* pyatmlab-0-0-62
+
+	* pyatmlab/math.py(regrid_ak):
+
+	- Also return interpolation matrices W.
+
+	* pyatmlab/collocations.py:
+
+	(ProfileCollocationDescriber):
+
+	- Split off class with methods relevant only for profiles, from parent
+	class
+
+	- Rearrange methods in source code
+
+	(ProfileCollocationDescriber.smooth):
+
+	- Make method more generic, no more hardcoded CH4_profile
+
+	(ProfileCollocationDescriber._regrid_xa_ak):
+
+	- Also return interpolation matrices W.
+
+	(ProfileCollocationDescriber.interpolate_profiles):
+
+	- When interpolating, keep track of interpolation matrices.
+
+	(ProfileCollocationDescriber._calc_error_propagation):
+
+	- Calculate error propagation upon smoothing and regridding, following
+	Vigouroux et al. (2007) and Calisesi et al. (2005)
+
+	* pyatmlab/physics.py(AKStats):
+
+	- Bugfix, don't bin visualisingly by all bins I use for the db to
+	Naoko
+
 2015-01-22  Gerrit Holl  <gerrit.holl@utoronto.ca>:
 
 	* pyatmlab-0-0-61

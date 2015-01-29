@@ -354,7 +354,7 @@ class AKStats:
 #        D["dof"]["data"] = dofs
 
         for k in D.keys():
-            if "bins" in self._dof_binners[k]:
+            if k in self._dof_binners and "bins" in self._dof_binners[k]:
                 D[k]["bins"] = self._dof_binners[k]["bins"]
             else:
                 D[k]["bins"] = numpy.linspace(
