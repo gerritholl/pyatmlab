@@ -345,7 +345,7 @@ class AKStats:
         ml = matplotlib.dates.DayLocator(bymonthday=[1, 15])
         datefmt = matplotlib.dates.DateFormatter("%m/%d")
 
-        D = dict(doy={}, mlst={}, lat={}, lon={}, parcol={}, dof={})
+        D = dict(doy={}, mlst={}, lat={}, lon={}, parcol={})
         D["doy"]["data"] = numpy.array(doy)
         D["mlst"]["data"] = numpy.array(mlst)
         D["lat"]["data"] = data["lat"]

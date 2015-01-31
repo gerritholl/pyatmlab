@@ -1,3 +1,40 @@
+2015-01-30  Gerrit Holl  <gerrit.holl@utoronto.ca>:
+
+	* pyatmlab-0-0-63
+
+	* pyatmlab/collocations.py:
+
+	(CollocatedDataset): Bugfix in case when primary granule is much
+	longer than secondary granule
+
+	(ProfileCollocationDescriber): 
+
+	- Bugfix in flagging interpolation matrix
+
+	- More code for error propagation calculations.  Not working yet.
+
+	* pyatmlab/datasets.py:
+
+	(Dataset): Change metaclass.  No need to have ABCMeta, was a
+	misunderstanding.  Do use DocStringInheritor.
+
+	(ACEFTS): Make fake (diagonal) SA matrix
+
+	(Eureka_PRL_CH4_HDF):
+
+	- Set necessary attributes: A_needs_converting, range, aliases
+	- Also read CH4.MIXING.RATIO.VOLUME_ABSORPTION.SOLAR_APRIORI (why was
+	it missing?)
+	- Turn around profiles when z is descending
+
+	* pytmlab/physics.py:
+
+	- Don't do dof
+
+	* pyamtlab/tools.py(DocStringInheritor):
+
+	- Copied metaclass recipe by Paul McGuire with a small addition.
+
 2015-01-28  Gerrit Holl  <gerrit.holl@utoronto.ca>:
 
 	* pyatmlab-0-0-62

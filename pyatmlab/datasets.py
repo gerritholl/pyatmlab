@@ -566,7 +566,8 @@ class ACEFTS(dataset.SingleMeasurementPerFileDataset,
     _time_format = "%Y-%m-%d %H:%M:%S"
     aliases = {"CH4_profile": "CH4",
         "delta_CH4_profile": "CH4_err",
-        "p": "P_pa"}
+        "p": "P_pa",
+        "S_CH4_profile": "CH4_SA_fake"}
     filename_fields = {"orbit": "u4", "version": "S3"}
     unique_fields = {"orbit", "time"}
     n_prof = "z"
@@ -605,7 +606,8 @@ class ACEFTS(dataset.SingleMeasurementPerFileDataset,
             # https://github.com/numpy/numpy/issues/4583
             #D = numpy.ma.empty((150,),
             D = numpy.empty((150,),
-                list(zip(names, ["f4"]*len(names))) + [("P_pa", "f4")])
+                list(zip(names, ["f4"]*len(names)))
+                    + [("P_pa", "f4"), ("CH4_SA_fake", "f4", (150,))])
 
             for (n, line) in enumerate(fp):
                 # why does this not work?
@@ -624,6 +626,9 @@ class ACEFTS(dataset.SingleMeasurementPerFileDataset,
         D["z"] *= 1e3
         D["P_pa"] = D["P_atm"] * constants.atm
 
+        # assume error covariance to be diagonal
+        D["CH4_SA_fake"] = numpy.diag(D["CH4_err"])
+
         head["lat"] = float(head["latitude"])
         head["lon"] = float(head["longitude"])
         # make sure lons are in (-180, 180)
@@ -636,6 +641,7 @@ class ACEFTS(dataset.SingleMeasurementPerFileDataset,
         # decimal part (truncating it to the nearest second)
         head["time"] = datetime.datetime.strptime(
             head["date"].split(".")[0].split("+")[0], self._time_format)
+
         return (head, D if fields=="all" else D[fields])
         
     def get_time_from_granule_contents(self, p):
@@ -664,14 +670,31 @@ class ACEFTS(dataset.SingleMeasurementPerFileDataset,
             return m
             
 
-class Eureka_PRL_CH4_HDF(dataset.SingleFileDataset, dataset.ProfileDataset):
+class Eureka_PRL_CH4_HDF(dataset.MultiFileDataset, dataset.ProfileDataset):
     # NOTE: there is a bug in older versions of Python-hdf4 that causes it to
     # crash on some HDF files.  The Eureka Bruker CH4 HDF files happen to
     # have a crash on
     # CH4.MIXING.RATIO.VOLUME_ABSORPTION.SOLAR_UNCERTAINTY.SYSTEMATIC.COVARIANCE
     # The bug was fixed 2014-11-26
 
+    # For PEARL collocating with TANSO, 80% of profiles have >50%
+    # sensitivity between 3.9 and 29.9 km, and 50% have >50% sensitivity
+    # between 3.9 km and 31.5 km
+    # For PEARL collocation with ACE, 80% of profiles have >50%
+    # sensitivity between 3.9 km and 26.9 km, and 50% have >50%
+    # sensitivity between 0.8 km and 29.9 km
+
+    A_needs_converting = False
+
+    range = (3.5e3, 30e3)
+
+    # specific field for Eureka PEARL HDF
     altitude_boundaries = None
+
+    aliases = {"CH4_profile": "CH4_VMR",
+        "S_CH4_profile": "CH4_SA_random",
+        "ap": "CH4_ap",
+        "ak": "CH4_ak"}
 
     _nlev = 47
     _dtp = [("time", "datetime64[s]"),
@@ -685,6 +708,7 @@ class Eureka_PRL_CH4_HDF(dataset.SingleFileDataset, dataset.ProfileDataset):
             ("T", "f4", _nlev),
             ("CH4_VMR", "f4", _nlev),
             ("CH4_ak", "f4", (_nlev, _nlev)),
+            ("CH4_ap", "f4", _nlev),
             ("CH4_SA_random", "f4", (_nlev, _nlev)),
             ("CH4_SA_system", "f4", (_nlev, _nlev)),
             ("CH4_pc", "f4", _nlev),
@@ -709,6 +733,7 @@ class Eureka_PRL_CH4_HDF(dataset.SingleFileDataset, dataset.ProfileDataset):
         "PRESSURE_INDEPENDENT": "p",
         "TEMPERATURE_INDEPENDENT": "T",
         "CH4.MIXING.RATIO.VOLUME_ABSORPTION.SOLAR": "CH4_VMR",
+        "CH4.MIXING.RATIO.VOLUME_ABSORPTION.SOLAR_APRIORI": "CH4_ap",
         "CH4.MIXING.RATIO.VOLUME_ABSORPTION.SOLAR_AVK": "CH4_ak",
         "CH4.MIXING.RATIO.VOLUME_ABSORPTION.SOLAR_UNCERTAINTY.RANDOM.COVARIANCE":
             "CH4_SA_random",
@@ -731,7 +756,7 @@ class Eureka_PRL_CH4_HDF(dataset.SingleFileDataset, dataset.ProfileDataset):
         "CH4_ap_tc", "sza", "saa",
         "delta_CH4_tc_random", "delta_CH4_tc_system"}
     _fld_copy_vec = {"z", "p", "T", "CH4_VMR", "CH4_pc", "CH4_ap_pc",
-        "CH4_ak_tc", "H2O_VMR"}
+        "CH4_ak_tc", "H2O_VMR", "CH4_ap"}
     _fld_copy_mat = {"CH4_ak", "CH4_SA_system", "CH4_SA_random"}
     _fld_copy_not = {"time"} # specially treated
     def _read(self, path=None, fields="all"):
@@ -749,17 +774,18 @@ class Eureka_PRL_CH4_HDF(dataset.SingleFileDataset, dataset.ProfileDataset):
         M["time"] = (numpy.datetime64(datetime.datetime(2000, 1,
                                                          1, 0, 0, 0)) +
                          dtm_mjd2k_s.astype("timedelta64[s]"))
+        # check direction
+        z = sd.select(sd.nametoindex("ALTITUDE")).get()
+        direc = int(numpy.sign(z[-1]-z[0]))
         # simple copy
         for (full, short) in self._trans.items():
             if short in self._fld_copy_scal:
                 M[short] = sd.select(sd.nametoindex(full)).get()
             elif short in self._fld_copy_vec:
-                # FIXME: why was this here?  Expect to go wrong!
-                M[short] = sd.select(sd.nametoindex(full)).get()
-#                M[short] = sd.select(sd.nametoindex(full)).get()[
-#                    :, numpy.newaxis]
+                # I may need to turnaround the data
+                M[short] = sd.select(sd.nametoindex(full)).get()[::direc]
             elif short in self._fld_copy_mat:
-                M[short] = sd.select(sd.nametoindex(full)).get()
+                M[short] = sd.select(sd.nametoindex(full)).get()[:, ::direc]
             elif short in self._fld_copy_not:
                 pass
             else:

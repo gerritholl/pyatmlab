@@ -206,6 +206,11 @@ class CollocatedDataset(dataset.HomemadeDataset):
                 yield (numpy.concatenate(prim), numpy.concatenate(sec))
                 prim = []
                 sec = []
+                # If primary granules are much longer than secondary
+                # granules, we might run over maxsize with a single
+                # primary granule.  Make sure to reset it so it's reread.
+                # (Setting to object() ensures == gives False)
+                old_prim = object()
                 secs_read.clear()
                 primsize = size_ms = secsize = 0
 
@@ -1157,7 +1162,7 @@ class ProfileCollocationDescriber(CollocationDescriber):
                     z[~val] = numpy.nan
                     if not val.any():
                         arr["int"][f][k, :] = numpy.nan
-                        arr["int"][f][k, :, :] = W
+                        arr["W"][f][k, :, :] = W
                         continue
                     if f in arr["filters"]:
                         y[val] = arr["filters"][f][0](y[val])
@@ -1193,7 +1198,7 @@ class ProfileCollocationDescriber(CollocationDescriber):
         This is just a thin shell around interpolate_profiles.
         """
 
-        targ = (self.p_col, self.s_col)[self.target]
+        targ = (self.p_col, self.s_col)[self.target][self.mask]
         targ_obj = (self.cd.primary, self.cd.secondary)[self.target]
 
         z_all = numpy.array([targ_obj.get_z(t) for t in targ])
@@ -1261,6 +1266,7 @@ class ProfileCollocationDescriber(CollocationDescriber):
             return (self._p_smooth, self._s_smooth)
 
         targ = (self.p_col, self.s_col)[self.target][self.mask]
+        nontarg = (self.p_col, self.s_col)[1-self.target][self.mask]
         targobj = (self.cd.primary, self.cd.secondary)[self.target]
         nontargobj = (self.cd.primary, self.cd.secondary)[1-self.target]
 
@@ -1270,6 +1276,11 @@ class ProfileCollocationDescriber(CollocationDescriber):
         # NB: if a profile's z_grid does not extend to the full range of
         # self.z_grid, any "extrapolated" values are set to numpy.nan by
         # regrid_profiles (through scipy.interpolate.interp1d)
+        #
+        # NB: Don't interpolate S here.  I need the error covariance
+        # in the original as I need to combine the interpolation matrices
+        # W_1 and W_2 (see Vigouroux et al. (2007) prior to applying them
+        # to S.
         flds = (field_specie, field_T, field_p)
         filts = dict(p=(numpy.log, numpy.exp))
         (p_int, s_int, p_W, s_W) = self.regrid_profiles(
@@ -1343,13 +1354,13 @@ class ProfileCollocationDescriber(CollocationDescriber):
 
         # Calculate variance
         # (not ready quite yet)
-        # W_1 = (p_W, s_W)[1 - self.target][nontargobj.aliases[field_specie]]
-        # W_2 = (p_W, s_W)[self.target][targobj.aliases[field_specie]]
-        # S_1 = (p_int, s_int)[1 - self.target][nontargobj.aliases[field_S]]
-        # S_2 = (p_int, s_int)[self.target][targobj.aliases[field_S]]
-        # S_d = [self._calc_error_propagation(S_1[i, :, :],
-        #        W_1[i, :, :], ak[i, :, :], S_2[i, :, :], W_2[i, :, :])
-        #            for i in range(p_int.size)]
+        W_1 = (p_W, s_W)[1 - self.target][nontargobj.aliases[field_specie]]
+        W_2 = (p_W, s_W)[self.target][targobj.aliases[field_specie]]
+        S_1 = nontarg[nontargobj.aliases[field_S]]
+        S_2 = targ[targobj.aliases[field_S]]
+        S_d = [self._calc_error_propagation(S_1[i, :, :],
+               W_1[i, :, :], ak[i, :, :], S_2[i, :, :], W_2[i, :, :])
+                   for i in range(p_int.size)]
 
         # remove invalid data
         OK = numpy.isfinite(xs).any(1)
@@ -1712,7 +1723,7 @@ class ProfileCollocationDescriber(CollocationDescriber):
         """
 
         W_12 = numpy.linalg.pinv(W_1).dot(W_2)
-        S_12 = S_1 + (A.T).dot(W_12).dot(S_2).dot(W_12.T).dot(A_1.T)
+        S_12 = S_1 + A_1.dot(W_12).dot(S_2).dot(W_12.T).dot(A_1.T)
         return S_12
 
     ## Visualisation methods
