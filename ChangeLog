@@ -1,3 +1,13 @@
+2015-02-02  Gerrit Holl  <gerrit.holl@utoronto.ca>:
+
+	* pyatmlab-0-0-64
+
+	* pyatmlab/collocations.py(ProfileCollocationDescriber):
+
+	- Fix bug in error propagation under smoothing (S_1, S_2).  It appears
+	to work now!  Next step will be to calculate error in profiles and
+	partial columns, again according to Vigouroux et al.
+
 2015-01-30  Gerrit Holl  <gerrit.holl@utoronto.ca>:
 
 	* pyatmlab-0-0-63

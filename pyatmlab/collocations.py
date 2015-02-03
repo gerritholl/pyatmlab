@@ -1353,14 +1353,21 @@ class ProfileCollocationDescriber(CollocationDescriber):
                 for n in range(ak.shape[0])])
 
         # Calculate variance
-        # (not ready quite yet)
-        W_1 = (p_W, s_W)[1 - self.target][nontargobj.aliases[field_specie]]
-        W_2 = (p_W, s_W)[self.target][targobj.aliases[field_specie]]
-        S_1 = nontarg[nontargobj.aliases[field_S]]
-        S_2 = targ[targobj.aliases[field_S]]
+        # S_1 should be low-res, S_2 should be highres
+        # `targ` is low-res
+
+        W_1 = (p_W, s_W)[self.target][targobj.aliases[field_specie]]
+        W_2 = (p_W, s_W)[1-self.target][nontargobj.aliases[field_specie]]
+        S_1 = targ[targobj.aliases[field_S]]
+        S_2 = nontarg[nontargobj.aliases[field_S]]
+        # eliminate flagged values; should not be propagated in matrix
+        # multiplication, so setting to 0 is appropriate
+        S_1[S_1<-10]=0
+        S_2[S_2<-10]=0
         S_d = [self._calc_error_propagation(S_1[i, :, :],
                W_1[i, :, :], ak[i, :, :], S_2[i, :, :], W_2[i, :, :])
                    for i in range(p_int.size)]
+        S_d = numpy.rollaxis(numpy.dstack(S_d), 2, 0)
 
         # remove invalid data
         OK = numpy.isfinite(xs).any(1)
@@ -1396,7 +1403,7 @@ class ProfileCollocationDescriber(CollocationDescriber):
 #        else:
 #            raise RuntimeError("Impossible!")
 
-        return (p_int, s_int)
+        return (p_int, s_int, S_d)
 
     def partial_columns(self, smoothed=True, reload=False):
         """Calculate partial columns.
@@ -1416,7 +1423,7 @@ class ProfileCollocationDescriber(CollocationDescriber):
                             self.cd.secondary.range[1]))
 
         if smoothed:
-            (p, s) = self.smooth()
+            (p, s, S_d) = self.smooth()
             z = self.z_smooth
         else:
             raise NotImplementedError()
@@ -1498,7 +1505,7 @@ class ProfileCollocationDescriber(CollocationDescriber):
         # use averaging kernel and a priori of dataset with less vertical
         # resolution
 
-        (p_int, s_int) = self.smooth()
+        (p_int, s_int, S_d) = self.smooth()
 
         return self._compare_profiles(
             p_int[self.cd.primary.aliases["CH4_profile"]],
