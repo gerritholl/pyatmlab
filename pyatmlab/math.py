@@ -217,3 +217,24 @@ def mad(x):
     """
 
     return numpy.median(numpy.abs(x - numpy.median(x)))
+
+def get_transformation_matrix(f, n):
+    """Obtain standard matrix for the linear transformaton
+
+    For a given linear function taking a vector valued argument, obtain
+    the standard matrix for the linear transformation.
+
+    See Lay (2003), Linear Algebra and its Transformations, 3rd edition,
+    Theorem 10 (page 83).
+
+    :param callable f: Function for which to get the transformation
+        matrix.  This might be a function or a functools.partial object,
+        for example.  This function should take as input a vector of
+        length n and return as output a vector of length m (m>0).
+        Of course, this function should be linear.
+    :param int n: Size of transformation matrix needed
+    :returns: (m x n) transformation matrix.
+    """
+
+    I = numpy.eye(n)
+    return numpy.hstack([f(I[:, i:(i+1)]) for i in range(n)])

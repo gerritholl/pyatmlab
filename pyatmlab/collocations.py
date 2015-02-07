@@ -1152,7 +1152,7 @@ class ProfileCollocationDescriber(CollocationDescriber):
                     if arr["orig"][f].shape[1] == arr["valid"].size:
                         z = arr["z_i"].copy()
                         val = arr["valid"] & numpy.isfinite(y)
-                        val[numpy.isfinite(y)] = (y[numpy.isfinite(y)]>=0)
+                        val[numpy.isfinite(y)] = (y[numpy.isfinite(y)]>-100)
                     else:
                         z = arr["obj"].get_z_for(arr["orig"][i], f).copy()
                         val = numpy.isfinite(z) & numpy.isfinite(y)
@@ -1162,21 +1162,31 @@ class ProfileCollocationDescriber(CollocationDescriber):
                     z[~val] = numpy.nan
                     if not val.any():
                         arr["int"][f][k, :] = numpy.nan
-                        arr["W"][f][k, :, :] = W
+                        arr["W"][f][k, :, :] = numpy.nan
                         continue
                     if f in arr["filters"]:
                         y[val] = arr["filters"][f][0](y[val])
                     # Need to store interpolation matrices for the purpose
                     # of error propagation calculations.
-                    W = pamath.linear_interpolation_matrix(z, z_grid)
+                    #W = pamath.linear_interpolation_matrix(z, z_grid)
+                    W = pamath.linear_interpolation_matrix(z[val], z_grid)
 #                    interp = scipy.interpolate.interp1d(
 #                        z[val], y[val], bounds_error=False)
 #                    yp = interp(z_grid)
-                    yp = W.dot(y) #  W@y
+                    # It is important that values outside the range are
+                    # set to numpy.nan here, because later I use this
+                    # flagging to set out-of-range levels to the low-res
+                    # apriori, following De Mazière et al. (2008).
+                    #W[z_grid < numpy.nanmin(z), :] = numpy.nan
+                    W[z_grid < numpy.nanmin(z), :] = 0
+                    yp = W.dot(y[val]) #  W@y
+                    yp[z_grid < numpy.nanmin(z)] = numpy.nan
                     if f in arr["filters"]:
                         yp = arr["filters"][f][1](yp)
                     arr["int"][f][k, :] = yp
-                    arr["W"][f][k, :, :] = W
+                    # Don't try to select two dimensions at once, see
+                    # http://stackoverflow.com/q/28352320/974555
+                    arr["W"][f][k, :, :][:, val] = W
 
             k += 1
 
@@ -1301,12 +1311,12 @@ class ProfileCollocationDescriber(CollocationDescriber):
         # the same grid as target objects.
         (xa, z_xa, ak, z_ak) = self._get_xa_ak(targ, targobj)
 
+        if targobj.A_needs_swapping:
+            ak = ak.swapaxes(1, 2)
         # FIXME: Should rather do this in reading routine...?
         # but: needs a priori that may be available only "elsewhere"
-        # FIXME: Separate conversion and swapping
         if targobj.A_needs_converting:
            # correct ak according to e-mail Stephanie 2014-06-17
-            ak = ak.swapaxes(1, 2)
             ak = numpy.rollaxis(
                 numpy.dstack(
                     [pamath.convert_ak_ap2vmr(
@@ -1343,7 +1353,8 @@ class ProfileCollocationDescriber(CollocationDescriber):
         # where high-res profile is outside its z-range, set to a-priori
         # of low-res.  For example, PEARL may go down only to 19.5 km, but
         # the low-res xa might go down to 5 km.  Then set [5, 19.5] of
-        # high-res equal to a priori of other.
+        # high-res equal to a priori of other, following De Mazière et al.
+        # (2008).
 
         xh[numpy.isnan(xh)] = xa[numpy.isnan(xh)]
 
@@ -1432,20 +1443,51 @@ class ProfileCollocationDescriber(CollocationDescriber):
         valid_range = (z > shared_range[0]) & (z < shared_range[1])
 
         z_valid = z[valid_range]
-        p_valid_vmr = p[self.cd.primary.aliases["CH4_profile"]].T[valid_range, :]
-        s_valid_vmr = s[self.cd.secondary.aliases["CH4_profile"]].T[valid_range, :]
+        #p_valid_vmr = p[self.cd.primary.aliases["CH4_profile"]].T[valid_range, :]
+        p_vmr = p[self.cd.primary.aliases["CH4_profile"]]#.T[valid_range, :]
+        s_vmr = s[self.cd.secondary.aliases["CH4_profile"]]#.T[valid_range, :]
 
-        p_valid_nd = physics.vmr2nd(p_valid_vmr,
-            p[self.cd.primary.aliases.get("T", "T")].T[valid_range, :],
-            p[self.cd.primary.aliases.get("p", "p")].T[valid_range, :])
-        s_valid_nd = physics.vmr2nd(p_valid_vmr,
-            s[self.cd.secondary.aliases.get("T", "T")].T[valid_range, :],
-            s[self.cd.secondary.aliases.get("p", "p")].T[valid_range, :])
+        # use mean T and geometric mean p for converting nd to vmr.
+        # We need full range for now, because off-diagonal values in the error
+        # covariance matrix outside the partial column range do
+        # affect the error in the partial column overall
+        pT = p[self.cd.primary.aliases.get("T", "T")]#.T[valid_range, :]
+        pp = p[self.cd.primary.aliases.get("p", "p")]#.T[valid_range, :]
+        sT = s[self.cd.secondary.aliases.get("T", "T")]#.T[valid_range, :]
+        sp = s[self.cd.secondary.aliases.get("p", "p")]#.T[valid_range, :]
 
-        p_parcol = pamath.integrate_with_height(
-            z_valid, p_valid_nd)
-        s_parcol = pamath.integrate_with_height(
-            z_valid, s_valid_nd)
+        T_ens = (pT + sT)/2
+        p_ens = numpy.sqrt(pp * sp)
+        #p_valid_nd = physics.vmr2nd(p_valid_vmr,
+        fact_vmr2nd = physics.vmr2nd(1, T_ens, p_ens)
+            #p[self.cd.primary.aliases.get("T", "T")].T[valid_range, :],
+            #p[self.cd.primary.aliases.get("p", "p")].T[valid_range, :])
+        #s_valid_nd = physics.vmr2nd(s_valid_vmr,
+        #s_fact_vmr2nd = physics.vmr2nd(1, 
+            #s[self.cd.secondary.aliases.get("T", "T")].T[valid_range, :],
+            #s[self.cd.secondary.aliases.get("p", "p")].T[valid_range, :])
+        #p_valid_nd = fact_vmr2nd.T * p_valid_vmr
+        p_nd = fact_vmr2nd * p_vmr
+        #s_valid_nd = fact_vmr2nd.T * s_valid_vmr
+        s_nd = fact_vmr2nd * s_vmr
+
+        g_int = numpy.zeros_like(z)
+        g_int[valid_range] = pamath.get_transformation_matrix(
+            functools.partial(pamath.integrate_with_height, z_valid),
+                z_valid.size)
+#        p_parcol = pamath.integrate_with_height(
+#            z_valid, p_valid_nd)
+#        p_parcol = g_int.dot(p_valid_nd)
+        p_parcol = g_int.dot(p_nd.T)
+#        s_parcol = pamath.integrate_with_height(
+#            z_valid, s_valid_nd)
+#        s_parcol = g_int.dot(s_valid_nd)
+        s_parcol = g_int.dot(s_nd.T)
+
+        # simple multiplication factor here
+        S_dnd = (numpy.atleast_3d(fact_vmr2nd).astype("f8")**2 * S_d)
+        # error propagation following Vigouroux et al, equation 5
+        S_dpc = g_int.dot(S_dnd).dot(numpy.atleast_2d(g_int).T)
 
         self.p_col = numpy.lib.recfunctions.append_fields(self.p_col,
             names=["parcol_CH4"],
@@ -1456,7 +1498,8 @@ class ProfileCollocationDescriber(CollocationDescriber):
             data=[s_parcol],
             usemask=False)
         self.z_range = (z[valid_range].min(), z[valid_range].max())
-        return (p_parcol, s_parcol, (z[valid_range].min(), z[valid_range].max()))
+        return (p_parcol, s_parcol, (z[valid_range].min(),
+                    z[valid_range].max()), S_dpc)
 
     def _compare_profiles(self, p_ch4_int, s_ch4_int,
             percs=(5, 25, 50, 75, 95)):

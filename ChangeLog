@@ -1,3 +1,68 @@
+2015-02-06  Gerrit Holl  <gerrit.holl@utoronto.ca>:
+
+	* pyatmlab-0-0-65
+
+	* pyatmlab/collocations.py(ProfileCollocationDescriber):
+
+	(interpolate_profiles):
+
+	- Do not consider all negative values invalid, don't want to flag
+	small negative values that can arise from retrievals.  For now fix
+	arbitrarily at -100
+
+	- Bugfix: don't try to extend interpolation matrix to flagged areas of
+	the z-grid, don't want nans in there.  Set W=0 elsewhere.
+
+	(smooth):
+
+	- For averaging kernel, separately keep track of need for axes
+	swapping and need for conversion
+
+	(partial_columns):
+
+	- Rather than calling vmr2nd and integrate_with_height directly, call
+	those with dummies (either 1 or columns of the unit matrix) so that I
+	get scalars/vectors that I can use to calculate error propagation.
+	Secondly, only consider the valid_range at the end, since off-diagonal
+	errors outside the considered partial column range do propagate into
+	the actual partial columns.
+
+	- Also return estimated errors.
+
+	* pyatmlab/dataset.py(ProfileDataset):
+
+	- New attribute A_needs_swapping.  Defaults to NotTrueNorFalse.
+
+	* pyatmlab/datasets.py:
+
+	(TansoFTSBase):
+
+	- Set A_needs_swapping=False
+
+	(ACEFTS.read_single):
+
+	- Bugfix: error covariance diagonal should be set to *squares* of the
+	reported errors, not the reported errors themselves.
+
+	(Eureka_PRL_CH4_HDF):
+
+	- Set A_needs_swapping = True
+
+	(_read):
+
+	- Make sure I actually DO turn around all fields that need to be
+	turned around.
+
+	- Make sure all SI conversions are applied exactly as defined in the
+	source.  Except for some.
+
+	* pyatmlab/math.py(get_transformation_matrix):
+
+	- Obtain standard matrix for the linear transformation for ANY linear
+	function.  This "standard matrix" is m x n (m>0, n>0), so it can also
+	be a vector in practice.  See Lay (2003), Theorem 10 (page 83).
+
+
 2015-02-02  Gerrit Holl  <gerrit.holl@utoronto.ca>:
 
 	* pyatmlab-0-0-64

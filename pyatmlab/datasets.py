@@ -27,6 +27,7 @@ class TansoFTSBase(dataset.ProfileDataset):
         10])*HECTO # hPa -> Pa
 
     A_needs_converting = False
+    A_needs_swapping = False
 
     def _read_common(self, h5f):
         """From open h5 file, read some fields common to both tanso versions
@@ -626,8 +627,14 @@ class ACEFTS(dataset.SingleMeasurementPerFileDataset,
         D["z"] *= 1e3
         D["P_pa"] = D["P_atm"] * constants.atm
 
-        # assume error covariance to be diagonal
-        D["CH4_SA_fake"] = numpy.diag(D["CH4_err"])
+        # assume error covariance matrix to be diagonal
+        # and convert std. error to variance.  Errors on flagged values
+        # are 0.
+
+        val = D["CH4_err"]>0
+        D["CH4_SA_fake"] = numpy.diag(D["CH4_err"]**2)
+        D["CH4_SA_fake"][:, ~val] = 0
+        D["CH4_SA_fake"][~val, :] = 0
 
         head["lat"] = float(head["latitude"])
         head["lon"] = float(head["longitude"])
@@ -685,6 +692,7 @@ class Eureka_PRL_CH4_HDF(dataset.MultiFileDataset, dataset.ProfileDataset):
     # sensitivity between 0.8 km and 29.9 km
 
     A_needs_converting = False
+    A_needs_swapping = True
 
     range = (3.5e3, 30e3)
 
@@ -755,7 +763,8 @@ class Eureka_PRL_CH4_HDF(dataset.MultiFileDataset, dataset.ProfileDataset):
     _fld_copy_scal = {"lat", "lon", "p0", "T0", "z0", "CH4_tc",
         "CH4_ap_tc", "sza", "saa",
         "delta_CH4_tc_random", "delta_CH4_tc_system"}
-    _fld_copy_vec = {"z", "p", "T", "CH4_VMR", "CH4_pc", "CH4_ap_pc",
+    _fld_copy_onevec = {"z"}
+    _fld_copy_vec = {"p", "T", "CH4_VMR", "CH4_pc", "CH4_ap_pc",
         "CH4_ak_tc", "H2O_VMR", "CH4_ap"}
     _fld_copy_mat = {"CH4_ak", "CH4_SA_system", "CH4_SA_random"}
     _fld_copy_not = {"time"} # specially treated
@@ -774,31 +783,39 @@ class Eureka_PRL_CH4_HDF(dataset.MultiFileDataset, dataset.ProfileDataset):
         M["time"] = (numpy.datetime64(datetime.datetime(2000, 1,
                                                          1, 0, 0, 0)) +
                          dtm_mjd2k_s.astype("timedelta64[s]"))
-        # check direction
+        # check direction as I may need to turnaround the data
         z = sd.select(sd.nametoindex("ALTITUDE")).get()
         direc = int(numpy.sign(z[-1]-z[0]))
         # simple copy
         for (full, short) in self._trans.items():
+            sds = sd.select(sd.nametoindex(full))
             if short in self._fld_copy_scal:
-                M[short] = sd.select(sd.nametoindex(full)).get()
+                M[short] = sds.get()
+            elif short in self._fld_copy_onevec:
+                M[short] = sds.get()[::direc]
             elif short in self._fld_copy_vec:
-                # I may need to turnaround the data
-                M[short] = sd.select(sd.nametoindex(full)).get()[::direc]
+                M[short] = sds.get()[:, ::direc]
             elif short in self._fld_copy_mat:
-                M[short] = sd.select(sd.nametoindex(full)).get()[:, ::direc]
+                M[short] = sds.get()[:, :, ::direc][:, ::direc, :]
             elif short in self._fld_copy_not:
                 pass
             else:
                 logging.error("Don't know where to put {} ({})!".format(full, short))
 
+            (offset, factor, unit) = sds.attributes()["VAR_SI_CONVERSION"].split(';')
+            factor = ast.literal_eval(factor)
+            if not unit in {"rad", "mol m-2", "s"}:
+                M[short] *= factor
+
         self.altitude_boundaries = sd.select(
             sd.nametoindex("ALTITUDE.BOUNDARIES")).get()
 
-        M["p0"] *= HECTO
-        M["p"] *= HECTO
-        M["z"] *= KILO
-        M["z0"] *= KILO
-        M["CH4_VMR"] *= PPM
+        # Now done above
+        #M["p0"] *= HECTO
+        #M["p"] *= HECTO
+        #M["z"] *= KILO
+        #M["z0"] *= KILO
+        #M["CH4_VMR"] *= PPM
 
 #        for i in range(n_ds):
 #            (nm, rank, dims, tp, n_attr) = sd.select(i).info()

@@ -727,6 +727,7 @@ class ProfileDataset(Dataset):
     # does the A priori need converting?  It does for PEARL, does not for
     # others
     A_needs_converting = tools.NotTrueNorFalse
+    A_needs_swapping = tools.NotTrueNorFalse
 
     range = None
 

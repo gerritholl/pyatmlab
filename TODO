@@ -1,0 +1,2 @@
+- Bug: when there are already collocations and we search for more,
+  duplicates result
