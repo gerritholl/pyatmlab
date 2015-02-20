@@ -1,3 +1,112 @@
+2015-02-20  Gerrit Holl  <gerrit.holl@utoronto.ca>:
+
+	* pyatmlab-0-0-66
+
+	* pyatmlab/collocations.py(ProfileCollocationDescriber):
+
+	(interpolate_profiles):
+
+	- Add interpolation matrices to the returned p_int, s_int objects so
+	that they will not be lost later.
+
+	(smooth):
+
+	- Be more verbose as to keep track of what is going on
+
+	- DISABLE limiting to shared range, as this causes problems in keeping
+	track of interpolation matrices that can be consistently used if error
+	covariances are obtained only later.  Instead, flag interpolation
+	matrices with nans where extrapolation would be going on.
+
+	- Only return error if requested.  In some cases, such as for TANSO, I
+	can't get S because bucketing is based on partial columns, that can
+	only be calculated after smoothing.  In this case, postpone the
+	error estimations, but do communicate all information needed to
+	consistently regrid and smoothen error estimates.
+
+	(partial_columns):
+	
+	- Adapt for changed signature in smooth()
+
+	- Don't hardcode for "CH4_profile"
+
+	- Rewrite all operations in terms of linear operators
+
+	- Apply same linear operators to error estimates, return those as well
+
+	(compare_profiles_raw, compare_profiles_smooth):
+
+	- Adapt for changed signature of interpolate_profiles()
+
+	(_limit_to_shared_range):
+
+	- Made changen in order to fix problems elsewhere, but this method is
+	disabled now anyway...
+
+	(_calc_error_propagation):
+
+	- Adapt to (properly?) take care of nans in W_1 and S_1.  The ones in
+	W_1 are worst because pinv might hang!
+
+	(_get_smoothing_error):
+
+	- Move code to calculate the smoothing error out of smooth() because I
+	might need to call this one separately if TANSO is involved.
+
+	* pyatmlab/dataset.py(Dataset):
+
+	(extend_with_doy_localtime):
+
+	- Add doy and localtime to ndarray
+
+	(extend_with_dofs):
+
+	- Add dofs to ndarray
+
+	* pyatmlab/db.py(SimilarityLookupTable):
+
+	(get_index_tuple):
+
+	- Return only a single tuple.
+
+	(get_index_tuples):
+
+	- Yield many tuples.
+
+	(lookup):
+
+	- Lookup the entry for a single datapoint
+
+	(lookup_all):
+
+	- Lookup the entries for many datapoints
+
+	(lookaround):
+
+	- When a particular entry is not found, average neighbouring entries
+
+	* pyatmlab/math.py:
+	
+	(linear_interpolation_matrix):
+
+	- Fill extrapolated values with nan, not edges
+
+	(regrid_ak):
+
+	- Take proper care of nans in z and A
+
+	(smooth_profile):
+
+	- Take proper care of nans in xa en ak
+
+	* pyatmlab/physics.py(AKstats.dofs):
+
+	- Adapt to avoid bug, see https://github.com/numpy/numpy/issues/5560
+
+	* pyatmlab/stats.py(bin_nd_sparse):
+
+	- Make sure we're not binning nans.
+
 2015-02-06  Gerrit Holl  <gerrit.holl@utoronto.ca>:
 
 	* pyatmlab-0-0-65

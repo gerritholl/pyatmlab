@@ -1106,14 +1106,20 @@ class ProfileCollocationDescriber(CollocationDescriber):
         val_ind = self.mask.nonzero()[0]
         p["int"] = numpy.zeros(shape=(val_ind.size,),
             dtype=[(x[0], x[1], z_grid.size) for x in p["orig"].dtype.descr
-                        if x[0] in prims])
+                        if x[0] in prims] +
+                [("W", [(x[0], "f4", (z_grid.size, x[2][0]))
+                            for x in p["orig"].dtype.descr
+                            if x[0] in prims])])
         p["W"] = numpy.zeros(shape=(val_ind.size,),
             dtype=[(x[0], "f4", (z_grid.size, x[2][0]))
                     for x in p["orig"].dtype.descr
                         if x[0] in prims])
         s["int"] = numpy.zeros_like(p["int"], 
             dtype=[(x[0], x[1], z_grid.size) for x in s["orig"].dtype.descr
-                        if x[0] in secs])
+                        if x[0] in secs] +
+                [("W", [(x[0], "f4", (z_grid.size, x[2][0]))
+                            for x in s["orig"].dtype.descr
+                                if x[0] in secs])])
         s["W"] = numpy.zeros(shape=(val_ind.size,),
             dtype=[(x[0], "f4", (z_grid.size, x[2][0]))
                     for x in s["orig"].dtype.descr
@@ -1136,14 +1142,17 @@ class ProfileCollocationDescriber(CollocationDescriber):
             #
             if not p["valid"].any() or not s["valid"].any():
                 p["int"][k].fill(numpy.nan)
-                p["W"][k].fill(numpy.nan)
+                #p["W"][k].fill(numpy.nan)
+                p["int"]["W"][k].fill(numpy.nan)
                 s["int"][k].fill(numpy.nan)
-                s["W"][k].fill(numpy.nan)
+                #s["W"][k].fill(numpy.nan)
+                s["int"]["W"][k].fill(numpy.nan)
                 k += 1
                 continue
 
             for arr in (p, s):
-                for f in arr["int"].dtype.names:
+                for f in (set(arr["int"].dtype.names) &
+                          set(arr["orig"].dtype.names)):
                     y = arr["orig"][f][i, :].copy()
                     # FIXME: to determine validity, don't simply say
                     # 'y>0', rather consider actual flagged values, should
@@ -1162,7 +1171,8 @@ class ProfileCollocationDescriber(CollocationDescriber):
                     z[~val] = numpy.nan
                     if not val.any():
                         arr["int"][f][k, :] = numpy.nan
-                        arr["W"][f][k, :, :] = numpy.nan
+                        #arr["W"][f][k, :, :] = numpy.nan
+                        arr["int"]["W"][f][k, :, :] = numpy.nan
                         continue
                     if f in arr["filters"]:
                         y[val] = arr["filters"][f][0](y[val])
@@ -1186,11 +1196,12 @@ class ProfileCollocationDescriber(CollocationDescriber):
                     arr["int"][f][k, :] = yp
                     # Don't try to select two dimensions at once, see
                     # http://stackoverflow.com/q/28352320/974555
-                    arr["W"][f][k, :, :][:, val] = W
+                    #arr["W"][f][k, :, :][:, val] = W
+                    arr["int"]["W"][f][k, :, :][:, val] = W
 
             k += 1
 
-        return (p["int"], s["int"], p["W"], s["W"])
+        return (p["int"], s["int"])#, p["W"], s["W"])
 
     def regrid_profiles(self,
             *args, **kwargs):
@@ -1226,7 +1237,8 @@ class ProfileCollocationDescriber(CollocationDescriber):
                      field_T="T", 
                      field_p="p",
                      field_S="S_CH4_profile",
-                     reload=False):
+                     reload=False,
+                     return_error=True):
         """Smooth one profile with the others AK
         
         Normally the profile with the largest information content should
@@ -1275,6 +1287,12 @@ class ProfileCollocationDescriber(CollocationDescriber):
         if not reload and (self._p_smooth is not None) and (self._s_smooth is not None):
             return (self._p_smooth, self._s_smooth)
 
+        logging.info("Smoothing {}: {} {} vs. {} {}".format(
+            self.cd.name,
+            self.cd.primary.__class__.__name__, 
+            self.cd.primary.name,
+            self.cd.secondary.__class__.__name__,
+            self.cd.secondary.name))
         targ = (self.p_col, self.s_col)[self.target][self.mask]
         nontarg = (self.p_col, self.s_col)[1-self.target][self.mask]
         targobj = (self.cd.primary, self.cd.secondary)[self.target]
@@ -1293,11 +1311,14 @@ class ProfileCollocationDescriber(CollocationDescriber):
         # to S.
         flds = (field_specie, field_T, field_p)
         filts = dict(p=(numpy.log, numpy.exp))
-        (p_int, s_int, p_W, s_W) = self.regrid_profiles(
+        #(p_int, s_int, p_W, s_W) = self.regrid_profiles(
+        logging.info("Regridding {:d} profiles".format(self.p_col.size))
+        (p_int, s_int) = self.regrid_profiles(
             prim_fields=flds,
             sec_fields=flds,
             prim_filters=filts,
             sec_filters=filts)
+        logging.info("Done")
         p_ch4_int = p_int[self.cd.primary.aliases[field_specie]]
         s_ch4_int = s_int[self.cd.secondary.aliases[field_specie]]
 
@@ -1309,7 +1330,9 @@ class ProfileCollocationDescriber(CollocationDescriber):
 
         # Get "pure" a priori and averaging kernels.  May or may not be on
         # the same grid as target objects.
+        logging.info("Obtain a priori, averaging kernels")
         (xa, z_xa, ak, z_ak) = self._get_xa_ak(targ, targobj)
+        logging.info("Done")
 
         if targobj.A_needs_swapping:
             ak = ak.swapaxes(1, 2)
@@ -1340,12 +1363,14 @@ class ProfileCollocationDescriber(CollocationDescriber):
         # that.
 
         p_sa = s_sa = None # FIXME
-        (xa, z_xa, ak, z_ak, xh, z_xh, p_int, s_int, p_sa, s_sa) = \
-            self._limit_to_shared_range(xa, z_xa, ak, z_ak, xh, z_xh, 
-                p_int, s_int, p_sa, s_sa)
+#        (xa, z_xa, ak, z_ak, xh, z_xh, p_int, s_int, p_sa, s_sa) = \
+#            self._limit_to_shared_range(xa, z_xa, ak, z_ak, xh, z_xh, 
+#                p_int, s_int, p_sa, s_sa)
 
         # regrid xa(z_xa) and ak(z_ak) onto the grid of z_xh
+        logging.info("Regridding rest")
         (xa, z_xa, W_xa, ak, z_ak, W_ak) = self._regrid_xa_ak(xa, z_xa, ak, z_ak, z_xh)
+        logging.info("Done")
 
 
         # OK :).  Now everything should be on the same z-grid!
@@ -1357,36 +1382,47 @@ class ProfileCollocationDescriber(CollocationDescriber):
         # (2008).
 
         xh[numpy.isnan(xh)] = xa[numpy.isnan(xh)]
+        with numpy.errstate(invalid="ignore"):
+            ak[(ak<-10)] = numpy.nan
 
         # This is where the smoothing is actually performed!
+        logging.info("Doing actual smoothing")
         xs = numpy.vstack(
             [pamath.smooth_profile(xh[n, :], ak[n, :, :], xa[n, :])
                 for n in range(ak.shape[0])])
+        logging.info("Done")
 
         # Calculate variance
         # S_1 should be low-res, S_2 should be highres
         # `targ` is low-res
+        # Oops.  In the case of TANSO I can't get S because I have done
+        # bucketing based on partial columns!  But to calculate partial
+        # columns I need to do smoothing.
 
-        W_1 = (p_W, s_W)[self.target][targobj.aliases[field_specie]]
-        W_2 = (p_W, s_W)[1-self.target][nontargobj.aliases[field_specie]]
-        S_1 = targ[targobj.aliases[field_S]]
-        S_2 = nontarg[nontargobj.aliases[field_S]]
-        # eliminate flagged values; should not be propagated in matrix
-        # multiplication, so setting to 0 is appropriate
-        S_1[S_1<-10]=0
-        S_2[S_2<-10]=0
-        S_d = [self._calc_error_propagation(S_1[i, :, :],
-               W_1[i, :, :], ak[i, :, :], S_2[i, :, :], W_2[i, :, :])
-                   for i in range(p_int.size)]
-        S_d = numpy.rollaxis(numpy.dstack(S_d), 2, 0)
+        if return_error:
+            S_d = self._get_smoothing_error(p_int, s_int, ak,
+                    field_specie=field_specie, field_S=field_S)
+#        W_1 = (p_int, s_int)[self.target]["W"][targobj.aliases[field_specie]]
+#        W_2 = (p_int, s_int)[1-self.target]["W"][nontargobj.aliases[field_specie]]
+#        if field_S in targobj.aliases:
+#            S_1 = targ[targobj.aliases[field_S]]
+#        else:
+#            S_1 = targobj.get_additional_field(targ, field_S)
+#        if field_S in nontargobj.aliases:
+#            S_2 = nontarg[nontargobj.aliases[field_S]]
+#        else:
+#            S_2 = nontargobj.get_additional_field(nontarg, field_S)
+#        # eliminate flagged values; should not be propagated in matrix
+#        # multiplication, so setting to 0 is appropriate
+#        S_1[S_1<-10]=0
+#        S_2[S_2<-10]=0
+#        S_d = [self._calc_error_propagation(S_1[i, :, :],
+#               W_1[i, :, :], ak[i, :, :], S_2[i, :, :], W_2[i, :, :])
+#                   for i in range(p_int.size)]
+#        S_d = numpy.rollaxis(numpy.dstack(S_d), 2, 0)
 
         # remove invalid data
         OK = numpy.isfinite(xs).any(1)
-        # I don't really know what to do with still incomplete averaging
-        # kernels (i.e. flagged levels), as I want all profiles on the
-        # same grid.  Remove those for now.
-        invalid = (ak<-10).any(1).any(1)
-        OK = OK & (~invalid)
 
         xs = xs[OK, :]
         p_int = p_int[OK]
@@ -1414,19 +1450,26 @@ class ProfileCollocationDescriber(CollocationDescriber):
 #        else:
 #            raise RuntimeError("Impossible!")
 
-        return (p_int, s_int, S_d)
+        if return_error:
+            return (p_int, s_int, ak, S_d)
+        else:
+            return (p_int, s_int, ak)
 
-    def partial_columns(self, smoothed=True, reload=False):
+    def partial_columns(self, smoothed=True, reload=False,
+            field_specie="CH4_profile",
+            field_parcol="parcol_CH4",
+            field_S="S_CH4_profile"):
         """Calculate partial columns.
 
         """
-        if ("parcol_CH4" in self.p_col.dtype.names and
-            "parcol_CH4" in self.s_col.dtype.names and
+        if (field_parcol in self.p_col.dtype.names and
+            field_parcol in self.s_col.dtype.names and
             not reload):
-            return (self.p_col["parcol_CH4"],
-                    self.s_col["parcol_CH4"],
+            return (self.p_col[field_parcol],
+                    self.s_col[field_parcol],
                     self.z_range)
         # FIXME: consider filtering here!
+        logging.info("Calculating partial columns")
 
         shared_range = (max(self.cd.primary.range[0],
                             self.cd.secondary.range[0]),
@@ -1434,7 +1477,13 @@ class ProfileCollocationDescriber(CollocationDescriber):
                             self.cd.secondary.range[1]))
 
         if smoothed:
-            (p, s, S_d) = self.smooth()
+            if (self.cd.primary.aliases.get(field_S, field_S) in
+                    self.p_col.dtype.names and
+                self.cd.secondary.aliases.get(field_S, field_S) in
+                    self.s_col.dtype.names):
+                (p, s, ak, S_d) = self.smooth(return_error=True)
+            else:
+                (p, s, ak) = self.smooth(return_error=False)
             z = self.z_smooth
         else:
             raise NotImplementedError()
@@ -1444,8 +1493,8 @@ class ProfileCollocationDescriber(CollocationDescriber):
 
         z_valid = z[valid_range]
         #p_valid_vmr = p[self.cd.primary.aliases["CH4_profile"]].T[valid_range, :]
-        p_vmr = p[self.cd.primary.aliases["CH4_profile"]]#.T[valid_range, :]
-        s_vmr = s[self.cd.secondary.aliases["CH4_profile"]]#.T[valid_range, :]
+        p_vmr = p[self.cd.primary.aliases[field_specie]]#.T[valid_range, :]
+        s_vmr = s[self.cd.secondary.aliases[field_specie]]#.T[valid_range, :]
 
         # use mean T and geometric mean p for converting nd to vmr.
         # We need full range for now, because off-diagonal values in the error
@@ -1478,25 +1527,35 @@ class ProfileCollocationDescriber(CollocationDescriber):
 #        p_parcol = pamath.integrate_with_height(
 #            z_valid, p_valid_nd)
 #        p_parcol = g_int.dot(p_valid_nd)
-        p_parcol = g_int.dot(p_nd.T)
+        # Normally, including elements where g_int=0 should have 0 effect
+        # on the resulting p_parcol; but some p_nd are nan, and
+        # 0*nan=nan, not 0.
+        g_relevant = g_int!=0
+        p_parcol = g_int[g_relevant].dot(p_nd[:, g_relevant].T)
 #        s_parcol = pamath.integrate_with_height(
 #            z_valid, s_valid_nd)
 #        s_parcol = g_int.dot(s_valid_nd)
-        s_parcol = g_int.dot(s_nd.T)
+        s_parcol = g_int[g_relevant].dot(s_nd[:, g_relevant].T)
 
+        self.p_col = numpy.lib.recfunctions.append_fields(self.p_col,
+            names=[field_parcol],
+            data=[p_parcol],
+            usemask=False)
+        self.s_col = numpy.lib.recfunctions.append_fields(self.s_col,
+            names=[field_parcol],
+            data=[s_parcol],
+            usemask=False)
+
+        logging.info("Obtaining error estimate")
+        S_d = self._get_smoothing_error(p, s, ak)
+        logging.info("Done")
         # simple multiplication factor here
+        # note that double precision is needed because the multiplication
+        # factor gets quite large
         S_dnd = (numpy.atleast_3d(fact_vmr2nd).astype("f8")**2 * S_d)
         # error propagation following Vigouroux et al, equation 5
         S_dpc = g_int.dot(S_dnd).dot(numpy.atleast_2d(g_int).T)
 
-        self.p_col = numpy.lib.recfunctions.append_fields(self.p_col,
-            names=["parcol_CH4"],
-            data=[p_parcol],
-            usemask=False)
-        self.s_col = numpy.lib.recfunctions.append_fields(self.s_col,
-            names=["parcol_CH4"],
-            data=[s_parcol],
-            usemask=False)
         self.z_range = (z[valid_range].min(), z[valid_range].max())
         return (p_parcol, s_parcol, (z[valid_range].min(),
                     z[valid_range].max()), S_dpc)
@@ -1531,7 +1590,7 @@ class ProfileCollocationDescriber(CollocationDescriber):
         dictionary.
         """
 
-        (p_int, s_int, p_W, s_W) = self.interpolate_profiles(z_grid,
+        (p_int, s_int) = self.interpolate_profiles(z_grid,
             prim_fields=("CH4_profile",),
             sec_fields=("CH4_profile",))
 
@@ -1548,7 +1607,7 @@ class ProfileCollocationDescriber(CollocationDescriber):
         # use averaging kernel and a priori of dataset with less vertical
         # resolution
 
-        (p_int, s_int, S_d) = self.smooth()
+        (p_int, s_int, ak, S_d) = self.smooth()
 
         return self._compare_profiles(
             p_int[self.cd.primary.aliases["CH4_profile"]],
@@ -1672,15 +1731,24 @@ class ProfileCollocationDescriber(CollocationDescriber):
             # returned, so should still be cut off so caller can
             # consistently process. 
             p_int_new = numpy.zeros(shape=p_int.shape, dtype=
-                [(x[0], x[1], (~toohigh).sum())
+                [((x[0], x[1], (~toohigh).sum())
+                        if isinstance(x[1], str)
+                        else (x[0], x[1]))
                     for x in p_int.dtype.descr])
             s_int_new = numpy.zeros(shape=s_int.shape, dtype=
-                [(x[0], x[1], (~toohigh).sum())
+                [((x[0], x[1], (~toohigh).sum())
+                        if isinstance(x[1], str)
+                        else (x[0], x[1]))
                     for x in s_int.dtype.descr])
-            for f in p_int.dtype.names:
+
+            for f in set(p_int.dtype.names) - {"W"}: # treat W specially
                 p_int_new[f] = p_int[f][:, ~toohigh]
-            for f in s_int.dtype.names:
+            for f in set(s_int.dtype.names) - {"W"}:
                 s_int_new[f] = s_int[f][:, ~toohigh]
+            for f in p_int["W"].dtype.names:
+                p_int_new["W"][f][:, ~toohigh, :] = p_int["W"][f][:, ~toohigh, :]
+            for f in s_int["W"].dtype.names:
+                s_int_new["W"][f][:, ~toohigh, :] = s_int["W"][f][:, ~toohigh, :]
             (p_int, s_int) = (p_int_new, s_int_new)
             #p_ch4_int = p_ch4_int[:, ~toohigh]
             #s_ch4_int = s_ch4_int[:, ~toohigh]
@@ -1749,6 +1817,7 @@ class ProfileCollocationDescriber(CollocationDescriber):
 
         return (xa, z_xa, W_xa, ak, z_ak, W_ak)
 
+    _deb_i = 0
     def _calc_error_propagation(self, S_1, W_1, A_1, S_2, W_2):
         """Calculate random covariance matrix for comparison
 
@@ -1772,9 +1841,65 @@ class ProfileCollocationDescriber(CollocationDescriber):
         :param W_2:
         """
 
+        # ERROR!  pinv hangs if W_1 contains nans in an unfortunate way.
+        if numpy.isnan(W_1).any():
+            logging.warning("Found nans in W_1 {:d}, treating as 0".format(self._deb_i))
+            W_1 = W_1.copy()
+            W_1[numpy.isnan(W_1)] = 0
         W_12 = numpy.linalg.pinv(W_1).dot(W_2)
-        S_12 = S_1 + A_1.dot(W_12).dot(S_2).dot(W_12.T).dot(A_1.T)
+        OK = numpy.isfinite(numpy.diag(A_1))
+        OKix = numpy.ix_(OK,OK)
+        S_12 = numpy.zeros_like(S_1)
+        S_12.fill(numpy.nan)
+        #S_12 = S_1 + A_1.dot(W_12).dot(S_2).dot(W_12.T).dot(A_1.T)
+        # FIXME: Or fill the rest simply with whatever was S_1?
+        self._deb_i += 1
+        #logging.info("no. {:d}...".format(self._deb_i))
+        S_12[OKix] = S_1[OKix] + A_1[OKix].dot(
+                                 W_12[OK,:]).dot(
+                                 S_2).dot(
+                                 W_12[OK,:].T).dot(
+                                 A_1[OKix].T)
         return S_12
+
+    def _get_smoothing_error(self, p_int, s_int, ak,
+            field_specie="CH4_profile",
+            field_S="S_CH4_profile"):
+        targ = (self.p_col, self.s_col)[self.target][self.mask]
+        nontarg = (self.p_col, self.s_col)[1-self.target][self.mask]
+        targobj = (self.cd.primary, self.cd.secondary)[self.target]
+        nontargobj = (self.cd.primary, self.cd.secondary)[1-self.target]
+        #
+        W_1 = (p_int, s_int)[self.target]["W"][targobj.aliases[field_specie]]
+        W_2 = (p_int, s_int)[1-self.target]["W"][nontargobj.aliases[field_specie]]
+        if field_S in targobj.aliases:
+            S_1 = targ[targobj.aliases[field_S]]
+        else:
+            logging.info("Obtaining errors for {} externally".format(
+                targobj.name))
+            S_1 = targobj.get_additional_field(targ, field_S)
+            logging.info("Done")
+        if field_S in nontargobj.aliases:
+            S_2 = nontarg[nontargobj.aliases[field_S]]
+        else:
+            logging.info("Obtaining errors for {} externally".format(
+                nontargobj.name))
+            S_2 = nontargobj.get_additional_field(nontarg, field_S)
+            logging.info("Done")
+        # eliminate flagged values; should not be propagated in matrix
+        # multiplication, so setting to 0 is appropriate
+        with numpy.errstate(invalid="ignore"):
+            S_1[numpy.isnan(S_1)] = 0
+            S_2[numpy.isnan(S_2)] = 0
+            S_1[S_1<-10]=0
+            S_2[S_2<-10]=0
+        logging.info("Calculating error propagation for {:d} profiles".format(p_int.size))
+        S_d = [self._calc_error_propagation(S_1[i, :, :],
+               W_1[i, :, :], ak[i, :, :], S_2[i, :, :], W_2[i, :, :])
+                   for i in range(p_int.size)]
+        logging.info("Done")
+        S_d = numpy.rollaxis(numpy.dstack(S_d), 2, 0)
+        return S_d
 
     ## Visualisation methods
 

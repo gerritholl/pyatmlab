@@ -130,8 +130,13 @@ def bin_nd_sparse(binners, bins):
     the coordinates that each point would be in.
     """
 
-    M = numpy.empty(shape=(binners[0].shape[0], len(binners)))
+    M = numpy.empty(shape=(
+        binners[0].shape[0] if binners[0].ndim>0 else 1, len(binners)),
+            dtype="u2")
     for (i, (binner, bin_n)) in enumerate(zip(binners, bins)):
+        if numpy.isnan(binner).any():
+            raise ValueError("I found nans in bin {:d}.  I refuse to bin nans!".format(
+                i))
         M[:, i] = numpy.digitize(binner, bin_n)
     return M
         

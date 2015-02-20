@@ -21,6 +21,8 @@ import numpy.lib.recfunctions
 import pytz
 
 from . import tools
+from . import time as pytime
+from . import physics
 
 class DataFileError(Exception):
     """Superclass for any datafile issues
@@ -275,6 +277,37 @@ class Dataset(metaclass=tools.DocStringInheritor):
         Exact fields depend on subclass.
         """
         raise NotImplementedError("Must be implemented by child-class")
+
+    @staticmethod
+    def extend_with_doy_localtime(M):
+        """Calculate DOY and mean local solar time
+
+        :param M: ndarray with dtype as returned by self.read 
+        :returns M: ndarray with dtype extended with doy and mlst
+        """
+
+        (all_doy, all_mlst) = (numpy.array(x) for x in zip(
+            *[pytime.dt_to_doy_mlst(M[i]["time"].astype(datetime.datetime),
+                                     M[i]["lon"])
+                for i in range(M.shape[0])]))
+        return numpy.lib.recfunctions.append_fields(M, 
+            names=["doy", "mlst"],
+            data=[all_doy, all_mlst],
+            dtypes=["u2", "f4"])
+    
+    @staticmethod
+    def extend_with_dofs(M):
+        """Calculate DOFs
+
+        :param M: ndarray with dtype as for self.read
+        :returns M: M with added field dof
+        """
+
+        return numpy.lib.recfunctions.append_fields(M,
+            names=["dof"],
+            data=[physics.AKStats(M["ch4_ak"],
+                    name="DUMMY").dofs()],
+            dtypes=["f4"])
 
 class SingleFileDataset(Dataset):
     """Represents a dataset where all measurements are in one file.

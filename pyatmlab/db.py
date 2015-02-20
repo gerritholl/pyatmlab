@@ -633,12 +633,35 @@ class SimilarityLookupTable:
 
         return random.choice(data)
 
-    def get_index_tuple(self, data):
+    def get_index_tuple(self, dat):
         """Get a tuple of indices for use in the lookup table
         """
-        return [tuple(row) for row in
-                stats.bin_nd_sparse([data[ax]
-                        for ax in list(self.axdata.keys())], self.bins)]
+        return tuple(stats.bin_nd_sparse([dat[ax]
+                for ax in list(self.axdata.keys())], self.bins).squeeze().tolist())
 
-    def lookup(self, data):
-        return [self.db[tup] for tup in self.get_index_tuple(data)]
+    def get_index_tuples(self, data):
+        """Yield tuples of indices for use in the lookup table
+        """
+        yield from (self.get_index_tuple(dat) for dat in data)
+
+    def lookup(self, dat):
+        tup = self.get_index_tuple(dat)
+        return self.db[tup]
+        
+    def lookup_all(self, data):
+        for dat in data:
+            try:
+                yield self.lookup(dat)
+            except KeyError:
+                yield None
+        #yield from (self.lookup(dat) for dat in data)
+
+    def lookaround(self, dat):
+        """Yield all neighbouring datapoints
+
+        Look at all neighbouring datapoints.  NB those may be 2^N where N is
+        the length of tup!  Very slow!
+        """
+        tup = self.get_index_tuple(dat)
+        manytup = itertools.product(*[range(i-1,i+2) for i in tup])
+        yield from (t for t in manytup if t in self.db)

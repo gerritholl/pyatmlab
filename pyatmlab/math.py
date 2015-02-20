@@ -102,7 +102,8 @@ def linear_interpolation_matrix(x_old, x_new):
     """
     
     W = numpy.vstack(
-        [numpy.interp(x_new, x_old, numpy.eye(x_old.size)[i, :])    
+        [numpy.interp(x_new, x_old, numpy.eye(x_old.size)[i, :],
+            left=numpy.nan, right=numpy.nan)    
             for i in range(x_old.size)])
     #return W
     return W.T
@@ -137,16 +138,23 @@ def regrid_ak(A, z_old, z_new, cut=False):
 #                       (z_new < numpy.nanmin(z_old)))
         #               ~numpy.isfinite(z_old))
         z_old_valid = numpy.isfinite(z_old)
-        if z_old[z_old_valid].max() < z_new.max():
-            raise ValueError("z_new not a subset of z_old!")
+#        if z_old[z_old_valid].max() < z_new.max():
+#            raise ValueError("z_new not a subset of z_old!")
         #W = linear_interpolation_matrix(z_old[z_old_valid], z_new[~new_outside])
         #W = linear_interpolation_matrix(z_old[z_old_valid], z_new)
         # Keep full W (unflagged) because I want to put them all in a
         # single ndarray later
         # TODO: retry with masked arrays after the bugfixes
         W = linear_interpolation_matrix(z_old, z_new)
-#        A_new = numpy.zeros(shape=(z_new.shape[0], z_new.shape[0]))
-        A_new = apply_W_A(W[:, z_old_valid], A[z_old_valid, :][:, z_old_valid])
+        #z_new_ok = (z_new > z_old.min()) & (z_new < z_old.max())
+        z_new_ok = numpy.isfinite(W).all(1)
+        A_new = numpy.zeros(shape=(z_new.shape[0], z_new.shape[0]))
+        A_new.fill(numpy.nan)
+        # The first one seems to not work... the second one does
+        #A_new[z_new_ok, :][:, z_new_ok] = apply_W_A(
+        A_new[numpy.ix_(z_new_ok, z_new_ok)] = apply_W_A(
+                W[:, z_old_valid][z_new_ok, :],
+                A[z_old_valid, :][:, z_old_valid])
 #        A_new[outside, outside] = numpy.nan
         return (A_new, W)
     else:
@@ -209,7 +217,12 @@ def smooth_profile(xh, ak, xa):
     :param xa: Low-resolution a priori profile
     """
 
-    xs = xa + ak.dot(xh - xa)
+    OK = (numpy.isfinite(xa) &
+          numpy.isfinite(numpy.diag(ak)) &
+          numpy.isfinite(xh))
+    xs = numpy.zeros_like(xa)
+    xs.fill(numpy.nan)
+    xs[OK] = xa[OK] + ak[numpy.ix_(OK,OK)].dot(xh[OK] - xa[OK])
     return xs
 
 def mad(x):

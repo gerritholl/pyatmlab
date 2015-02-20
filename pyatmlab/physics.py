@@ -59,7 +59,9 @@ class AKStats:
         This is the trace of the averaging kernels.
         """
 
-        return self.aks.trace(axis1=1, axis2=2)
+        # Circumvent https://github.com/numpy/numpy/issues/5560
+        #return self.aks.trace(axis1=1, axis2=2)
+        return numpy.trace(self.aks, axis1=1, axis2=2)
 
     def sensitivities(self):
         """Calculate sensitivities.
