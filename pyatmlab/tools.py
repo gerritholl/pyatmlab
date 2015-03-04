@@ -10,6 +10,7 @@ import shelve
 import struct
 import logging
 import pickle
+import copy
 
 import numpy
 
@@ -301,3 +302,28 @@ def array_equal_with_equal_nans(A, B):
     """
 
     return numpy.all((A == B) | (numpy.isnan(A) & numpy.isnan(B)))
+
+def mark_for_disk_cache(**kwargs):
+    """Mark method for later caching
+    """
+    def mark(meth, d):
+        meth.disk_cache = True
+        meth.disk_cache_args = d
+        return meth
+    return functools.partial(mark, d=kwargs)
+
+def setmem(obj, memory):
+    """Process marks set by mark_for_disk_cache on a fresh instance
+
+    Meant to be called from __init__ as `setmem(self, memory)
+    """
+
+    if memory is not None:
+        for k in dir(obj):
+            meth = getattr(obj, k)
+            if hasattr(meth, "disk_cache") and meth.disk_cache:
+#                args = copy.deepcopy(meth.disk_cache_args)
+#                if "process" in args:
+#                    args["process"] = {k:(v if callable(v) else getattr(obj, v))
+#                        for (k, v) in args["process"].items()}
+                setattr(obj, k, memory.cache(meth, **meth.disk_cache_args))

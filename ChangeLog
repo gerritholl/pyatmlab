@@ -1,3 +1,58 @@
+2015-03-03  Gerrit Holl  <gerrit.holl@utoronto.ca>:
+
+	* pyatmlab-0-0-67
+
+	* pyatmlab/collocations.py(collocations.py):
+
+	(CollocatedDataset.__repr__): Add method
+
+	(CollocationDescriber):
+
+	- Use joblib.Memory for several methods
+	- Move fignames to ProfileCollocationDescriber as they're only
+	relevant there
+
+	  (regrid_profiles, compare_profiles_raw):
+
+	  - Rather than altering state, return z, so this can be cached
+
+	  (smooth):
+
+	  - Return hash rather than tuple
+
+	  (partial_columns, compare_profiles_smooth):
+
+	  - Adapt for changed signature in smooth
+
+	* pyatmlab/dataset.py:
+	
+	(Dataset):
+
+	- Implement memoisation for several methods
+
+	(MultiFileDataset):
+
+	- Part of this, implement __getstate__ and __setstate__ so we can skip
+	self.granule_start_times.  Move _open_granule_file code to its own
+	method.
+
+	* pyatmlab/datasets.py(Eureka_PRL_CH4_HDF):
+
+	- Implemented timezone corrections again but finally it looks like
+	we're back in UTC
+
+	* pyatmlab/io.py(write_data_to_files):
+
+	- Dedicated function to write data to files (for pgfplots), rather
+	than relying on the patchy addition to graphics.print_or_show.
+
+	* pyatmlab/tools.py:
+
+	(mark_for_disk_cache): Mark method for caching with joblib.Memory, so
+	that it can be actually applied after object initialisation
+
+	(setmem): helper to be called from relevant __init__ method
+
 2015-02-20  Gerrit Holl  <gerrit.holl@utoronto.ca>:
 
 	* pyatmlab-0-0-66

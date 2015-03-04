@@ -11,11 +11,14 @@ and others.
 # Some code in this module was originally obtained from the module
 # PyARTS.io.
 
+import string
 import os.path
 import datetime
+import logging
 
 import numpy
 from . import config
+from .graphics import plotdatadir
 
 def get_chevallier_path(var, tp):
     """Get path to original Chevallier data.
@@ -153,4 +156,33 @@ def datadir():
 
     return datetime.date.today().strftime(config.get_config('datadir'))
 
+def write_data_to_files(data, fn):
+    """Write data to one or more files
 
+    Write single ndarray or dictionary of ndarrays to a set of files.
+    Files are written inside config.get_config('datadir').
+    `data` is a dictionary with ndarrays.  Each element is written to its
+    own file.  It can also be a dictionary of dictionaries, etc., of
+    arbitrary depth.  `fn` should contain `{}`s corresponding to the
+    depth of the dictionary.
+
+    :param data: Dictionary with ndarrays
+    :param fn:
+    """
+
+    if not os.path.exists(plotdatadir()):
+        os.makedirs(plotdatadir())
+    depth_fn = sum([s[1] is not None for s in string.Formatter().parse(fn)])
+    if isinstance(data, numpy.ndarray) and data.dtype.fields is None:
+        if depth_fn != 0:
+            raise ValueError("Number of fields in filename does not match "
+                             "depth of data dictionary")
+        of = os.path.join(plotdatadir(), "{:s}.dat".format(fn))
+        logging.info("Writing {:s}".format(of))
+        numpy.savetxt(of, data)
+    else:
+        for field in (data.dtype.fields 
+                        if isinstance(data, numpy.ndarray)
+                        else data.keys()):
+            write_data_to_files(data[field],
+                fn.format(*([field] + ["{}"]*(depth_fn-1))))

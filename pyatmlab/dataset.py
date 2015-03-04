@@ -12,6 +12,7 @@ import string
 import sys
 import shutil
 import tempfile
+import copy
 
 import datetime
 import numpy
@@ -90,7 +91,10 @@ class Dataset(metaclass=tools.DocStringInheritor):
     related = {}
     timezone = pytz.UTC
 
-    def __init__(self, **kwargs):
+    def __init__(self, *, memory=None, **kwargs):
+        # set memorisation on methods.  See note on "caching methods" at
+        # https://pythonhosted.org/joblib/memory.html
+        tools.setmem(self, memory)
         for (k, v) in kwargs.items():
             setattr(self, k, v)
 
@@ -207,8 +211,9 @@ class Dataset(metaclass=tools.DocStringInheritor):
     def __str__(self):
         return "Dataset:" + self.name
 
-    
-    @tools.mutable_cache(maxsize=10)
+    @tools.mark_for_disk_cache(
+        process=dict(
+            my_data=lambda x: x.view(dtype="i1")))
     def combine(self, my_data, other_obj):
         """Combine with data from other dataset
 
@@ -237,7 +242,12 @@ class Dataset(metaclass=tools.DocStringInheritor):
         
         # brute force algorithm for now.  Update if needed.
         for i in range(my_data.shape[0]):
-            ident = [(my_data[i][f] == other_data[f]).nonzero()[0]
+            # can't use isclose for all because datetime64 don't work, see
+            # https://github.com/numpy/numpy/issues/5610
+            ident = [
+                (numpy.isclose(my_data[i][f], other_data[f])
+                    if issubclass(my_data[f].dtype.type, numpy.inexact)
+                    else my_data[i][f] == other_data[f]).nonzero()[0]
                         for f in self.unique_fields]
             # N arrays of numbers, find numbers occuring in each array.
             # Should be exactly one!
@@ -400,21 +410,18 @@ class MultiFileDataset(Dataset):
             if (getattr(self, attr) is not None and
                 not isinstance(getattr(self, attr), pathlib.PurePath)):
                 setattr(self, attr, pathlib.Path(getattr(self, attr)))
-        if self.granule_cache_file is not None:
-            p = str(self.basedir / self.granule_cache_file)
-            try:
-                self._granule_start_times = shelve.open(p, protocol=4)
-            except OSError:
-                logging.error(("Unable to open granule file {} RW.  "
-                               "Opening copy instead.").format(p))
-                tf = tempfile.NamedTemporaryFile()
-                shutil.copyfile(p, tf.name)
-                #self._granule_start_times = shelve.open(p, flag='r')
-                self._granule_start_times = shelve.open(tf.name)
-        else:
-            self._granule_start_times = {}
+        self._open_granule_file()
         if self.re is not None:
             self._re = re.compile(self.re)
+
+    def __getstate__(self):
+        state = self.__dict__.copy()
+        del state["_granule_start_times"]
+        return state
+
+    def __setstate__(self, state):
+        self.__dict__.update(state)
+        self._open_granule_file()
 
     def find_dir_for_time(self, dt):
         """Find the directory containing granules/measurements at (date)time
@@ -637,6 +644,21 @@ class MultiFileDataset(Dataset):
              "get_time_from_granule_contents method.".format(
                 type(self).__name__)))
 
+    def _open_granule_file(self):
+        if self.granule_cache_file is not None:
+            p = str(self.basedir / self.granule_cache_file)
+            try:
+                self._granule_start_times = shelve.open(p, protocol=4)
+            except OSError:
+                logging.error(("Unable to open granule file {} RW.  "
+                               "Opening copy instead.").format(p))
+                tf = tempfile.NamedTemporaryFile()
+                shutil.copyfile(p, tf.name)
+                #self._granule_start_times = shelve.open(p, flag='r')
+                self._granule_start_times = shelve.open(tf.name)
+        else:
+            self._granule_start_times = {}
+
 class SingleMeasurementPerFileDataset(MultiFileDataset):
     """Represents datasets where each file contains one measurement.
 
@@ -764,7 +786,7 @@ class ProfileDataset(Dataset):
 
     range = None
 
-    @tools.mutable_cache(maxsize=10)
+    #@tools.mutable_cache(maxsize=10)
     def read(self, f=None, fields="all"):
         M = super().read(f, fields)
         if isinstance(self.n_prof, str):

@@ -28,6 +28,7 @@ from . import tools
 from . import graphics
 from . import physics
 from . import math as pamath
+from . import io
 
 from .constants import MB
 
@@ -115,6 +116,9 @@ class CollocatedDataset(dataset.HomemadeDataset):
             self.end_date = min(self.primary.end_date,
                 self.secondary.end_date) + self.max_interval.astype(datetime.timedelta)
 
+    def __repr__(self):
+        return ("<{self.__class__.__qualname__:s}: '{self.primary.name}'"
+                "-'{self.secondary.name}'>").format(self=self)
 
     def find_granule_pairs(self, start_date=None, end_date=None):
         """Iterate through all (prim, sec) co-time granule pairs
@@ -751,18 +755,6 @@ class CollocationDescriber:
             linewidth=1,
             color="black"))
 
-    figname_compare_profiles = ("compare_profiles_ch4"
-        "_{self.cd.primary.__class__.__name__!s}"
-        "_{self.cd.secondary.__class__.__name__}"
-        "_targ{self.target}"
-        "_{allmask}"
-        "_{quantity}.")
-
-    figname_compare_pc = ("compare_partial_columns_ch4"
-        "_{self.cd.primary.__class__.__name__}"
-        "_{self.cd.secondary.__class__.__name__}"
-        "_targ{self.target}.")
-
     _target_vals = ["primary", "secondary"]
 
     _target = None
@@ -777,7 +769,8 @@ class CollocationDescriber:
     def target(self, value):
         self._target = self._target_vals.index(value)
 
-    def __init__(self, cd, p_col, s_col, **kwargs):
+    def __init__(self, cd, p_col, s_col, memory=None, **kwargs):
+        tools.setmem(self, memory)
         self.cd = cd
         self.p_col = p_col
         self.s_col = s_col
@@ -1065,10 +1058,29 @@ class ProfileCollocationDescriber(CollocationDescriber):
     treated similarly.
     """
 
-    z_range = None
+    figname_compare_profiles = ("compare_profiles_ch4"
+        "_{self.cd.primary.__class__.__name__!s}"
+        "_{self.cd.secondary.__class__.__name__}"
+        "_targ{self.target}"
+        "_{allmask}"
+        "_{quantity}.")
 
-    ## Calculation methods
+    dataname_compare_profiles = ("compare_profiles_ch4"
+        "_{self.cd.primary.__class__.__name__!s}"
+        "_{self.cd.secondary.__class__.__name__}"
+        "_targ{self.target}")
 
+    figname_compare_pc = ("compare_partial_columns_ch4"
+        "_{self.cd.primary.__class__.__name__}"
+        "_{self.cd.secondary.__class__.__name__}"
+        "_targ{self.target}.")
+
+
+    #z_range = None
+
+    ## Calculation methods.  Should not change the state.
+
+    @tools.mark_for_disk_cache()
     def interpolate_profiles(self, z_grid,
             prim_fields=("CH4_profile",),
             sec_fields=("CH4_profile",),
@@ -1203,6 +1215,7 @@ class ProfileCollocationDescriber(CollocationDescriber):
 
         return (p["int"], s["int"])#, p["W"], s["W"])
 
+    @tools.mark_for_disk_cache()
     def regrid_profiles(self,
             *args, **kwargs):
         """Interpolate both profiles to grid of target.
@@ -1213,8 +1226,7 @@ class ProfileCollocationDescriber(CollocationDescriber):
         no-op.  If the z-grid for the target is not unique, take the mean
         and grid all profiles to this one.
 
-        Set self.z_grid to the z_grid that is finally used, and return
-        interpolated profiles (primary, secondary).
+        Return new z-grid and interpolated profiles (z, primary, secondary).
 
         This is just a thin shell around interpolate_profiles.
         """
@@ -1225,14 +1237,11 @@ class ProfileCollocationDescriber(CollocationDescriber):
         z_all = numpy.array([targ_obj.get_z(t) for t in targ])
         z = numpy.nanmean(numpy.array(z_all, dtype="f8"), 0)
 
-        self.z_grid = z
-        return self.interpolate_profiles(z, *args, **kwargs)
+        #self.z_grid = z
+        return (z,) + self.interpolate_profiles(z, *args, **kwargs)
 
 
-    # This fails because it uses state information that changes between
-    # calls, and this state information is not taken into account.
-    #@functools.lru_cache(maxsize=10)
-    _p_smooth = _s_smooth = None
+    @tools.mark_for_disk_cache()
     def smooth(self, field_specie="CH4_profile",
                      field_T="T", 
                      field_p="p",
@@ -1251,8 +1260,6 @@ class ProfileCollocationDescriber(CollocationDescriber):
         Rodgers and Connor (2003): Intercomparison of
         remote sounding instruments.  In: Journal of Geophysical Research,
         Vol 108, No. D3, 4116, doi:10.1029/2002JD002299
-
-        Also calls self.regrid_profiles thus setting self.z_grid.
 
         Returns primary and secondary profiles, one smoothed, the other
         unchanged.
@@ -1284,8 +1291,8 @@ class ProfileCollocationDescriber(CollocationDescriber):
 
         # Cache results "by hand"; it appears lru_cache doesn't work well
         # with methods depending on the state of a (mutable) object
-        if not reload and (self._p_smooth is not None) and (self._s_smooth is not None):
-            return (self._p_smooth, self._s_smooth)
+#        if not reload and (self._p_smooth is not None) and (self._s_smooth is not None):
+#            return (self._p_smooth, self._s_smooth)
 
         logging.info("Smoothing {}: {} {} vs. {} {}".format(
             self.cd.name,
@@ -1299,7 +1306,7 @@ class ProfileCollocationDescriber(CollocationDescriber):
         nontargobj = (self.cd.primary, self.cd.secondary)[1-self.target]
 
         # Regrid primary and secondary CH4 profiles so that they share the
-        # same z_grid, that will be set to self.z_grid.
+        # same z_grid
         #
         # NB: if a profile's z_grid does not extend to the full range of
         # self.z_grid, any "extrapolated" values are set to numpy.nan by
@@ -1313,7 +1320,7 @@ class ProfileCollocationDescriber(CollocationDescriber):
         filts = dict(p=(numpy.log, numpy.exp))
         #(p_int, s_int, p_W, s_W) = self.regrid_profiles(
         logging.info("Regridding {:d} profiles".format(self.p_col.size))
-        (p_int, s_int) = self.regrid_profiles(
+        (z_xh, p_int, s_int) = self.regrid_profiles(
             prim_fields=flds,
             sec_fields=flds,
             prim_filters=filts,
@@ -1322,11 +1329,9 @@ class ProfileCollocationDescriber(CollocationDescriber):
         p_ch4_int = p_int[self.cd.primary.aliases[field_specie]]
         s_ch4_int = s_int[self.cd.secondary.aliases[field_specie]]
 
-        # Both p_ch4_int and s_ch4_int are
-        # already regridded to both be on self.z_grid (see above)
+        # Both p_ch4_int and s_ch4_int are already regridded to z_xh (see above)
 
         xh = (p_ch4_int, s_ch4_int)[1-self.target]
-        z_xh = self.z_grid
 
         # Get "pure" a priori and averaging kernels.  May or may not be on
         # the same grid as target objects.
@@ -1350,9 +1355,8 @@ class ProfileCollocationDescriber(CollocationDescriber):
         #
         # - Actual profiles
         #       -> regrid_profiles(), called above, guarantees those are
-        #       on the same grid, set in self.z_grid.  This should be from
+        #       on the same grid, set in z_xh.  This should be from
         #       the low-resolution profile (i.e. the target).
-        #       Note that z_xh == self.z_grid
         # - Averaging kernels for low-resolution profile
         #       -> currently on z_ak
         # - A priori for low-resolution profile, on z_xa
@@ -1399,9 +1403,11 @@ class ProfileCollocationDescriber(CollocationDescriber):
         # bucketing based on partial columns!  But to calculate partial
         # columns I need to do smoothing.
 
+        rv = {}
         if return_error:
             S_d = self._get_smoothing_error(p_int, s_int, ak,
                     field_specie=field_specie, field_S=field_S)
+            rv["S_d"] = S_d
 #        W_1 = (p_int, s_int)[self.target]["W"][targobj.aliases[field_specie]]
 #        W_2 = (p_int, s_int)[1-self.target]["W"][nontargobj.aliases[field_specie]]
 #        if field_S in targobj.aliases:
@@ -1428,33 +1434,23 @@ class ProfileCollocationDescriber(CollocationDescriber):
         p_int = p_int[OK]
         s_int = s_int[OK]
 
-        if not all(numpy.array_equal(self.z_grid, z) for z in
-            (z_xa, z_ak, z_xh)):
+        if not all(numpy.array_equal(z_xh, z) for z in
+            (z_xa, z_ak)):
             raise RuntimeError("z_grids should be equal by now!")
 
-        self.z_smooth = z_xa
+        # Don't change the state; this eliminates caching!
+        #self.z_smooth = z_xa
         logging.info("Z-grid after smoothing: {!s}".format(z_xa))
         (p_int, s_int)[1-self.target][nontargobj.aliases[field_specie]] = xs
-#        if self.target == 0:
-#            #p["CH4_profile"] = p_ch4_int
-#            s["CH4_profile"] = xs
-#            #self._p_smooth = p_ch4_int
-#            #self._s_smooth = xs
-#            #return (p_ch4_int, xs)
-#        elif self.target == 1:
-#            p["CH4_profile"] = xs
-#            #s["CH4_profile"] = s_ch4_int
-#            #self._p_smooth = xs
-#            #self._s_smooth = s_ch4_int
-#            #return (xs, s_ch4_int)
-#        else:
-#            raise RuntimeError("Impossible!")
 
-        if return_error:
-            return (p_int, s_int, ak, S_d)
-        else:
-            return (p_int, s_int, ak)
+        rv["p"] = p_int
+        rv["s"] = s_int
+        rv["ak"] = ak
+        rv["z_smooth"] = z_xa
+        return rv
 
+    _S_dpc = None
+    @tools.mark_for_disk_cache()
     def partial_columns(self, smoothed=True, reload=False,
             field_specie="CH4_profile",
             field_parcol="parcol_CH4",
@@ -1462,12 +1458,13 @@ class ProfileCollocationDescriber(CollocationDescriber):
         """Calculate partial columns.
 
         """
-        if (field_parcol in self.p_col.dtype.names and
-            field_parcol in self.s_col.dtype.names and
-            not reload):
-            return (self.p_col[field_parcol],
-                    self.s_col[field_parcol],
-                    self.z_range)
+#        if (field_parcol in self.p_col.dtype.names and
+#            field_parcol in self.s_col.dtype.names and
+#            not reload):
+#            return (self.p_col[field_parcol],
+#                    self.s_col[field_parcol],
+#                    self.z_range,
+#                    self._S_dpc)
         # FIXME: consider filtering here!
         logging.info("Calculating partial columns")
 
@@ -1481,10 +1478,16 @@ class ProfileCollocationDescriber(CollocationDescriber):
                     self.p_col.dtype.names and
                 self.cd.secondary.aliases.get(field_S, field_S) in
                     self.s_col.dtype.names):
-                (p, s, ak, S_d) = self.smooth(return_error=True)
+                D = self.smooth(return_error=True)
+                S_d = D["S_d"]
+                #(p, s, ak, S_d) = self.smooth(return_error=True)
             else:
-                (p, s, ak) = self.smooth(return_error=False)
-            z = self.z_smooth
+                #(p, s, ak) = self.smooth(return_error=False)
+                D = self.smooth(return_error=False)
+            p = D["p"]
+            s = D["s"]
+            ak = D["ak"]
+            z = D["z_smooth"]
         else:
             raise NotImplementedError()
 
@@ -1537,14 +1540,15 @@ class ProfileCollocationDescriber(CollocationDescriber):
 #        s_parcol = g_int.dot(s_valid_nd)
         s_parcol = g_int[g_relevant].dot(s_nd[:, g_relevant].T)
 
-        self.p_col = numpy.lib.recfunctions.append_fields(self.p_col,
-            names=[field_parcol],
-            data=[p_parcol],
-            usemask=False)
-        self.s_col = numpy.lib.recfunctions.append_fields(self.s_col,
-            names=[field_parcol],
-            data=[s_parcol],
-            usemask=False)
+        # Don't change the state; this eliminates caching!
+#        self.p_col = numpy.lib.recfunctions.append_fields(self.p_col,
+#            names=[field_parcol],
+#            data=[p_parcol],
+#            usemask=False)
+#        self.s_col = numpy.lib.recfunctions.append_fields(self.s_col,
+#            names=[field_parcol],
+#            data=[s_parcol],
+#            usemask=False)
 
         logging.info("Obtaining error estimate")
         S_d = self._get_smoothing_error(p, s, ak)
@@ -1554,12 +1558,17 @@ class ProfileCollocationDescriber(CollocationDescriber):
         # factor gets quite large
         S_dnd = (numpy.atleast_3d(fact_vmr2nd).astype("f8")**2 * S_d)
         # error propagation following Vigouroux et al, equation 5
-        S_dpc = g_int.dot(S_dnd).dot(numpy.atleast_2d(g_int).T)
+        # explicitly select non-zero parts because those may be flagged
+        # with nan and 0*nan=nan
+        S_dpc = g_int[g_int!=0].dot(
+                S_dnd[numpy.ix_(range(S_dnd.shape[0]), g_int!=0, g_int!=0)]).dot(
+                numpy.atleast_2d(g_int[g_int!=0]).T).squeeze()
 
-        self.z_range = (z[valid_range].min(), z[valid_range].max())
-        return (p_parcol, s_parcol, (z[valid_range].min(),
-                    z[valid_range].max()), S_dpc)
+        z_range = (z[valid_range].min(), z[valid_range].max())
+        #self._S_dpc = S_dpc
+        return (p_parcol, s_parcol, z_range, S_dpc)
 
+    @tools.mark_for_disk_cache()
     def _compare_profiles(self, p_ch4_int, s_ch4_int,
             percs=(5, 25, 50, 75, 95)):
         """Helper for compare_profiles_{raw,smoothed}
@@ -1579,6 +1588,7 @@ class ProfileCollocationDescriber(CollocationDescriber):
                 for i in range(D[k].shape[1])])
             for k in D.keys()}
 
+    @tools.mark_for_disk_cache()
     def compare_profiles_raw(self, z_grid,
             percs=(5, 25, 50, 75, 95)):
         """Return some statistics comparing profiles.
@@ -1594,10 +1604,11 @@ class ProfileCollocationDescriber(CollocationDescriber):
             prim_fields=("CH4_profile",),
             sec_fields=("CH4_profile",))
 
-        return self._compare_profiles(
+        return (z_grid, self._compare_profiles(
             p_int[self.cd.primary.aliases["CH4_profile"]],
-            s_int[self.cd.secondary.aliases["CH4_profile"]], percs=percs)
+            s_int[self.cd.secondary.aliases["CH4_profile"]], percs=percs))
 
+    @tools.mark_for_disk_cache()
     def compare_profiles_smooth(self, _,
             percs=(5, 25, 50, 75, 95)):
         #
@@ -1607,14 +1618,19 @@ class ProfileCollocationDescriber(CollocationDescriber):
         # use averaging kernel and a priori of dataset with less vertical
         # resolution
 
-        (p_int, s_int, ak, S_d) = self.smooth()
+        D = self.smooth(return_error=False)
+        p_int = D["p"]
+        s_int = D["s"]
+        ak = D["ak"]
+        #(p_int, s_int, ak) = self.smooth(return_error=False)
 
-        return self._compare_profiles(
+        return (D["z_smooth"], self._compare_profiles(
             p_int[self.cd.primary.aliases["CH4_profile"]],
-            s_int[self.cd.secondary.aliases["CH4_profile"]], percs=percs)
+            s_int[self.cd.secondary.aliases["CH4_profile"]], percs=percs))
 
     ## Helper methods for calculation methods
 
+    @tools.mark_for_disk_cache()
     def _get_xa_ak(self, targ, targobj):
         """Helper for smooth(...)
         """
@@ -1682,6 +1698,7 @@ class ProfileCollocationDescriber(CollocationDescriber):
                 raise ValueError("Don't know how to get z.  Should I try harder?")
         return (xa, z_xa, ak, z_ak)
 
+    @tools.mark_for_disk_cache()
     def _get_shared_range(self, z_xa, z_ak, z_xh):
         """_get_shared_range(z_xa, z_ak, z_xh)
 
@@ -1712,6 +1729,7 @@ class ProfileCollocationDescriber(CollocationDescriber):
         return (each_z_min[highest_z_min_i], highest_z_min_i,
                 each_z_max[lowest_z_max_i], lowest_z_max_i)
 
+    @tools.mark_for_disk_cache()
     def _limit_to_shared_range(self, xa, z_xa, ak, z_ak, xh, z_xh,
         p_int, s_int, p_sa, s_sa):
         """Helper for smooth(...)
@@ -1724,7 +1742,7 @@ class ProfileCollocationDescriber(CollocationDescriber):
             toohigh = self.z_grid > lowest_z_max
             xh = xh[:, ~toohigh]
             z_xh = z_xh[~toohigh]
-            self.z_grid = z_xh
+            #self.z_grid = z_xh
             # NB: to smooth the high-res measurement `xh` with the
             # low-resolution averaging kernel `ak` and a priori `xa`, the
             # low--res measurement is not used.  However, it is still
@@ -1763,6 +1781,7 @@ class ProfileCollocationDescriber(CollocationDescriber):
         ########################
         return (xa, z_xa, ak, z_ak, xh, z_xh, p_int, s_int, p_sa, s_sa)
 
+    @tools.mark_for_disk_cache()
     def _regrid_xa_ak(self, xa, z_xa, ak, z_ak, z_xh):
         """Helper for smooth(...)
 
@@ -1817,7 +1836,6 @@ class ProfileCollocationDescriber(CollocationDescriber):
 
         return (xa, z_xa, W_xa, ak, z_ak, W_ak)
 
-    _deb_i = 0
     def _calc_error_propagation(self, S_1, W_1, A_1, S_2, W_2):
         """Calculate random covariance matrix for comparison
 
@@ -1843,7 +1861,7 @@ class ProfileCollocationDescriber(CollocationDescriber):
 
         # ERROR!  pinv hangs if W_1 contains nans in an unfortunate way.
         if numpy.isnan(W_1).any():
-            logging.warning("Found nans in W_1 {:d}, treating as 0".format(self._deb_i))
+            logging.warning("Found nans in W_1, treating as 0".format(self._deb_i))
             W_1 = W_1.copy()
             W_1[numpy.isnan(W_1)] = 0
         W_12 = numpy.linalg.pinv(W_1).dot(W_2)
@@ -1853,7 +1871,6 @@ class ProfileCollocationDescriber(CollocationDescriber):
         S_12.fill(numpy.nan)
         #S_12 = S_1 + A_1.dot(W_12).dot(S_2).dot(W_12.T).dot(A_1.T)
         # FIXME: Or fill the rest simply with whatever was S_1?
-        self._deb_i += 1
         #logging.info("no. {:d}...".format(self._deb_i))
         S_12[OKix] = S_1[OKix] + A_1[OKix].dot(
                                  W_12[OK,:]).dot(
@@ -1862,6 +1879,7 @@ class ProfileCollocationDescriber(CollocationDescriber):
                                  A_1[OKix].T)
         return S_12
 
+    @tools.mark_for_disk_cache()
     def _get_smoothing_error(self, p_int, s_int, ak,
             field_specie="CH4_profile",
             field_S="S_CH4_profile"):
@@ -1982,7 +2000,7 @@ class ProfileCollocationDescriber(CollocationDescriber):
             saks.summarise(data=self.s_col)
 
 
-    def visualise_profile_comparison(self, z_grid, filters=None):
+    def visualise_profile_comparison(self, z_grid_raw, filters=None):
         """Visualise profile comparisons.
 
         Currently hardcoded for CH4.
@@ -2025,41 +2043,46 @@ class ProfileCollocationDescriber(CollocationDescriber):
         filter_modes.append(self.mask_label)
         z_grids = {}
 #        profs[self.mask_label + "_smooth"] = self.smooth()
-        percs[self.mask_label + "_smooth"] = self.compare_profiles_smooth(
-                    z_grid, p_locs)
-        z_grids["smooth"] = self.z_grid
-        percs[self.mask_label + "_raw"] = self.compare_profiles_raw(
-                    z_grid, p_locs)
-        z_grids["raw"] = z_grid
+        lab = self.mask_label + "_smooth"
+        (z_grids[lab], percs[lab]) = self.compare_profiles_smooth(
+                    None, p_locs)
+        colours[lab] = "black"
+        lab = self.mask_label + "_raw"
+        (z_grids[lab], percs[lab]) = self.compare_profiles_raw(
+                    z_grid_raw, p_locs)
+        colours[lab] = "blue"
 
-        colours[self.mask_label + "_raw"] = "blue"
-        colours[self.mask_label + "_smooth"] = "black"
         for fd in filters:
             lab = fd["limit_str"]
             (colours[lab + "_raw"], colours[lab + "_smooth"]) = fd.pop("color")
             self.filter(**fd)
-            percs[fd["limit_str"] + "_raw"] = self.compare_profiles_raw(z_grid, p_locs)
-            percs[fd["limit_str"] + "_smooth"] = self.compare_profiles_smooth(z_grid, p_locs)
+            (z_grids[lab + "_raw"], percs[lab + "_raw"]) = self.compare_profiles_raw(z_grid_raw, p_locs)
+            (z_grids[lab + "_smooth"], percs[lab + "_smooth"]) = self.compare_profiles_smooth(None, p_locs)
             filter_modes.append(self.mask_label)
 #        percs = self.compare_profiles(z_grid, p_locs)
         #for (i, v) in enumerate("diff diff^2 ratio".split()):
         # quantities such as diff, ratio, rmsd
+        data = {}
         for quantity in percs[self.mask_label + "_raw"].keys():
             f = matplotlib.pyplot.figure()
             a = f.add_subplot(1, 1, 1)
-            data = dict(smooth=[], raw=[])
             # filters such as all, nearby, small delta-SPV
             for filter_mode in filter_modes: # percs.keys():
                 for ff in ("smooth", "raw"):
                     filt = "{}_{}".format(filter_mode, ff)
+                    if not filt in data:
+                        data[filt] = {}
+                    data[filt][quantity] = []
                     for k in range(len(p_locs)):
-                        a.plot(percs[filt][quantity][:, k], z_grids[ff],
+                        a.plot(percs[filt][quantity][:, k], z_grids[filt],
                                color=colours[filt],
                                linestyle=p_styles[k], linewidth=p_widths[k],
                                label=(filt if k==2 else None))
-                        data[ff].append(percs[filt][quantity][:, k])
-            # end for percentiles
-            # end for filters
+                        data[filt][quantity].append(percs[filt][quantity][:, k])
+                    data[filt][quantity] = numpy.vstack(
+                        data[filt][quantity]).T
+                    # end for percentiles
+            # end for filters (all, sPVGEOS5theta700_diff_0.2, etc.)
 #            a.plot(percs[1], z_grid, label="p diff^2", color="red")
 #            a.plot(percs[2], z_grid, label="p ratio", color="black")
             a.legend()
@@ -2080,12 +2103,16 @@ class ProfileCollocationDescriber(CollocationDescriber):
             a.text(xlims[quantity][0]+0.1*xlims[quantity][1], 45e3, "{:d} profiles".format(self.mask.sum()))
             allmask = ','.join(filter_modes)
             graphics.print_or_show(f, False,
-                self.figname_compare_profiles.format(**vars()),
-                data=
-                    (numpy.vstack((z_grids["raw"],)+tuple(data["raw"])).T,
-                     numpy.vstack((z_grids["smooth"],)+tuple(data["smooth"])).T)
-                    )
+                self.figname_compare_profiles.format(**vars()))
+#                data=
+#                    (numpy.vstack((z_grids["raw"],)+tuple(data["raw"])).T,
+#                     numpy.vstack((z_grids["smooth"],)+tuple(data["smooth"])).T)
+#                    )
             matplotlib.pyplot.close(f)
+        io.write_data_to_files(data,
+            fn=self.dataname_compare_profiles.format(**vars())[:-1] + "_data_{}_{}")
+        io.write_data_to_files(z_grids,
+            fn=self.dataname_compare_profiles.format(**vars())[:-1] + "_z_{}")
         # end for quantities
 
         ## Plot all profiles
@@ -2139,19 +2166,24 @@ class ProfileCollocationDescriber(CollocationDescriber):
     def visualise_pc_comparison(self):
         """Visualise comparison for partial columns
         """
-        (p_parcol, s_parcol, valid_range) = self.partial_columns(smoothed=True)
+        (p_parcol, s_parcol, valid_range, S_d) = self.partial_columns(smoothed=True)
 
         (f, a) = matplotlib.pyplot.subplots()
         valid = numpy.isfinite(p_parcol) & numpy.isfinite(s_parcol)
         d_parcol = (s_parcol[valid] - p_parcol[valid])
         #a.plot(p_parcol[valid], s_parcol[valid], '.')
-        a.plot(p_parcol[valid], d_parcol, '.')
-        mx = max(p_parcol[valid].max(), s_parcol[valid].max())
-        mn = min(p_parcol[valid].min(), s_parcol[valid].min())
+        #a.plot(p_parcol[valid], d_parcol, '.')
+        # FIXME: horizontal errorbars?
+        a.errorbar(p_parcol[valid], d_parcol, yerr=numpy.sqrt(S_d), fmt=".")
+        xmx = max(p_parcol[valid].max(), s_parcol[valid].max())
+        xmn = min(p_parcol[valid].min(), s_parcol[valid].min())
+        ymn = min(d_parcol)
+        ymx = max(d_parcol)
         #a.plot([0, 2*mx], [0, 2*mx], linewidth=2, color="black")
-        a.plot([0, 2*mx], [0, 0], linewidth=2, color="black")
-        a.set_xlim(0.9*mn, 1.1*mx)
-        #a.set_ylim(0.9*mn, 1.1*mx)
+        a.plot([0, 2*xmx], [0, 0], linewidth=2, color="black")
+        a.set_xlim(0.9*xmn, 1.1*xmx)
+        a.set_ylim(-1.1*max(abs(ymn), abs(ymx)), 
+                   +1.1*max(abs(ymn), abs(ymx)))
         a.set_xlabel("CH4 {:s} [molec./m^2]".format(self.cd.primary.name))
         a.set_ylabel("CH4 {:s} - {:s} [molec./m^2]".format(
             self.cd.primary.name, self.cd.secondary.name))

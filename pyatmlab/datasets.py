@@ -10,8 +10,10 @@ import logging
 import numpy
 import scipy.interpolate
 
+import pytz
 import pyhdf.SD
 import h5py
+
 from . import dataset
 from . import physics
 from . import math as pamath
@@ -696,6 +698,10 @@ class Eureka_PRL_CH4_HDF(dataset.MultiFileDataset, dataset.ProfileDataset):
 
     range = (3.5e3, 30e3)
 
+    # It does appear timezones are now fixed
+    #timezone = "Etc/GMT-5"
+    timezone = "UTC"
+
     # specific field for Eureka PEARL HDF
     altitude_boundaries = None
 
@@ -783,6 +789,9 @@ class Eureka_PRL_CH4_HDF(dataset.MultiFileDataset, dataset.ProfileDataset):
         M["time"] = (numpy.datetime64(datetime.datetime(2000, 1,
                                                          1, 0, 0, 0)) +
                          dtm_mjd2k_s.astype("timedelta64[s]"))
+        # It appears timez are still in UTC-0500.  Correct accordingly.
+        tz = pytz.timezone(self.timezone)
+        M["time"] = [t + numpy.timedelta64(tz.utcoffset(t)) for t in M["time"]]
         # check direction as I may need to turnaround the data
         z = sd.select(sd.nametoindex("ALTITUDE")).get()
         direc = int(numpy.sign(z[-1]-z[0]))
