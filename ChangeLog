@@ -1,3 +1,22 @@
+2015-03-06  Gerrit Holl  <gerrit.holl@utoronto.ca>:
+
+	* pyatmlab-0-0-68
+
+	* pyatmlab/collocations.py(ProfileCollocationDescriber):
+
+	(.partial_columns):
+
+	- Bugfix, make sure callee has parcols
+
+	(._get_xa_ak):
+
+	- Bugfix, avoid sending datetime64 to joblib.Memory
+
+	(_get_smoothing_error):
+
+	- Don't pass unsmoothed data on to get_additional_field,
+	use smoothed data to choose error estimates to obtain.
+
 2015-03-03  Gerrit Holl  <gerrit.holl@utoronto.ca>:
 
 	* pyatmlab-0-0-67

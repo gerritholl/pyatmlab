@@ -1549,6 +1549,14 @@ class ProfileCollocationDescriber(CollocationDescriber):
 #            names=[field_parcol],
 #            data=[s_parcol],
 #            usemask=False)
+        p = numpy.lib.recfunctions.append_fields(p,
+            names=[field_parcol],
+            data=[p_parcol],
+            usemask=False)
+        s = numpy.lib.recfunctions.append_fields(s,
+            names=[field_parcol],
+            data=[s_parcol],
+            usemask=False)
 
         logging.info("Obtaining error estimate")
         S_d = self._get_smoothing_error(p, s, ak)
@@ -1630,7 +1638,9 @@ class ProfileCollocationDescriber(CollocationDescriber):
 
     ## Helper methods for calculation methods
 
-    @tools.mark_for_disk_cache()
+    @tools.mark_for_disk_cache(
+        process=dict(
+            targ=lambda x: x.view(dtype="i1")))
     def _get_xa_ak(self, targ, targobj):
         """Helper for smooth(...)
         """
@@ -1836,6 +1846,8 @@ class ProfileCollocationDescriber(CollocationDescriber):
 
         return (xa, z_xa, W_xa, ak, z_ak, W_ak)
 
+    # Don't cache this one, it's called inside a loop so overhead will be
+    # immense
     def _calc_error_propagation(self, S_1, W_1, A_1, S_2, W_2):
         """Calculate random covariance matrix for comparison
 
@@ -1861,7 +1873,7 @@ class ProfileCollocationDescriber(CollocationDescriber):
 
         # ERROR!  pinv hangs if W_1 contains nans in an unfortunate way.
         if numpy.isnan(W_1).any():
-            logging.warning("Found nans in W_1, treating as 0".format(self._deb_i))
+            logging.warning("Found nans in W_1, treating as 0")
             W_1 = W_1.copy()
             W_1[numpy.isnan(W_1)] = 0
         W_12 = numpy.linalg.pinv(W_1).dot(W_2)
@@ -1879,30 +1891,52 @@ class ProfileCollocationDescriber(CollocationDescriber):
                                  A_1[OKix].T)
         return S_12
 
-    @tools.mark_for_disk_cache()
+    #@tools.mark_for_disk_cache()
     def _get_smoothing_error(self, p_int, s_int, ak,
             field_specie="CH4_profile",
+            parcol_specie="parcol_CH4",
+            ak_specie="ch4_ak",
             field_S="S_CH4_profile"):
         targ = (self.p_col, self.s_col)[self.target][self.mask]
         nontarg = (self.p_col, self.s_col)[1-self.target][self.mask]
+        #
+        targsmooth = (p_int, s_int)[self.target]
+        nontargsmooth = (p_int, s_int)[1-self.target]
+        #
         targobj = (self.cd.primary, self.cd.secondary)[self.target]
         nontargobj = (self.cd.primary, self.cd.secondary)[1-self.target]
         #
-        W_1 = (p_int, s_int)[self.target]["W"][targobj.aliases[field_specie]]
-        W_2 = (p_int, s_int)[1-self.target]["W"][nontargobj.aliases[field_specie]]
+        W_1 = targsmooth["W"][targobj.aliases[field_specie]]
+        W_2 = nontargsmooth["W"][nontargobj.aliases[field_specie]]
         if field_S in targobj.aliases:
             S_1 = targ[targobj.aliases[field_S]]
         else:
             logging.info("Obtaining errors for {} externally".format(
                 targobj.name))
-            S_1 = targobj.get_additional_field(targ, field_S)
+            # Getting additional fields needs partial columns, so add
+            # those first
+            # smoothed data
+            #S_1 = targobj.get_additional_field(targ, field_S)
+            #S_1 = targobjI.get_additional_field(targsmooth, field_S)
+            S_1 = targobj.get_additional_field(
+                numpy.lib.recfunctions.merge_arrays(
+                    (targ[["lat","lon","time",ak_specie]],
+                     targsmooth[[parcol_specie, targobj.aliases.get(field_specie, field_specie)]]), flatten=True),
+                     field_S)
             logging.info("Done")
         if field_S in nontargobj.aliases:
             S_2 = nontarg[nontargobj.aliases[field_S]]
         else:
             logging.info("Obtaining errors for {} externally".format(
                 nontargobj.name))
-            S_2 = nontargobj.get_additional_field(nontarg, field_S)
+            # See note for obtaining S_1 above
+            #S_2 = nontargobj.get_additional_field(nontarg, field_S)
+            #S_2 = nontargobj.get_additional_field(nontargsmooth, field_S)
+            S_2 = nontargobj.get_additional_field(
+                numpy.lib.recfunctions.merge_arrays(
+                    (nontarg[["lat","lon","time",ak_specie]],
+                     nontargsmooth[[parcol_specie, nontargobj.aliases.get(field_specie, field_specie)]]), flatten=True),
+                     field_S)
             logging.info("Done")
         # eliminate flagged values; should not be propagated in matrix
         # multiplication, so setting to 0 is appropriate
