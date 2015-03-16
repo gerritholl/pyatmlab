@@ -1884,12 +1884,15 @@ class ProfileCollocationDescriber(CollocationDescriber):
         #S_12 = S_1 + A_1.dot(W_12).dot(S_2).dot(W_12.T).dot(A_1.T)
         # FIXME: Or fill the rest simply with whatever was S_1?
         #logging.info("no. {:d}...".format(self._deb_i))
-        S_12[OKix] = S_1[OKix] + A_1[OKix].dot(
-                                 W_12[OK,:]).dot(
-                                 S_2).dot(
-                                 W_12[OK,:].T).dot(
-                                 A_1[OKix].T)
-        return S_12
+        # NB: In the case of TANSO, sensitivity is so low that the error
+        # contributes only a small part to the total error...
+        S_2 = A_1[OKix].dot(
+                     W_12[OK,:]).dot(
+                     S_2).dot(
+                     W_12[OK,:].T).dot(
+                     A_1[OKix].T)
+        S_12[OKix] = S_1[OKix] + S_2
+        return S_1[OKix], S_2, S_12
 
     #@tools.mark_for_disk_cache()
     def _get_smoothing_error(self, p_int, s_int, ak,
@@ -1946,9 +1949,10 @@ class ProfileCollocationDescriber(CollocationDescriber):
             S_1[S_1<-10]=0
             S_2[S_2<-10]=0
         logging.info("Calculating error propagation for {:d} profiles".format(p_int.size))
-        S_d = [self._calc_error_propagation(S_1[i, :, :],
+        # FIXME: keep track of all error components?
+        (S_1c, S_2c, S_d) = zip(*[self._calc_error_propagation(S_1[i, :, :],
                W_1[i, :, :], ak[i, :, :], S_2[i, :, :], W_2[i, :, :])
-                   for i in range(p_int.size)]
+                   for i in range(p_int.size)])
         logging.info("Done")
         S_d = numpy.rollaxis(numpy.dstack(S_d), 2, 0)
         return S_d
@@ -2254,3 +2258,46 @@ def find_collocation_duplicates(p_col, s_col):
     uni = numpy.unique(merged)
 
     return uni
+
+def collapse(p, s, fields=[], **funcs):
+    """Collapse `s` upon `p`.
+
+    Result sorted by p["time"].
+
+    :param p: Primary ndarray
+    :param s: Secondary ndarray, same length as p
+    :param fields: Fields to take from secondary.
+    
+    Remaining parameters are key=val, with key a string and val a tuple
+    of (func, dtype) with function to be applied and dtype to use.
+    Always applied: number of elements, and mean.
+    """
+
+    ii = numpy.argsort(p["time"])
+
+    funcs.update({
+        "numel": (lambda x: x.shape[0], "i2"),
+        "mean": (lambda x: x.mean(0), "f4")})
+
+    p = p[ii]
+    s = s[ii]
+
+    newp = (p[["time", "lat", "lon"]][1:] != 
+            p[["time", "lat", "lon"]][:-1]).nonzero()[0] + 1
+    newp = numpy.r_[0, newp, p.size]
+    # in constructing the dtype, apply func to the first elements to
+    # determine the correct size.  Call shape as function so it works on
+    # non-numpy scalars like int
+    M = numpy.zeros(
+            dtype=[(funcname, [(x[0], funcs[funcname][1],
+                            numpy.shape(funcs[funcname][0](s[0:1][x[0]])))
+                               for x in s.dtype.descr if x[0] in fields])
+                   for funcname in funcs.keys()],
+            shape=newp.size-1)
+    for (n, (l, r)) in enumerate(zip(newp[:-1], newp[1:])):
+        primary = p[l]
+        secondary = s[l:r]
+        for (funcname, (func, dtp)) in funcs.items():
+            for field in fields:
+                M[funcname][field][n, ...] = func(s[l:r][field])
+    return M

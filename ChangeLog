@@ -1,3 +1,11 @@
+2015-03-16  Gerrit Holl  <gerrit.holl@utoronto.ca>:
+
+	* pyatmlab-0-0-69
+
+	* pyatmlab/collocations.py(collapse):
+
+	- Added function to collapse secondary upon primary
+
 2015-03-06  Gerrit Holl  <gerrit.holl@utoronto.ca>:
 
 	* pyatmlab-0-0-68
