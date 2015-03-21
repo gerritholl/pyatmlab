@@ -163,6 +163,7 @@ class CollocatedDataset(dataset.HomemadeDataset):
         secs_read = set()
         n_pairs = len(all_granule_pairs)
         logging.info("Found {:d} granule pairs".format(n_pairs))
+        maxint = self.max_interval.astype(datetime.timedelta)
         # FIXME: should concatenate both primary and secondary if both
         # have very short granules (such as one measurement per file).
         # Relevant for ACE vs Conway CH4+aux!
@@ -173,6 +174,13 @@ class CollocatedDataset(dataset.HomemadeDataset):
 #                logging.debug("New primary: {!s}".format(gran_prim))
                 try:
                     newprim = self.primary.read(gran_prim)
+                    inrange = ((newprim["time"] > start_date) &
+                               (newprim["time"] < end_date))
+                    if inrange.any() and not inrange.all():
+                        logging.info(("Reading only {:d}/{:d} profiles "
+                                      "from {!s}").format(
+                            inrange.sum(), inrange.size, gran_prim))
+                    newprim = newprim[inrange]
                 except (dataset.InvalidFileError) as msg:
                     logging.error("Could not read {}: {}".format(
                         gran_prim, msg.args[0]))
@@ -190,6 +198,15 @@ class CollocatedDataset(dataset.HomemadeDataset):
 #                logging.debug("New secondary: {!s}".format(gran_sec))
                 try:
                     newsec = self.secondary.read(gran_sec)
+                    inrange = ((newsec["time"] >
+                        (start_date - maxint)) &
+                               (newsec["time"] <
+                        (end_date + maxint)))
+                    newsec = newsec[inrange]
+                    if inrange.any() and not inrange.all():
+                        logging.info(("Reading only {:d}/{:d} profiles"
+                                      "from {!s}").format(
+                            inrange.sum(), inrange.size, gran_sec))
                 except (dataset.InvalidFileError, 
                         dataset.InvalidDataError) as msg:
                     logging.error("Could not read {}: {}".format(
@@ -1068,7 +1085,7 @@ class ProfileCollocationDescriber(CollocationDescriber):
     dataname_compare_profiles = ("compare_profiles_ch4"
         "_{self.cd.primary.__class__.__name__!s}"
         "_{self.cd.secondary.__class__.__name__}"
-        "_targ{self.target}")
+        "_targ{self.target}.")
 
     figname_compare_pc = ("compare_partial_columns_ch4"
         "_{self.cd.primary.__class__.__name__}"
@@ -2080,8 +2097,8 @@ class ProfileCollocationDescriber(CollocationDescriber):
 
         filter_modes.append(self.mask_label)
         z_grids = {}
-#        profs[self.mask_label + "_smooth"] = self.smooth()
         lab = self.mask_label + "_smooth"
+        # This is where we actually calculate what we are going to plot.
         (z_grids[lab], percs[lab]) = self.compare_profiles_smooth(
                     None, p_locs)
         colours[lab] = "black"
@@ -2147,10 +2164,12 @@ class ProfileCollocationDescriber(CollocationDescriber):
 #                     numpy.vstack((z_grids["smooth"],)+tuple(data["smooth"])).T)
 #                    )
             matplotlib.pyplot.close(f)
-        io.write_data_to_files(data,
-            fn=self.dataname_compare_profiles.format(**vars())[:-1] + "_data_{}_{}")
-        io.write_data_to_files(z_grids,
-            fn=self.dataname_compare_profiles.format(**vars())[:-1] + "_z_{}")
+
+            # FIXME: Consider merging the two again.  Or just use `paste`.
+            io.write_data_to_files(data,
+                fn=self.dataname_compare_profiles.format(**vars())[:-1] + "_data_{}_{}")
+            io.write_data_to_files(z_grids,
+                fn=self.dataname_compare_profiles.format(**vars())[:-1] + "_z_{}")
         # end for quantities
 
         ## Plot all profiles

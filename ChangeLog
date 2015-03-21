@@ -1,3 +1,25 @@
+2015-03-20  Gerrit Holl  <gerrit.holl@utoronto.ca>:
+
+	* pyatmlab-0-0-70
+
+	* pyatmlab/collocations.py:
+
+	(CollocatedDataset.read_aggregated_pairs):
+
+	- When a granule contains time both inside and outside the requested
+	time interval, select only those collocations within the time (in case
+	of primary) or within the time +/- the interval (in case of secondary)
+	and report on this.
+
+	(ProfileCollocationDescriber):
+
+	- Fix bug in dataname_compare_profiles leading to the targ being eaten
+	up.
+
+	(ProfileCollocationDescriber.visualise_profile_comparison):
+
+	- Fix bug, move data writing to correct level of indentation
+
 2015-03-16  Gerrit Holl  <gerrit.holl@utoronto.ca>:
 
 	* pyatmlab-0-0-69
