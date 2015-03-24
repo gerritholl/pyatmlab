@@ -1301,9 +1301,6 @@ class ProfileCollocationDescriber(CollocationDescriber):
             - Clean up the code... should first decide on a z-grid and
               then regrid everything (raw, smoothed, p, T, etc.) onto
               this?
-
-            - Consider errors!  See Von Clarmann (2014), Vigouroux et al. (2007),
-              Calisesi et al. (2005)
         """
 
         # Cache results "by hand"; it appears lru_cache doesn't work well
@@ -2222,6 +2219,8 @@ class ProfileCollocationDescriber(CollocationDescriber):
 
     def visualise_pc_comparison(self):
         """Visualise comparison for partial columns
+
+        Also writes data for external plotting
         """
         (p_parcol, s_parcol, valid_range, S_d) = self.partial_columns(smoothed=True)
 
@@ -2250,7 +2249,8 @@ class ProfileCollocationDescriber(CollocationDescriber):
                         self.cd.primary.name, self.cd.secondary.name))
         graphics.print_or_show(f, None, self.figname_compare_pc.format(**vars()),
             data=numpy.vstack((p_parcol[valid],
-                s_parcol[valid]-p_parcol[valid])).T)
+                s_parcol[valid]-p_parcol[valid]),
+                numpy.sqrt(S_d)).T)
 
         # also print some stats
         diff = {}
