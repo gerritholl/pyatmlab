@@ -164,10 +164,12 @@ def write_data_to_files(data, fn):
     `data` is a dictionary with ndarrays.  Each element is written to its
     own file.  It can also be a dictionary of dictionaries, etc., of
     arbitrary depth.  `fn` should contain `{}`s corresponding to the
-    depth of the dictionary.
+    depth of the dictionary.  Should not end in .dat as this is added by
+    the function.
 
     :param data: Dictionary with ndarrays
-    :param fn:
+    :param fn: Filename, including {}s corresponding to depth, excluding
+        .dat extention.
     """
 
     if not os.path.exists(plotdatadir()):

@@ -1,4 +1,28 @@
+2015-03-24  Gerrit Holl  <gerrit.holl@utoronto.ca>:
+
+	* pyatmlab-0-0-72
+
+	* pyatmlab/collocations.py(ProfileCollocationDescriber):
+
+	(.partial_columns):
+
+	- Optionally also return profiles with partial columns and other stuff
+	appended, this is useful/essential for some visualisations, such as
+	the dof-dependency.
+
+	(.plot_aks):
+
+	- Write aks along with diagonal ('nominal height') using the
+	somewhat new io.write_data_to_files function.  Fix bug in writing AK
+	stats, pass on right info to summarise.
+
+	* pyatmlab/io.py(write_data_to_files): Improve docs
+
+	* pyatmlab/physics.py(AKStats): Use colourmap Spectral_r as a
+	colourmap
+
 2015-03-23  Gerrit Holl  <gerrit.holl@utoronto.ca>:
+
 
 	* pyatmlab-0-0-71
 

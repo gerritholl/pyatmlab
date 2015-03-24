@@ -1468,7 +1468,9 @@ class ProfileCollocationDescriber(CollocationDescriber):
     def partial_columns(self, smoothed=True, reload=False,
             field_specie="CH4_profile",
             field_parcol="parcol_CH4",
-            field_S="S_CH4_profile"):
+            field_S="S_CH4_profile",
+            field_z_proc="z_proc",
+            return_profiles=False):
         """Calculate partial columns.
 
         """
@@ -1554,22 +1556,18 @@ class ProfileCollocationDescriber(CollocationDescriber):
 #        s_parcol = g_int.dot(s_valid_nd)
         s_parcol = g_int[g_relevant].dot(s_nd[:, g_relevant].T)
 
-        # Don't change the state; this eliminates caching!
-#        self.p_col = numpy.lib.recfunctions.append_fields(self.p_col,
-#            names=[field_parcol],
-#            data=[p_parcol],
-#            usemask=False)
-#        self.s_col = numpy.lib.recfunctions.append_fields(self.s_col,
-#            names=[field_parcol],
-#            data=[s_parcol],
-#            usemask=False)
+        # Don't change self; this eliminates caching
+        # Construct newz in a way that append_fields likes
+        newz = numpy.tile(z, (p.shape[0], 1)).view([("z", "f8", z.shape[0])])
         p = numpy.lib.recfunctions.append_fields(p,
-            names=[field_parcol],
-            data=[p_parcol],
+            names=[field_parcol, field_z_proc],
+            data=[p_parcol, newz],
+            dtypes=["f8", newz.dtype],
             usemask=False)
         s = numpy.lib.recfunctions.append_fields(s,
-            names=[field_parcol],
-            data=[s_parcol],
+            names=[field_parcol, field_z_proc],
+            data=[s_parcol, newz],
+            dtypes=["f8", newz.dtype],
             usemask=False)
 
         logging.info("Obtaining error estimate")
@@ -1577,7 +1575,7 @@ class ProfileCollocationDescriber(CollocationDescriber):
         logging.info("Done")
         # simple multiplication factor here
         # note that double precision is needed because the multiplication
-        # factor gets quite large
+        # factor squared gets quite large
         S_dnd = (numpy.atleast_3d(fact_vmr2nd).astype("f8")**2 * S_d)
         # error propagation following Vigouroux et al, equation 5
         # explicitly select non-zero parts because those may be flagged
@@ -1588,7 +1586,9 @@ class ProfileCollocationDescriber(CollocationDescriber):
 
         z_range = (z[valid_range].min(), z[valid_range].max())
         #self._S_dpc = S_dpc
-        return (p_parcol, s_parcol, z_range, S_dpc)
+        return (p if return_profiles else p_parcol,
+                s if return_profiles else s_parcol,
+                z_range, S_dpc)
 
     @tools.mark_for_disk_cache()
     def _compare_profiles(self, p_ch4_int, s_ch4_int,
@@ -1996,7 +1996,7 @@ class ProfileCollocationDescriber(CollocationDescriber):
         a_both = []
 
         mx = mn = 0
-        data = []
+        data = {}
         if "ak" in self.cd.primary.aliases:
             p_ak[p_ak<-100] = numpy.nan # presumed flagged
             mean_p_ak = numpy.nanmean(p_ak, 0)
@@ -2005,8 +2005,11 @@ class ProfileCollocationDescriber(CollocationDescriber):
             a_both.append(a1)
             mx = numpy.nanmax(mean_p_ak)
             mn = numpy.nanmin(mean_p_ak)
-            data.append(numpy.hstack(
-                (self.p_col["z"].mean(0)[:, numpy.newaxis], mean_p_ak.T)))
+            lab = "{}_from_{}".format(self.cd.primary.__class__.__name__,
+                self.cd.secondary.__class__.__name__)
+            data[lab] = numpy.hstack(
+                (self.p_col["z"].mean(0)[:, numpy.newaxis], mean_p_ak.T,
+                 numpy.diag(mean_p_ak)[:, numpy.newaxis]))
 
         if "ak" in self.cd.secondary.aliases:
             s_ak[s_ak<-100] = numpy.nan # presumed flagged
@@ -2016,8 +2019,11 @@ class ProfileCollocationDescriber(CollocationDescriber):
             a_both.append(a2)
             mx = numpy.max([mx, numpy.nanmax(mean_s_ak)])
             mn = numpy.min([mn, numpy.nanmin(mean_s_ak)])
-            data.append(numpy.hstack(
-                (self.s_col["z"].mean(0)[:, numpy.newaxis], mean_s_ak.T)))
+            lab = "{}_from_{}".format(self.cd.secondary.__class__.__name__,
+                self.cd.primary.__class__.__name__)
+            data[lab] = numpy.hstack(
+                (self.s_col["z"].mean(0)[:, numpy.newaxis], mean_s_ak.T,
+                numpy.diag(mean_s_ak)[:, numpy.newaxis]))
 
         for a in a_both:
             a.set_xlabel("Mean averaging kernel []")
@@ -2027,29 +2033,35 @@ class ProfileCollocationDescriber(CollocationDescriber):
 
         graphics.print_or_show(f, False,
             "ak_{}_{}.".format(self.cd.primary.__class__.__name__,
-                               self.cd.secondary.__class__.__name__),
-            data=data)
+                               self.cd.secondary.__class__.__name__))
+        io.write_data_to_files(data, "ak_{}")
 
         # And the matrices
         
         logging.info("Summarising sensitivities")
+        logging.info("Getting partial columns as I will use them to "
+                     "summarise DOF stats")
+        (p, s, *_) = self.partial_columns(smoothed=True,
+            return_profiles=True)
         if p_ak is not None:
             paks = physics.AKStats(p_ak, 
                 name="{}_from_{}".format(
                     self.cd.primary.__class__.__name__,
                     self.cd.secondary.__class__.__name__))
-            if not "parcol_CH4" in self.p_col.dtype.names:
-                self.partial_columns()
-            paks.summarise(data=self.p_col)
+            paks.summarise(data=numpy.lib.recfunctions.merge_arrays(
+                (self.p_col[["lat","lon","time", "z"]],
+                          p[["z_proc", "parcol_CH4"]]),
+                        flatten=True))
 
         if s_ak is not None:
             saks = physics.AKStats(s_ak, 
                 name="{}_from_{}".format(
                     self.cd.secondary.__class__.__name__,
                     self.cd.primary.__class__.__name__))
-            if not "parcol_CH4" in self.s_col.dtype.names:
-                self.partial_columns()
-            saks.summarise(data=self.s_col)
+            saks.summarise(data=numpy.lib.recfunctions.merge_arrays(
+                (self.s_col[["lat","lon","time", "z"]], 
+                          s[["z_proc", "parcol_CH4"]]),
+                        flatten=True))
 
 
     def visualise_profile_comparison(self, z_grid_raw, filters=None):

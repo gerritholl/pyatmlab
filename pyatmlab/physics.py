@@ -28,12 +28,12 @@ from . import tools
 from . import graphics
 from . import stats
 
-#import trollimage.colormap
-
 class AKStats:
 
     filename = "sensitivity_{mode}_matrix_{name}."
-    cmap = "afmhot_r"
+    #cmap = "afmhot_r"
+    #cmap = trollimage.colormap.spectral
+    cmap = "Spectral_r"
 
     def __init__(self, aks, name="UNDEFINED"):
         self.aks = aks.copy()
@@ -416,13 +416,15 @@ class AKStats:
                     pc = a.scatter(D[names["x"]]["data"],
                                    D[names["y"]]["data"], 
                                    c=dofs,
-                                   s=50)
+                                   s=50,
+                                   cmap=self.cmap)
                 else:
                     val_masked = numpy.ma.masked_array(val,
                         numpy.isnan(val))
                     pc = a.pcolor(D[names["x"]]["bins"],
                                   D[names["y"]]["bins"],
-                                  val_masked.T)
+                                  val_masked.T,
+                                  cmap=self.cmap)
 #                    elif mode == "scatter":
                 cb = f.colorbar(pc)
 
