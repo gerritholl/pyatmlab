@@ -1,3 +1,22 @@
+2015-04-03  Gerrit Holl  <gerrit.holl@utoronto.ca>:
+
+	* pyatlmlab-0-0-73
+
+	* pyatmlab/collocations.py:
+
+	(ProfileCollocationDescriber): Implement collapsing.  Required updates
+	in several places as it means I need to postpone applying the mask
+	until the end, because prior to collapsing I need to combine
+	information from the core collocations with whathever has been
+	regridded, smoothed, and processed, so I should not thin the latter
+	yet.
+
+	(collapse): Improve
+
+	* pyatmlab/physics.py(AKStats):
+
+	- Write out datetimes in form pgfplots can understand
+
 2015-03-24  Gerrit Holl  <gerrit.holl@utoronto.ca>:
 
 	* pyatmlab-0-0-72

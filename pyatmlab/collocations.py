@@ -1080,17 +1080,20 @@ class ProfileCollocationDescriber(CollocationDescriber):
         "_{self.cd.secondary.__class__.__name__}"
         "_targ{self.target}"
         "_{allmask}"
+        "_clps{collapsed}"
         "_{quantity}.")
 
     dataname_compare_profiles = ("compare_profiles_ch4"
         "_{self.cd.primary.__class__.__name__!s}"
         "_{self.cd.secondary.__class__.__name__}"
-        "_targ{self.target}.")
+        "_targ{self.target}"
+        "_clps{collapsed}.")
 
     figname_compare_pc = ("compare_partial_columns_ch4"
         "_{self.cd.primary.__class__.__name__}"
         "_{self.cd.secondary.__class__.__name__}"
-        "_targ{self.target}.")
+        "_targ{self.target}"
+        "_clps{collapsed}.")
 
 
     #z_range = None
@@ -1132,24 +1135,35 @@ class ProfileCollocationDescriber(CollocationDescriber):
         s = {"orig": self.s_col}
 
         # interpolate profiles onto a common grid
+        # GH 2015-04-03 BUG!  If I already reduce the size of p_col,
+        # s_col, etc. here, then I can no longer easily combine
+        # information from interpolated fields with information from
+        # self.p_col and self.s_col (like with merge_fields).  I need this
+        # when I'm collapsing secondaries upon the primaries.  Therefore,
+        # I should postpone actually applying the mask until as late as
+        # possible.
         val_ind = self.mask.nonzero()[0]
-        p["int"] = numpy.zeros(shape=(val_ind.size,),
+        #p["int"] = numpy.zeros(shape=(val_ind.size,),
+        p["int"] = numpy.zeros(shape=(self.p_col.size,),
             dtype=[(x[0], x[1], z_grid.size) for x in p["orig"].dtype.descr
                         if x[0] in prims] +
                 [("W", [(x[0], "f4", (z_grid.size, x[2][0]))
                             for x in p["orig"].dtype.descr
                             if x[0] in prims])])
-        p["W"] = numpy.zeros(shape=(val_ind.size,),
+        #p["W"] = numpy.zeros(shape=(val_ind.size,),
+        p["W"] = numpy.zeros(shape=(self.p_col.size,),
             dtype=[(x[0], "f4", (z_grid.size, x[2][0]))
                     for x in p["orig"].dtype.descr
                         if x[0] in prims])
-        s["int"] = numpy.zeros_like(p["int"], 
+        #s["int"] = numpy.zeros_like(p["int"], 
+        s["int"] = numpy.zeros(shape=(self.s_col.size,),
             dtype=[(x[0], x[1], z_grid.size) for x in s["orig"].dtype.descr
                         if x[0] in secs] +
                 [("W", [(x[0], "f4", (z_grid.size, x[2][0]))
                             for x in s["orig"].dtype.descr
                                 if x[0] in secs])])
-        s["W"] = numpy.zeros(shape=(val_ind.size,),
+        #s["W"] = numpy.zeros(shape=(val_ind.size,),
+        s["W"] = numpy.zeros(shape=(self.s_col.size,),
             dtype=[(x[0], "f4", (z_grid.size, x[2][0]))
                     for x in s["orig"].dtype.descr
                         if x[0] in secs])
@@ -1159,7 +1173,6 @@ class ProfileCollocationDescriber(CollocationDescriber):
         p["obj"] = self.cd.primary
         s["obj"] = self.cd.secondary
 
-        k = 0 # loops over output array
         for i in val_ind: # loops over input array
             p["z_i"] = self.cd.primary.get_z(self.p_col[i])
             s["z_i"] = self.cd.secondary.get_z(self.s_col[i])
@@ -1170,13 +1183,12 @@ class ProfileCollocationDescriber(CollocationDescriber):
             #s["z_i"] = s["z_i"][s["valid"]]
             #
             if not p["valid"].any() or not s["valid"].any():
-                p["int"][k].fill(numpy.nan)
+                p["int"][i].fill(numpy.nan)
                 #p["W"][k].fill(numpy.nan)
-                p["int"]["W"][k].fill(numpy.nan)
-                s["int"][k].fill(numpy.nan)
+                p["int"]["W"][i].fill(numpy.nan)
+                s["int"][i].fill(numpy.nan)
                 #s["W"][k].fill(numpy.nan)
-                s["int"]["W"][k].fill(numpy.nan)
-                k += 1
+                s["int"]["W"][i].fill(numpy.nan)
                 continue
 
             for arr in (p, s):
@@ -1199,9 +1211,9 @@ class ProfileCollocationDescriber(CollocationDescriber):
                     y[~val] = numpy.nan
                     z[~val] = numpy.nan
                     if not val.any():
-                        arr["int"][f][k, :] = numpy.nan
+                        arr["int"][f][i, :] = numpy.nan
                         #arr["W"][f][k, :, :] = numpy.nan
-                        arr["int"]["W"][f][k, :, :] = numpy.nan
+                        arr["int"]["W"][f][i, :, :] = numpy.nan
                         continue
                     if f in arr["filters"]:
                         y[val] = arr["filters"][f][0](y[val])
@@ -1222,13 +1234,12 @@ class ProfileCollocationDescriber(CollocationDescriber):
                     yp[z_grid < numpy.nanmin(z)] = numpy.nan
                     if f in arr["filters"]:
                         yp = arr["filters"][f][1](yp)
-                    arr["int"][f][k, :] = yp
+                    arr["int"][f][i, :] = yp
                     # Don't try to select two dimensions at once, see
                     # http://stackoverflow.com/q/28352320/974555
-                    #arr["W"][f][k, :, :][:, val] = W
-                    arr["int"]["W"][f][k, :, :][:, val] = W
+                    #arr["W"][f][i, :, :][:, val] = W
+                    arr["int"]["W"][f][i, :, :][:, val] = W
 
-            k += 1
 
         return (p["int"], s["int"])#, p["W"], s["W"])
 
@@ -1248,7 +1259,8 @@ class ProfileCollocationDescriber(CollocationDescriber):
         This is just a thin shell around interpolate_profiles.
         """
 
-        targ = (self.p_col, self.s_col)[self.target][self.mask]
+        # should only do self.mask at the end
+        targ = (self.p_col, self.s_col)[self.target]#[self.mask]
         targ_obj = (self.cd.primary, self.cd.secondary)[self.target]
 
         z_all = numpy.array([targ_obj.get_z(t) for t in targ])
@@ -1314,8 +1326,10 @@ class ProfileCollocationDescriber(CollocationDescriber):
             self.cd.primary.name,
             self.cd.secondary.__class__.__name__,
             self.cd.secondary.name))
-        targ = (self.p_col, self.s_col)[self.target][self.mask]
-        nontarg = (self.p_col, self.s_col)[1-self.target][self.mask]
+        # should consider masks only at the end, so we can always go back
+        # between self.p_col and others to combine information
+        targ = (self.p_col, self.s_col)[self.target]#[self.mask]
+        nontarg = (self.p_col, self.s_col)[1-self.target]#[self.mask]
         targobj = (self.cd.primary, self.cd.secondary)[self.target]
         nontargobj = (self.cd.primary, self.cd.secondary)[1-self.target]
 
@@ -1591,10 +1605,28 @@ class ProfileCollocationDescriber(CollocationDescriber):
                 z_range, S_dpc)
 
     @tools.mark_for_disk_cache()
-    def _compare_profiles(self, p_ch4_int, s_ch4_int,
-            percs=(5, 25, 50, 75, 95)):
+    def _compare_profiles(self, p_int, s_int,
+            percs=(5, 25, 50, 75, 95),
+            collapsed=False):
         """Helper for compare_profiles_{raw,smoothed}
         """
+
+        if collapsed:
+            (p, s) = collapse(
+                numpy.lib.recfunctions.merge_arrays((
+                    self.p_col[["time"]][self.mask],
+                    p_int[[self.cd.primary.aliases["CH4_profile"]]][self.mask]),
+                    flatten=True),
+                numpy.lib.recfunctions.merge_arrays((
+                    self.s_col[["time"]][self.mask],
+                    s_int[[self.cd.secondary.aliases["CH4_profile"]]][self.mask]),
+                    flatten=True),
+                fields=[self.cd.secondary.aliases["CH4_profile"]])
+            p_ch4_int = p[self.cd.primary.aliases["CH4_profile"]]
+            s_ch4_int = s["mean"][self.cd.secondary.aliases["CH4_profile"]]
+        else:
+            p_ch4_int = p_int[self.cd.primary.aliases["CH4_profile"]][self.mask]
+            s_ch4_int = s_int[self.cd.secondary.aliases["CH4_profile"]][self.mask]
 
         D = {}
         D["diff"] = s_ch4_int - p_ch4_int
@@ -1612,7 +1644,8 @@ class ProfileCollocationDescriber(CollocationDescriber):
 
     @tools.mark_for_disk_cache()
     def compare_profiles_raw(self, z_grid,
-            percs=(5, 25, 50, 75, 95)):
+            percs=(5, 25, 50, 75, 95),
+            collapsed=False):
         """Return some statistics comparing profiles.
 
         Currently hardcoded for CH4.
@@ -1627,12 +1660,12 @@ class ProfileCollocationDescriber(CollocationDescriber):
             sec_fields=("CH4_profile",))
 
         return (z_grid, self._compare_profiles(
-            p_int[self.cd.primary.aliases["CH4_profile"]],
-            s_int[self.cd.secondary.aliases["CH4_profile"]], percs=percs))
+            p_int, s_int, percs=percs, collapsed=collapsed))
 
     @tools.mark_for_disk_cache()
     def compare_profiles_smooth(self, _,
-            percs=(5, 25, 50, 75, 95)):
+            percs=(5, 25, 50, 75, 95),
+            collapsed=False):
         #
         # interpolate onto retrieval grid for dataset with less vertical
         # resolution
@@ -1644,11 +1677,9 @@ class ProfileCollocationDescriber(CollocationDescriber):
         p_int = D["p"]
         s_int = D["s"]
         ak = D["ak"]
-        #(p_int, s_int, ak) = self.smooth(return_error=False)
 
         return (D["z_smooth"], self._compare_profiles(
-            p_int[self.cd.primary.aliases["CH4_profile"]],
-            s_int[self.cd.secondary.aliases["CH4_profile"]], percs=percs))
+            p_int, s_int, percs=percs, collapsed=collapsed))
 
     ## Helper methods for calculation methods
 
@@ -1908,14 +1939,15 @@ class ProfileCollocationDescriber(CollocationDescriber):
         S_12[OKix] = S_1[OKix] + S_2
         return S_1[OKix], S_2, S_12
 
-    #@tools.mark_for_disk_cache()
+    @tools.mark_for_disk_cache()
     def _get_smoothing_error(self, p_int, s_int, ak,
             field_specie="CH4_profile",
             parcol_specie="parcol_CH4",
             ak_specie="ch4_ak",
             field_S="S_CH4_profile"):
-        targ = (self.p_col, self.s_col)[self.target][self.mask]
-        nontarg = (self.p_col, self.s_col)[1-self.target][self.mask]
+        # should only do self.mask at the end
+        targ = (self.p_col, self.s_col)[self.target]#[self.mask]
+        nontarg = (self.p_col, self.s_col)[1-self.target]#[self.mask]
         #
         targsmooth = (p_int, s_int)[self.target]
         nontargsmooth = (p_int, s_int)[1-self.target]
@@ -2064,7 +2096,8 @@ class ProfileCollocationDescriber(CollocationDescriber):
                         flatten=True))
 
 
-    def visualise_profile_comparison(self, z_grid_raw, filters=None):
+    def visualise_profile_comparison(self, z_grid_raw, filters=None,
+            collapsed=False):
         """Visualise profile comparisons.
 
         Currently hardcoded for CH4.
@@ -2109,19 +2142,20 @@ class ProfileCollocationDescriber(CollocationDescriber):
         lab = self.mask_label + "_smooth"
         # This is where we actually calculate what we are going to plot.
         (z_grids[lab], percs[lab]) = self.compare_profiles_smooth(
-                    None, p_locs)
+                    None, p_locs, collapsed=collapsed)
         colours[lab] = "black"
         lab = self.mask_label + "_raw"
         (z_grids[lab], percs[lab]) = self.compare_profiles_raw(
-                    z_grid_raw, p_locs)
+                    z_grid_raw, p_locs, collapsed=collapsed)
         colours[lab] = "blue"
 
         for fd in filters:
             lab = fd["limit_str"]
             (colours[lab + "_raw"], colours[lab + "_smooth"]) = fd.pop("color")
             self.filter(**fd)
-            (z_grids[lab + "_raw"], percs[lab + "_raw"]) = self.compare_profiles_raw(z_grid_raw, p_locs)
-            (z_grids[lab + "_smooth"], percs[lab + "_smooth"]) = self.compare_profiles_smooth(None, p_locs)
+            (z_grids[lab + "_raw"], percs[lab + "_raw"]) = self.compare_profiles_raw(z_grid_raw, p_locs, collapsed=collapsed)
+            (z_grids[lab + "_smooth"], percs[lab + "_smooth"]) = self.compare_profiles_smooth(None, 
+                    p_locs, collapsed=collapsed)
             filter_modes.append(self.mask_label)
 #        percs = self.compare_profiles(z_grid, p_locs)
         #for (i, v) in enumerate("diff diff^2 ratio".split()):
@@ -2155,8 +2189,9 @@ class ProfileCollocationDescriber(CollocationDescriber):
                 a.set_xlim(xlims[quantity])
             a.set_ylabel("Elevation [m]")
             a.set_title("Percentiles 5/25/50/75/95 for" +
-                "CH4 {}, {} vs. {}".format(quantity,
-                    self.cd.primary.name, self.cd.secondary.name))
+                "CH4 {}, {} vs. {}, {}".format(quantity,
+                    self.cd.primary.name, self.cd.secondary.name,
+                    "collapsed" if collapsed else "uncollapsed"))
             a.grid(which="major")
             a.set_ylim([5e3, 50e3])
             # Set y-lim according to ak's
@@ -2229,12 +2264,32 @@ class ProfileCollocationDescriber(CollocationDescriber):
 ##                     (z_grid, iqr["prim"], iqr["sec"], iqr["diff"])).T)
 ##         matplotlib.pyplot.close(f)
 
-    def visualise_pc_comparison(self):
+    def visualise_pc_comparison(self, collapsed=False):
         """Visualise comparison for partial columns
 
         Also writes data for external plotting
         """
         (p_parcol, s_parcol, valid_range, S_d) = self.partial_columns(smoothed=True)
+        if collapsed:
+            # FIXME: when collapsing errors, the arithmetic mean is not
+            # the correct error estimate!
+            (p, s) = collapse(
+                numpy.lib.recfunctions.merge_arrays(
+                    (p_parcol.view(dtype=[("parcol", p_parcol.dtype)])[self.mask],
+                     self.p_col[["time"]][self.mask]), flatten=True),
+                numpy.lib.recfunctions.merge_arrays(
+                    (s_parcol.view(dtype=[("parcol", s_parcol.dtype)])[self.mask],
+                     self.s_col[["time"]][self.mask],
+                     S_d.view(dtype=[("S_d", S_d.dtype)])[self.mask]), 
+                        flatten=True),
+                    fields=["parcol", "S_d"])
+            p_parcol = p["parcol"]
+            s_parcol = s["mean"]["parcol"]
+            S_d = s["mean"]["S_d"]
+        else:
+            p_parcol = p_parcol[self.mask]
+            s_parcol = s_parcol[self.mask]
+            S_d = S_d[self.mask]
 
         (f, a) = matplotlib.pyplot.subplots()
         valid = numpy.isfinite(p_parcol) & numpy.isfinite(s_parcol)
@@ -2261,8 +2316,8 @@ class ProfileCollocationDescriber(CollocationDescriber):
                         self.cd.primary.name, self.cd.secondary.name))
         graphics.print_or_show(f, None, self.figname_compare_pc.format(**vars()),
             data=numpy.vstack((p_parcol[valid],
-                s_parcol[valid]-p_parcol[valid]),
-                numpy.sqrt(S_d)).T)
+                s_parcol[valid]-p_parcol[valid],
+                numpy.sqrt(S_d)[valid])).T)
 
         # also print some stats
         diff = {}
@@ -2290,14 +2345,23 @@ def find_collocation_duplicates(p_col, s_col):
 
     return uni
 
-def collapse(p, s, fields=[], **funcs):
+def collapse(p, s, fields=[], *global_validators, **funcs):
     """Collapse `s` upon `p`.
 
     Result sorted by p["time"].
 
-    :param p: Primary ndarray
-    :param s: Secondary ndarray, same length as p
+    :param p: Primary ndarray.  Must be a structured array with at least
+        field "time".
+    :param s: Secondary ndarray, same length as p.  Must share fields.
     :param fields: Fields to take from secondary.
+    :param *global_validators: Functions to be applied to each set of
+        secondaries, which return a mask which ones to proceed with.
+    :param **funcs: Remaining keyword-arguments correspond to functions to
+        be applied to each set of secondaries corresponding to the same
+        primary.  Always applied ale lambda x: x.mean(0) ("mean") and
+        lambda x: x.shape[0] ("numel").  Note that those functions must
+        handle profiles!
+    :returns: nd-array with fields according
     
     Remaining parameters are key=val, with key a string and val a tuple
     of (func, dtype) with function to be applied and dtype to use.
@@ -2308,7 +2372,7 @@ def collapse(p, s, fields=[], **funcs):
 
     funcs.update({
         "numel": (lambda x: x.shape[0], "i2"),
-        "mean": (lambda x: x.mean(0), "f4")})
+        "mean": (lambda x: numpy.nanmean(x, 0), "f8")})
 
     p = p[ii]
     s = s[ii]
@@ -2328,7 +2392,10 @@ def collapse(p, s, fields=[], **funcs):
     for (n, (l, r)) in enumerate(zip(newp[:-1], newp[1:])):
         primary = p[l]
         secondary = s[l:r]
+        secmask = numpy.ones(dtype="bool", shape=secondary.shape)
+        for validator in global_validators:
+            secmask = secmask & validator(secondary)
         for (funcname, (func, dtp)) in funcs.items():
             for field in fields:
-                M[funcname][field][n, ...] = func(s[l:r][field])
-    return M
+                M[funcname][field][n, ...] = func(secondary[field])
+    return (p[newp[:-1]], M)

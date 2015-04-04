@@ -273,7 +273,9 @@ class Dataset(metaclass=tools.DocStringInheritor):
 #            dmp[f] = my_data[f]
 #        for f in other_combi.dtype.names:
 #            dmp[f] = other_combi[f]
-        if not found.all():
+        if not found.any():
+            raise ValueError("Did not find any secondaries!  Are times off?")
+        elif not found.all():
             logging.warn("Only {:d}/{:d} ({:.2f}%) of secondaries found".format(
                 found.sum(), found.size, 100*found.sum()/found.size))
         return other_combi

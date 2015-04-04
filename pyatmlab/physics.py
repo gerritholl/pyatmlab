@@ -27,6 +27,7 @@ from . import time as pytime
 from . import tools
 from . import graphics
 from . import stats
+from . import io as pyio
 
 class AKStats:
 
@@ -445,7 +446,23 @@ class AKStats:
                 a.set_title("DOF " + self.name)
                 graphics.print_or_show(f, False,
                     "DOF_{}_{}_{}_{}.".format(
-                    self.name, names["x"], names["y"], statname))
+                    self.name, names["x"], names["y"], statname),
+                        data=(numpy.vstack((D[names["x"]]["data"],
+                            D[names["y"]]["data"], dofs)).T
+                                if (statname=="" and names["x"]=="time") else None))
+                # write "by hand" because of datetime
+                if names["x"] == "time" and statname=="":
+                    with open("{:s}/{:s}".format(pyio.plotdatadir(),
+                            "DOF_time_{:s}_{:s}.dat".format(
+                                self.name, names['y'])), 'w') as f:
+                        for i in range(dofs.shape[0]):
+                            f.write("{:%Y-%m-%d} {:.3f} {:.3f}\n".format(
+                                datetime.date.fromordinal(D["time"]["data"][i]),
+                                D[names['y']]["data"][i], dofs[i]))
+
+                    
+                    
+                    
         
 def mixingratio2density(mixingratio, p, T):
     """Converts mixing ratio (e.g. kg/kg) to density (kg/m^3) for dry air.
