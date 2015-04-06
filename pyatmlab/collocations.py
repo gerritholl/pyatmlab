@@ -20,6 +20,7 @@ import matplotlib.backends.backend_agg
 import matplotlib.figure
 import pyproj
 import mpl_toolkits.basemap
+import statsmodels.api
 
 from . import dataset
 from . import stats
@@ -1529,7 +1530,6 @@ class ProfileCollocationDescriber(CollocationDescriber):
         p_vmr = p[self.cd.primary.aliases[field_specie]]#.T[valid_range, :]
         s_vmr = s[self.cd.secondary.aliases[field_specie]]#.T[valid_range, :]
 
-        # use mean T and geometric mean p for converting nd to vmr.
         # We need full range for now, because off-diagonal values in the error
         # covariance matrix outside the partial column range do
         # affect the error in the partial column overall
@@ -1538,6 +1538,14 @@ class ProfileCollocationDescriber(CollocationDescriber):
         sT = s[self.cd.secondary.aliases.get("T", "T")]#.T[valid_range, :]
         sp = s[self.cd.secondary.aliases.get("p", "p")]#.T[valid_range, :]
 
+        # use mean T and geometric mean p for converting nd to vmr.
+        # NOTE: by using the arithmetic mean T and geometric mean p, I am
+        # applying a different (p,T) for different primaries.  Those
+        # primaries are /already/ different due to different smoothing (I
+        # don't do partial columns for 'raw' measurements), but it does
+        # remind us that differences in p and T does propagate in
+        # differences in CH4, and should be considered in the error budget
+        # too...
         T_ens = (pT + sT)/2
         p_ens = numpy.sqrt(pp * sp)
         #p_valid_nd = physics.vmr2nd(p_valid_vmr,
@@ -1622,7 +1630,7 @@ class ProfileCollocationDescriber(CollocationDescriber):
                     s_int[[self.cd.secondary.aliases["CH4_profile"]]][self.mask]),
                     flatten=True),
                 fields=[self.cd.secondary.aliases["CH4_profile"]])
-            p_ch4_int = p[self.cd.primary.aliases["CH4_profile"]]
+            p_ch4_int = p["mean"][self.cd.primary.aliases["CH4_profile"]]
             s_ch4_int = s["mean"][self.cd.secondary.aliases["CH4_profile"]]
         else:
             p_ch4_int = p_int[self.cd.primary.aliases["CH4_profile"]][self.mask]
@@ -2273,6 +2281,8 @@ class ProfileCollocationDescriber(CollocationDescriber):
         if collapsed:
             # FIXME: when collapsing errors, the arithmetic mean is not
             # the correct error estimate!
+            logging.info(("Collapsing {self.cd.secondary.name:s} upon "
+                          "{self.cd.primary.name:s}").format(self=self))
             (p, s) = collapse(
                 numpy.lib.recfunctions.merge_arrays(
                     (p_parcol.view(dtype=[("parcol", p_parcol.dtype)])[self.mask],
@@ -2283,7 +2293,7 @@ class ProfileCollocationDescriber(CollocationDescriber):
                      S_d.view(dtype=[("S_d", S_d.dtype)])[self.mask]), 
                         flatten=True),
                     fields=["parcol", "S_d"])
-            p_parcol = p["parcol"]
+            p_parcol = p["mean"]["parcol"]
             s_parcol = s["mean"]["parcol"]
             S_d = s["mean"]["S_d"]
         else:
@@ -2296,14 +2306,31 @@ class ProfileCollocationDescriber(CollocationDescriber):
         d_parcol = (s_parcol[valid] - p_parcol[valid])
         #a.plot(p_parcol[valid], s_parcol[valid], '.')
         #a.plot(p_parcol[valid], d_parcol, '.')
-        # FIXME: horizontal errorbars?
         a.errorbar(p_parcol[valid], d_parcol, yerr=numpy.sqrt(S_d), fmt=".")
+
         xmx = max(p_parcol[valid].max(), s_parcol[valid].max())
         xmn = min(p_parcol[valid].min(), s_parcol[valid].min())
         ymn = min(d_parcol)
         ymx = max(d_parcol)
         #a.plot([0, 2*mx], [0, 2*mx], linewidth=2, color="black")
         a.plot([0, 2*xmx], [0, 0], linewidth=2, color="black")
+
+        # FIXME: consider using Orthogonal Distance Regression (ODR) which
+        # takes into account both xerr and yerr
+        # http://statsmodels.sourceforge.net/0.5.0/examples/generated/example_wls.html
+        # seems I need to normalise?
+        N = numpy.nanmax(p_parcol[valid])
+        mod = statsmodels.api.WLS(d_parcol/N, 
+            statsmodels.api.add_constant(p_parcol[valid]/N),
+                        weights=1/(S_d/(N**2)),
+                        missing="drop")
+        modfit = mod.fit()
+        with numpy.errstate(all="warn"):
+            print(modfit.summary())
+        a.plot([0, 2*xmx], modfit.predict(statsmodels.api.add_constant([0, 2*xmx/N]))*N,
+            linewidth=1, color="red")
+
+
         a.set_xlim(0.9*xmn, 1.1*xmx)
         a.set_ylim(-1.1*max(abs(ymn), abs(ymx)), 
                    +1.1*max(abs(ymn), abs(ymx)))
@@ -2318,6 +2345,11 @@ class ProfileCollocationDescriber(CollocationDescriber):
             data=numpy.vstack((p_parcol[valid],
                 s_parcol[valid]-p_parcol[valid],
                 numpy.sqrt(S_d)[valid])).T)
+        io.write_data_to_files(data={"model": numpy.vstack(
+                                    ([0, 2*xmx],
+                                     modfit.predict(statsmodels.api.add_constant(
+                                        [0, 2*xmx/N]))*N)).T},
+                               fn=self.figname_compare_pc[:-1].format(**vars()) + "_{}")
 
         # also print some stats
         diff = {}
@@ -2383,19 +2415,28 @@ def collapse(p, s, fields=[], *global_validators, **funcs):
     # in constructing the dtype, apply func to the first elements to
     # determine the correct size.  Call shape as function so it works on
     # non-numpy scalars like int
-    M = numpy.zeros(
+    M_prim = numpy.zeros(
             dtype=[(funcname, [(x[0], funcs[funcname][1],
                             numpy.shape(funcs[funcname][0](s[0:1][x[0]])))
                                for x in s.dtype.descr if x[0] in fields])
                    for funcname in funcs.keys()],
             shape=newp.size-1)
+    M_sec = numpy.zeros_like(M_prim)
     for (n, (l, r)) in enumerate(zip(newp[:-1], newp[1:])):
-        primary = p[l]
+        primary = p[l:r]
         secondary = s[l:r]
         secmask = numpy.ones(dtype="bool", shape=secondary.shape)
         for validator in global_validators:
             secmask = secmask & validator(secondary)
         for (funcname, (func, dtp)) in funcs.items():
             for field in fields:
-                M[funcname][field][n, ...] = func(secondary[field])
-    return (p[newp[:-1]], M)
+                M_prim[funcname][field][n, ...] = func(primary[field])
+                M_sec[funcname][field][n, ...] = func(secondary[field])
+
+    # FIXME BUG!  Because of the smoothing I apply to the primary, even
+    # though a set of collocations has the same primary and different
+    # secondaries, those primaries are no longer the same after I apply
+    # smoothing!
+    #return (p[newp[:-1]], M)
+    # Do this instead:
+    return (M_prim, M_sec)
