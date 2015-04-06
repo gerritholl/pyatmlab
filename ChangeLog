@@ -1,4 +1,23 @@
-2015-04--5  Gerrit Holl  <gerrit.holl@utoronto.ca>:
+2015-04-06  Gerrit Holl  <gerrit.holl@utoronto.ca>:
+
+	* pyatmlab-0-0-75
+
+	* pyatmlab/collocations.py:
+	
+	(ProfileCollocationDescriber):
+
+	- Start working to estimating error propagation of T and p into
+	partial columns
+
+	- Use sqrt(0.05) rather than 0.05 for confidence interval for partial
+	column linear regression, and write all estimates to datafile for
+	pgfplots
+
+	(collapse):
+
+	- Collapse both ways!
+
+2015-04-05  Gerrit Holl  <gerrit.holl@utoronto.ca>:
 
 	* pyatmlab-0-0-74
 

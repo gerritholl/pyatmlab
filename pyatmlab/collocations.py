@@ -1485,7 +1485,8 @@ class ProfileCollocationDescriber(CollocationDescriber):
             field_parcol="parcol_CH4",
             field_S="S_CH4_profile",
             field_z_proc="z_proc",
-            return_profiles=False):
+            return_profiles=False,
+            use_T_p="mean"):
         """Calculate partial columns.
 
         """
@@ -1546,8 +1547,17 @@ class ProfileCollocationDescriber(CollocationDescriber):
         # remind us that differences in p and T does propagate in
         # differences in CH4, and should be considered in the error budget
         # too...
-        T_ens = (pT + sT)/2
-        p_ens = numpy.sqrt(pp * sp)
+        if use_T_p == "mean":
+            T_ens = (pT + sT)/2
+            p_ens = numpy.sqrt(pp * sp)
+        elif use_T_p == "primary":
+            T_ens = pT
+            p_ens = pp
+        elif use_T_p == "secondary":
+            T_ens = sT
+            p_ens = sp
+        else:
+            raise ValueError("Invalid use_T_p=={!s}".format(use_T_p))
         #p_valid_nd = physics.vmr2nd(p_valid_vmr,
         fact_vmr2nd = physics.vmr2nd(1, T_ens, p_ens)
             #p[self.cd.primary.aliases.get("T", "T")].T[valid_range, :],
@@ -2082,7 +2092,7 @@ class ProfileCollocationDescriber(CollocationDescriber):
         logging.info("Getting partial columns as I will use them to "
                      "summarise DOF stats")
         (p, s, *_) = self.partial_columns(smoothed=True,
-            return_profiles=True)
+            return_profiles=True, use_T_p="mean")
         if p_ak is not None:
             paks = physics.AKStats(p_ak, 
                 name="{}_from_{}".format(
@@ -2277,7 +2287,8 @@ class ProfileCollocationDescriber(CollocationDescriber):
 
         Also writes data for external plotting
         """
-        (p_parcol, s_parcol, valid_range, S_d) = self.partial_columns(smoothed=True)
+        (p_parcol, s_parcol, valid_range, S_d) = self.partial_columns(
+            smoothed=True, return_profiles=False, use_T_p="mean")
         if collapsed:
             # FIXME: when collapsing errors, the arithmetic mean is not
             # the correct error estimate!
@@ -2292,7 +2303,8 @@ class ProfileCollocationDescriber(CollocationDescriber):
                      self.s_col[["time"]][self.mask],
                      S_d.view(dtype=[("S_d", S_d.dtype)])[self.mask]), 
                         flatten=True),
-                    fields=["parcol", "S_d"])
+                    fields_primary=["parcol"],
+                    fields_secondary=["parcol", "S_d"])
             p_parcol = p["mean"]["parcol"]
             s_parcol = s["mean"]["parcol"]
             S_d = s["mean"]["S_d"]
@@ -2310,8 +2322,8 @@ class ProfileCollocationDescriber(CollocationDescriber):
 
         xmx = max(p_parcol[valid].max(), s_parcol[valid].max())
         xmn = min(p_parcol[valid].min(), s_parcol[valid].min())
-        ymn = min(d_parcol)
-        ymx = max(d_parcol)
+        ymn = min(d_parcol-numpy.sqrt(S_d))
+        ymx = max(d_parcol+numpy.sqrt(S_d))
         #a.plot([0, 2*mx], [0, 2*mx], linewidth=2, color="black")
         a.plot([0, 2*xmx], [0, 0], linewidth=2, color="black")
 
@@ -2320,20 +2332,29 @@ class ProfileCollocationDescriber(CollocationDescriber):
         # http://statsmodels.sourceforge.net/0.5.0/examples/generated/example_wls.html
         # seems I need to normalise?
         N = numpy.nanmax(p_parcol[valid])
+        weights = 1/(S_d/(N**2))
         mod = statsmodels.api.WLS(d_parcol/N, 
             statsmodels.api.add_constant(p_parcol[valid]/N),
-                        weights=1/(S_d/(N**2)),
+                        #weights=1/(S_d/(N**2)),
                         missing="drop")
         modfit = mod.fit()
         with numpy.errstate(all="warn"):
             print(modfit.summary())
-        a.plot([0, 2*xmx], modfit.predict(statsmodels.api.add_constant([0, 2*xmx/N]))*N,
-            linewidth=1, color="red")
+        xx = numpy.linspace(.5*xmn/N, 1.5*xmx/N, 5)
+        a.plot(xx*N, (modfit.params[0] + modfit.params[1]*xx)*N,
+            color="red", linewidth=1)
+        # Take sqrt(5) to get a confidence interval of what is really
+        # 77.6%, so that, assuming a circular distribution, I'm at 5% at
+        # the edges
+        alpha = numpy.sqrt(0.05)
+        conf = modfit.conf_int(alpha=alpha)
+        a.plot(xx*N, (conf[0:1, :] 
+                 + conf[1:2, :] * xx[:, numpy.newaxis])*N,
+            color="red", linewidth=0.3)
 
-
-        a.set_xlim(0.9*xmn, 1.1*xmx)
-        a.set_ylim(-1.1*max(abs(ymn), abs(ymx)), 
-                   +1.1*max(abs(ymn), abs(ymx)))
+        a.set_xlim(0.98*xmn, 1.02*xmx)
+        a.set_ylim(-max(abs(ymn), abs(ymx)), 
+                   +max(abs(ymn), abs(ymx)))
         a.set_xlabel("CH4 {:s} [molec./m^2]".format(self.cd.primary.name))
         a.set_ylabel("CH4 {:s} - {:s} [molec./m^2]".format(
             self.cd.primary.name, self.cd.secondary.name))
@@ -2346,10 +2367,12 @@ class ProfileCollocationDescriber(CollocationDescriber):
                 s_parcol[valid]-p_parcol[valid],
                 numpy.sqrt(S_d)[valid])).T)
         io.write_data_to_files(data={"model": numpy.vstack(
-                                    ([0, 2*xmx],
-                                     modfit.predict(statsmodels.api.add_constant(
-                                        [0, 2*xmx/N]))*N)).T},
-                               fn=self.figname_compare_pc[:-1].format(**vars()) + "_{}")
+                (xx,
+                 modfit.params[0] + modfit.params[1]*xx,
+                 (conf[0:1, :]
+                    + conf[1:2, :]
+                    * xx[:, numpy.newaxis]).T)).T*N},
+            fn=self.figname_compare_pc[:-1].format(**vars()) + "_{}")
 
         # also print some stats
         diff = {}
@@ -2377,7 +2400,7 @@ def find_collocation_duplicates(p_col, s_col):
 
     return uni
 
-def collapse(p, s, fields=[], *global_validators, **funcs):
+def collapse(p, s, fields_primary=[], fields_secondary=[], *global_validators, **funcs):
     """Collapse `s` upon `p`.
 
     Result sorted by p["time"].
@@ -2385,7 +2408,8 @@ def collapse(p, s, fields=[], *global_validators, **funcs):
     :param p: Primary ndarray.  Must be a structured array with at least
         field "time".
     :param s: Secondary ndarray, same length as p.  Must share fields.
-    :param fields: Fields to take from secondary.
+    :param fields_primary: Fields to be taken from primary.
+    :param fields_secondary: Fields to take from secondary.
     :param *global_validators: Functions to be applied to each set of
         secondaries, which return a mask which ones to proceed with.
     :param **funcs: Remaining keyword-arguments correspond to functions to
@@ -2418,10 +2442,15 @@ def collapse(p, s, fields=[], *global_validators, **funcs):
     M_prim = numpy.zeros(
             dtype=[(funcname, [(x[0], funcs[funcname][1],
                             numpy.shape(funcs[funcname][0](s[0:1][x[0]])))
-                               for x in s.dtype.descr if x[0] in fields])
+                               for x in p.dtype.descr if x[0] in fields_primary])
                    for funcname in funcs.keys()],
             shape=newp.size-1)
-    M_sec = numpy.zeros_like(M_prim)
+    M_sec = numpy.zeros(
+            dtype=[(funcname, [(x[0], funcs[funcname][1],
+                            numpy.shape(funcs[funcname][0](s[0:1][x[0]])))
+                               for x in s.dtype.descr if x[0] in fields_secondary])
+                   for funcname in funcs.keys()],
+            shape=newp.size-1)
     for (n, (l, r)) in enumerate(zip(newp[:-1], newp[1:])):
         primary = p[l:r]
         secondary = s[l:r]
@@ -2429,8 +2458,9 @@ def collapse(p, s, fields=[], *global_validators, **funcs):
         for validator in global_validators:
             secmask = secmask & validator(secondary)
         for (funcname, (func, dtp)) in funcs.items():
-            for field in fields:
+            for field in fields_primary:
                 M_prim[funcname][field][n, ...] = func(primary[field])
+            for field in fields_secondary:
                 M_sec[funcname][field][n, ...] = func(secondary[field])
 
     # FIXME BUG!  Because of the smoothing I apply to the primary, even
