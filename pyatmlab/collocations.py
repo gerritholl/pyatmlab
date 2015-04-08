@@ -10,6 +10,7 @@ import logging
 import datetime
 import pathlib
 import functools
+import itertools
 
 import scipy
 import scipy.stats
@@ -21,6 +22,7 @@ import matplotlib.figure
 import pyproj
 import mpl_toolkits.basemap
 import statsmodels.api
+import statsmodels.sandbox.regression.predstd
 
 from . import dataset
 from . import stats
@@ -30,8 +32,7 @@ from . import graphics
 from . import physics
 from . import math as pamath
 from . import io
-
-from .constants import MB
+from . import constants
 
 class CollocatedDataset(dataset.HomemadeDataset):
     """Holds collocations.
@@ -223,7 +224,7 @@ class CollocatedDataset(dataset.HomemadeDataset):
                 # save memory, yield prematurely
                 logging.info(("Read {:d}/{:d} granules.  "
                     "Yielding {:.2f} MB").format(
-                        i, n_pairs, (primsize+secsize)/MB))
+                        i, n_pairs, (primsize+secsize)/constants.MB))
                 logging.debug("Yielding due to size")
                 yield (numpy.concatenate(prim), numpy.concatenate(sec))
                 prim = []
@@ -240,7 +241,7 @@ class CollocatedDataset(dataset.HomemadeDataset):
             if totsize//1e7 > size_ms:
                 logging.info(("Read {:d}/{:d} granules.  "
                     "Current size: {:.2f} MB").format(
-                        i, n_pairs, (primsize+secsize)/MB))
+                        i, n_pairs, (primsize+secsize)/constants.MB))
                 size_ms = totsize//1e7
 
         if len(prim) == 0 or len(sec) == 0:
@@ -461,7 +462,7 @@ class CollocatedDataset(dataset.HomemadeDataset):
         all_p_col = []
         all_s_col = []
         size_since_yield = 0
-        yield_size = yield_size_MB*MB
+        yield_size = yield_size_MB*constants.MB
         for (prim, sec) in self.read_aggregated_pairs(
                 start_date, end_date):
             logging.info(("Collocating: "
@@ -479,7 +480,7 @@ class CollocatedDataset(dataset.HomemadeDataset):
             size = all_p_col[-1].nbytes + all_s_col[-1].nbytes
             size_since_yield += size
             logging.info(("So far {:d} collocations, total {:.0f} MB"
-                ).format(sum(n.size for n in all_p_col), size_since_yield/MB))
+                ).format(sum(n.size for n in all_p_col), size_since_yield/constants.MB))
             if size_since_yield > yield_size:
                 yield (numpy.concatenate(all_p_col), numpy.concatenate(all_s_col))
                 all_p_col = []
@@ -1486,9 +1487,12 @@ class ProfileCollocationDescriber(CollocationDescriber):
             field_S="S_CH4_profile",
             field_z_proc="z_proc",
             return_profiles=False,
-            use_T_p="mean"):
+            use_T_p="mean",
+            collapsed=False):
         """Calculate partial columns.
 
+        Contains keyword argument `collapsed`.  We want to do that here
+        because it effects error calculations for the secondary.
         """
 #        if (field_parcol in self.p_col.dtype.names and
 #            field_parcol in self.s_col.dtype.names and
@@ -1548,18 +1552,21 @@ class ProfileCollocationDescriber(CollocationDescriber):
         # differences in CH4, and should be considered in the error budget
         # too...
         if use_T_p == "mean":
-            T_ens = (pT + sT)/2
-            p_ens = numpy.sqrt(pp * sp)
+            p_T = s_T = (pT + sT)/2
+            pp = sp = numpy.sqrt(pp * sp)
         elif use_T_p == "primary":
-            T_ens = pT
-            p_ens = pp
+            sT = pT
+            sp = pp
         elif use_T_p == "secondary":
-            T_ens = sT
-            p_ens = sp
+            pT = sT
+            pp = sp
+        elif use_T_p == "each":
+            pass # leave pp and sp as they are
         else:
             raise ValueError("Invalid use_T_p=={!s}".format(use_T_p))
         #p_valid_nd = physics.vmr2nd(p_valid_vmr,
-        fact_vmr2nd = physics.vmr2nd(1, T_ens, p_ens)
+        p_fact_vmr2nd = physics.vmr2nd(1, pT, pp)
+        s_fact_vmr2nd = physics.vmr2nd(1, sT, sp)
             #p[self.cd.primary.aliases.get("T", "T")].T[valid_range, :],
             #p[self.cd.primary.aliases.get("p", "p")].T[valid_range, :])
         #s_valid_nd = physics.vmr2nd(s_valid_vmr,
@@ -1567,9 +1574,9 @@ class ProfileCollocationDescriber(CollocationDescriber):
             #s[self.cd.secondary.aliases.get("T", "T")].T[valid_range, :],
             #s[self.cd.secondary.aliases.get("p", "p")].T[valid_range, :])
         #p_valid_nd = fact_vmr2nd.T * p_valid_vmr
-        p_nd = fact_vmr2nd * p_vmr
+        p_nd = p_fact_vmr2nd * p_vmr
         #s_valid_nd = fact_vmr2nd.T * s_valid_vmr
-        s_nd = fact_vmr2nd * s_vmr
+        s_nd = s_fact_vmr2nd * s_vmr
 
         g_int = numpy.zeros_like(z)
         g_int[valid_range] = pamath.get_transformation_matrix(
@@ -1592,35 +1599,55 @@ class ProfileCollocationDescriber(CollocationDescriber):
         # Construct newz in a way that append_fields likes
         newz = numpy.tile(z, (p.shape[0], 1)).view([("z", "f8", z.shape[0])])
         p = numpy.lib.recfunctions.append_fields(p,
-            names=[field_parcol, field_z_proc],
-            data=[p_parcol, newz],
-            dtypes=["f8", newz.dtype],
+            names=[field_parcol, field_z_proc, "time"],
+            data=[p_parcol, newz, self.p_col["time"]],
+            dtypes=["f8", newz.dtype, self.p_col["time"].dtype],
             usemask=False)
         s = numpy.lib.recfunctions.append_fields(s,
-            names=[field_parcol, field_z_proc],
-            data=[s_parcol, newz],
-            dtypes=["f8", newz.dtype],
+            names=[field_parcol, field_z_proc, "time"],
+            data=[s_parcol, newz, self.s_col["time"]],
+            dtypes=["f8", newz.dtype, self.s_col["time"].dtype],
             usemask=False)
 
+        if collapsed:
+            # It's sloppy but I'm collapsing twice.  Here I collapse
+            # really just to know what √N I need to apply below.  I find
+            # it too involved to collapse things like all the
+            # interpolation matrices, more clean to do the “real”
+            # collapsing only at the end.
+            logging.info("Collapsing before calculating errors")
+            (p_clps, s_clps, ii) = collapse(p, s,
+                    fields_primary=[field_parcol],
+                    fields_secondary=[field_parcol],
+                    return_sort_order=True)
+            g = itertools.chain.from_iterable(
+                    itertools.repeat(1/numpy.sqrt(i),i)
+                    for i in p_clps["numel"][field_parcol])
+            # FIXME! Correctly use sort-order
+            s_fact_collapsed = numpy.atleast_2d(numpy.array(list(g))).T
+        else:
+            s_fact_collapsed = 1
+
         logging.info("Obtaining error estimate")
-        S_d = self._get_smoothing_error(p, s, ak)
-        logging.info("Done")
-        # simple multiplication factor here
         # note that double precision is needed because the multiplication
         # factor squared gets quite large
-        S_dnd = (numpy.atleast_3d(fact_vmr2nd).astype("f8")**2 * S_d)
-        # error propagation following Vigouroux et al, equation 5
-        # explicitly select non-zero parts because those may be flagged
-        # with nan and 0*nan=nan
-        S_dpc = g_int[g_int!=0].dot(
-                S_dnd[numpy.ix_(range(S_dnd.shape[0]), g_int!=0, g_int!=0)]).dot(
-                numpy.atleast_2d(g_int[g_int!=0]).T).squeeze()
+        (S_p, S_s, S_d) = self._get_smoothing_error(p, s, ak,
+            p_conv_fact=p_fact_vmr2nd.astype("f8")**2,
+            s_conv_fact=(s_fact_collapsed*s_fact_vmr2nd).astype("f8")**2)
+        logging.info("Done")
+
+        # propagate errors to partial columns
+        (S_ppc, S_spc, S_dpc) = [
+                g_int[g_int!=0].dot(
+                    S[numpy.ix_(range(S.shape[0]), g_int!=0, g_int!=0)]).dot(
+                    numpy.atleast_2d(g_int[g_int!=0]).T).squeeze()
+                for S in (S_p, S_s, S_d)]
 
         z_range = (z[valid_range].min(), z[valid_range].max())
         #self._S_dpc = S_dpc
         return (p if return_profiles else p_parcol,
                 s if return_profiles else s_parcol,
-                z_range, S_dpc)
+                z_range, S_ppc, S_spc, S_dpc)
 
     @tools.mark_for_disk_cache()
     def _compare_profiles(self, p_int, s_int,
@@ -1911,7 +1938,8 @@ class ProfileCollocationDescriber(CollocationDescriber):
 
     # Don't cache this one, it's called inside a loop so overhead will be
     # immense
-    def _calc_error_propagation(self, S_1, W_1, A_1, S_2, W_2):
+    def _calc_error_propagation(self, S_1, W_1, A_1, S_2, W_2,
+            fact_S_1=None, fact_S_2=None):
         """Calculate random covariance matrix for comparison
 
         Upon regridding and smoothing, we need to calculate the error
@@ -1932,6 +1960,8 @@ class ProfileCollocationDescriber(CollocationDescriber):
         :param A_1:
         :param S_2:
         :param W_2:
+        :param fact_S_1: Defaults to 1, can be used for unit conversion
+        :param fact_S_2: Defaults to 1, can be used for unit conversion
         """
 
         # ERROR!  pinv hangs if W_1 contains nans in an unfortunate way.
@@ -1939,11 +1969,17 @@ class ProfileCollocationDescriber(CollocationDescriber):
             logging.warning("Found nans in W_1, treating as 0")
             W_1 = W_1.copy()
             W_1[numpy.isnan(W_1)] = 0
+        if fact_S_1 is None:
+            fact_S_1 = numpy.ones_like(S_1)
+        if fact_S_2 is None:
+            fact_S_2 = numpy.ones_like(S_2)
         W_12 = numpy.linalg.pinv(W_1).dot(W_2)
         OK = numpy.isfinite(numpy.diag(A_1))
         OKix = numpy.ix_(OK,OK)
         S_12 = numpy.zeros_like(S_1)
         S_12.fill(numpy.nan)
+        S_1f = S_12.copy()
+        S_2f = S_12.copy()
         #S_12 = S_1 + A_1.dot(W_12).dot(S_2).dot(W_12.T).dot(A_1.T)
         # FIXME: Or fill the rest simply with whatever was S_1?
         #logging.info("no. {:d}...".format(self._deb_i))
@@ -1954,15 +1990,21 @@ class ProfileCollocationDescriber(CollocationDescriber):
                      S_2).dot(
                      W_12[OK,:].T).dot(
                      A_1[OKix].T)
-        S_12[OKix] = S_1[OKix] + S_2
-        return S_1[OKix], S_2, S_12
+        S_1conv = numpy.atleast_2d(fact_S_1[OK]).T * S_1[OKix]
+        S_2conv = numpy.atleast_2d(fact_S_2[OK]).T * S_2
+        S_12[OKix] = S_1conv + S_2conv
+        S_1f[OKix] = S_1conv
+        S_2f[OKix] = S_2conv
+        return (S_1f, S_2f, S_12)
 
     @tools.mark_for_disk_cache()
     def _get_smoothing_error(self, p_int, s_int, ak,
             field_specie="CH4_profile",
             parcol_specie="parcol_CH4",
             ak_specie="ch4_ak",
-            field_S="S_CH4_profile"):
+            field_S="S_CH4_profile",
+            p_conv_fact=1,
+            s_conv_fact=1):
         # should only do self.mask at the end
         targ = (self.p_col, self.s_col)[self.target]#[self.mask]
         nontarg = (self.p_col, self.s_col)[1-self.target]#[self.mask]
@@ -1972,6 +2014,9 @@ class ProfileCollocationDescriber(CollocationDescriber):
         #
         targobj = (self.cd.primary, self.cd.secondary)[self.target]
         nontargobj = (self.cd.primary, self.cd.secondary)[1-self.target]
+        #
+        conv_fact_targ = (p_conv_fact, s_conv_fact)[self.target]
+        conv_fact_nontarg = (p_conv_fact, s_conv_fact)[1-self.target]
         #
         W_1 = targsmooth["W"][targobj.aliases[field_specie]]
         W_2 = nontargsmooth["W"][nontargobj.aliases[field_specie]]
@@ -2012,14 +2057,23 @@ class ProfileCollocationDescriber(CollocationDescriber):
             S_2[numpy.isnan(S_2)] = 0
             S_1[S_1<-10]=0
             S_2[S_2<-10]=0
+        # apply possible conversion factors, such as for converting from
+        # vmr to nd
+        #S_1 *= conv_fact_targ
+        #S_2 *= conv_fact_nontarg
+        #
         logging.info("Calculating error propagation for {:d} profiles".format(p_int.size))
         # FIXME: keep track of all error components?
         (S_1c, S_2c, S_d) = zip(*[self._calc_error_propagation(S_1[i, :, :],
-               W_1[i, :, :], ak[i, :, :], S_2[i, :, :], W_2[i, :, :])
+               W_1[i, :, :], ak[i, :, :], S_2[i, :, :], W_2[i, :, :],
+                fact_S_1=conv_fact_targ[i, :],
+                fact_S_2=conv_fact_nontarg[i, :])
                    for i in range(p_int.size)])
         logging.info("Done")
+        S_1c = numpy.rollaxis(numpy.dstack(S_1c), 2, 0)
+        S_2c = numpy.rollaxis(numpy.dstack(S_2c), 2, 0)
         S_d = numpy.rollaxis(numpy.dstack(S_d), 2, 0)
-        return S_d
+        return (S_1c, S_2c, S_d)
 
     ## Visualisation methods
 
@@ -2282,48 +2336,89 @@ class ProfileCollocationDescriber(CollocationDescriber):
 ##                     (z_grid, iqr["prim"], iqr["sec"], iqr["diff"])).T)
 ##         matplotlib.pyplot.close(f)
 
-    def visualise_pc_comparison(self, collapsed=False):
+    def visualise_pc_comparison(self, collapsed=False,
+            mode="mean"):
         """Visualise comparison for partial columns
 
         Also writes data for external plotting
         """
-        (p_parcol, s_parcol, valid_range, S_d) = self.partial_columns(
-            smoothed=True, return_profiles=False, use_T_p="mean")
+        # Use different ways of using T and p for calculating partial
+        # columns in order to estimate how this propagates in the partial
+        # column values
+        modes = ("mean", "primary", "secondary", "each")
+        args = ("p_parcol", "s_parcol", "valid_range", "S_ppc", "S_spc", "S_d")
+        parcol_info = dict(zip(modes, 
+            [dict(zip(args,
+                self.partial_columns(smoothed=True, return_profiles=False,
+                     use_T_p=md, collapsed=collapsed))) for md in modes]))
+        (p_parcol, s_parcol, valid_range, S_ppc, S_spc, S_dpc) = [parcol_info[mode][x]
+                    for x in args]
+        valid = self.mask & numpy.isfinite(p_parcol) & numpy.isfinite(s_parcol)
+        # investigate range of values depending on what T/p is chosen;
+        # this adds to the errorbar?
+        all_p_parcol = numpy.vstack([parcol_info[x]["p_parcol"] for x in
+                                    parcol_info.keys()])
+        all_s_parcol = numpy.vstack([parcol_info[x]["s_parcol"] for x in
+                                    parcol_info.keys()])
+#        (p_parcol, s_parcol, valid_range, S_d) = self.partial_columns(
+#            smoothed=True, return_profiles=False, use_T_p="mean")
+        with numpy.errstate(invalid="warn"):
+            d_parcol = (s_parcol - p_parcol)
+            all_d_parcol = all_s_parcol - all_p_parcol
+            S_dpc_pT_up = all_d_parcol.max(0) - d_parcol
+            S_dpc_pT_dn = d_parcol - all_d_parcol.min(0)
+            S_dpc_pT_m = (all_d_parcol.max(0) - all_d_parcol.min(0))/2
         if collapsed:
-            # FIXME: when collapsing errors, the arithmetic mean is not
-            # the correct error estimate!
+            # Note on averaging errors: for averaging uncorrelated random
+            # errors one should divide by √N.  I implement this for S_dpc
+            # by telling self.partial_columns that it is going to be
+            # collapsed.  For the errors from the range due to temperature
+            # and pressure, those are not random so should not be divided
+            # by √N, therefore, arithmetic mean is appropriate.
             logging.info(("Collapsing {self.cd.secondary.name:s} upon "
                           "{self.cd.primary.name:s}").format(self=self))
+            fields_secondary = ["s_parcol", "d_parcol", "S_ppc", "S_spc", "S_dpc",
+                        "S_dpc_pT_up", "S_dpc_pT_dn", "S_dpc_pT_m"]
+            L = locals()
             (p, s) = collapse(
                 numpy.lib.recfunctions.merge_arrays(
-                    (p_parcol.view(dtype=[("parcol", p_parcol.dtype)])[self.mask],
-                     self.p_col[["time"]][self.mask]), flatten=True),
+                    (p_parcol.view(dtype=[("p_parcol", p_parcol.dtype)])[valid],
+                     self.p_col[["time"]][valid]), flatten=True),
                 numpy.lib.recfunctions.merge_arrays(
-                    (s_parcol.view(dtype=[("parcol", s_parcol.dtype)])[self.mask],
-                     self.s_col[["time"]][self.mask],
-                     S_d.view(dtype=[("S_d", S_d.dtype)])[self.mask]), 
+                    [self.s_col[["time"]][valid]] +
+                    [L[x].view(dtype=[(x, L[x].dtype)])[valid]
+                        for x in fields_secondary],
                         flatten=True),
-                    fields_primary=["parcol"],
-                    fields_secondary=["parcol", "S_d"])
-            p_parcol = p["mean"]["parcol"]
-            s_parcol = s["mean"]["parcol"]
-            S_d = s["mean"]["S_d"]
+                fields_primary=["p_parcol"],
+                fields_secondary=fields_secondary)
+            p_parcol = p["mean"]["p_parcol"]
+            (s_parcol, d_parcol, S_ppc, S_spc, S_dpc,
+                S_dpc_pT_up, S_dpc_pT_dn, S_dpc_pT_m) = [
+                s["mean"][x] for x in fields_secondary]
         else:
-            p_parcol = p_parcol[self.mask]
-            s_parcol = s_parcol[self.mask]
-            S_d = S_d[self.mask]
+            p_parcol = p_parcol[valid]
+            s_parcol = s_parcol[valid]
+            d_parcol = d_parcol[valid]
+            S_ppc = S_ppc[valid]
+            S_spc = S_spc[valid]
+            S_dpc = S_dpc[valid]
+            S_dpc_pT_up = s_dpc_pT_up[valid]
+            S_dpc_pT_down = s_dpc_pT_dn[valid]
 
         (f, a) = matplotlib.pyplot.subplots()
-        valid = numpy.isfinite(p_parcol) & numpy.isfinite(s_parcol)
-        d_parcol = (s_parcol[valid] - p_parcol[valid])
-        #a.plot(p_parcol[valid], s_parcol[valid], '.')
-        #a.plot(p_parcol[valid], d_parcol, '.')
-        a.errorbar(p_parcol[valid], d_parcol, yerr=numpy.sqrt(S_d), fmt=".")
+        a.errorbar(p_parcol, d_parcol, 
+                   xerr=numpy.sqrt(S_ppc), 
+                   yerr=numpy.sqrt(S_dpc + S_dpc_pT_m**2), fmt=".")
+        # draw again with different colour errorbars to show different
+        # error source
+        #a.errorbar(p_parcol, d_parcol, 
+        #           yerr=[S_dpc_pT_dn, S_dpc_pT_up], fmt=".",
+        #           ecolor="red")
 
-        xmx = max(p_parcol[valid].max(), s_parcol[valid].max())
-        xmn = min(p_parcol[valid].min(), s_parcol[valid].min())
-        ymn = min(d_parcol-numpy.sqrt(S_d))
-        ymx = max(d_parcol+numpy.sqrt(S_d))
+        xmx = max(p_parcol.max(), s_parcol.max())
+        xmn = min(p_parcol.min(), s_parcol.min())
+        ymn = min(d_parcol-numpy.sqrt(S_dpc))
+        ymx = max(d_parcol+numpy.sqrt(S_dpc))
         #a.plot([0, 2*mx], [0, 2*mx], linewidth=2, color="black")
         a.plot([0, 2*xmx], [0, 0], linewidth=2, color="black")
 
@@ -2331,10 +2426,10 @@ class ProfileCollocationDescriber(CollocationDescriber):
         # takes into account both xerr and yerr
         # http://statsmodels.sourceforge.net/0.5.0/examples/generated/example_wls.html
         # seems I need to normalise?
-        N = numpy.nanmax(p_parcol[valid])
-        weights = 1/(S_d/(N**2))
+        N = numpy.nanmax(p_parcol)
+        weights = 1/(S_dpc/(N**2))
         mod = statsmodels.api.WLS(d_parcol/N, 
-            statsmodels.api.add_constant(p_parcol[valid]/N),
+            statsmodels.api.add_constant(p_parcol/N),
                         #weights=1/(S_d/(N**2)),
                         missing="drop")
         modfit = mod.fit()
@@ -2351,6 +2446,11 @@ class ProfileCollocationDescriber(CollocationDescriber):
         a.plot(xx*N, (conf[0:1, :] 
                  + conf[1:2, :] * xx[:, numpy.newaxis])*N,
             color="red", linewidth=0.3)
+        # Now do this the correct way
+        (_, iv_l, iv_u) = statsmodels.sandbox.regression.predstd.wls_prediction_std(
+            modfit, statsmodels.api.add_constant(xx))
+        a.plot(xx*N, iv_l*N, color="blue", linewidth=0.3)
+        a.plot(xx*N, iv_u*N, color="blue", linewidth=0.3)
 
         a.set_xlim(0.98*xmn, 1.02*xmx)
         a.set_ylim(-max(abs(ymn), abs(ymx)), 
@@ -2363,15 +2463,18 @@ class ProfileCollocationDescriber(CollocationDescriber):
                         valid_range[0]/1e3, valid_range[1]/1e3,
                         self.cd.primary.name, self.cd.secondary.name))
         graphics.print_or_show(f, None, self.figname_compare_pc.format(**vars()),
-            data=numpy.vstack((p_parcol[valid],
-                s_parcol[valid]-p_parcol[valid],
-                numpy.sqrt(S_d)[valid])).T)
+            data=numpy.vstack((p_parcol,
+                d_parcol,
+                numpy.sqrt(S_ppc).T,
+                numpy.sqrt(S_dpc + S_dpc_pT_m**2))).T)
         io.write_data_to_files(data={"model": numpy.vstack(
                 (xx,
                  modfit.params[0] + modfit.params[1]*xx,
                  (conf[0:1, :]
                     + conf[1:2, :]
-                    * xx[:, numpy.newaxis]).T)).T*N},
+                    * xx[:, numpy.newaxis]).T,
+                 iv_l,
+                 iv_u)).T*N},
             fn=self.figname_compare_pc[:-1].format(**vars()) + "_{}")
 
         # also print some stats
@@ -2400,7 +2503,8 @@ def find_collocation_duplicates(p_col, s_col):
 
     return uni
 
-def collapse(p, s, fields_primary=[], fields_secondary=[], *global_validators, **funcs):
+def collapse(p, s, fields_primary=[], fields_secondary=[],
+        return_sort_order=False, *global_validators, **funcs):
     """Collapse `s` upon `p`.
 
     Result sorted by p["time"].
@@ -2410,6 +2514,8 @@ def collapse(p, s, fields_primary=[], fields_secondary=[], *global_validators, *
     :param s: Secondary ndarray, same length as p.  Must share fields.
     :param fields_primary: Fields to be taken from primary.
     :param fields_secondary: Fields to take from secondary.
+    :param return_sort_order: If True, also return sort order.
+        Defaults to False.
     :param *global_validators: Functions to be applied to each set of
         secondaries, which return a mask which ones to proceed with.
     :param **funcs: Remaining keyword-arguments correspond to functions to
@@ -2441,7 +2547,7 @@ def collapse(p, s, fields_primary=[], fields_secondary=[], *global_validators, *
     # non-numpy scalars like int
     M_prim = numpy.zeros(
             dtype=[(funcname, [(x[0], funcs[funcname][1],
-                            numpy.shape(funcs[funcname][0](s[0:1][x[0]])))
+                            numpy.shape(funcs[funcname][0](p[0:1][x[0]])))
                                for x in p.dtype.descr if x[0] in fields_primary])
                    for funcname in funcs.keys()],
             shape=newp.size-1)
@@ -2469,4 +2575,4 @@ def collapse(p, s, fields_primary=[], fields_secondary=[], *global_validators, *
     # smoothing!
     #return (p[newp[:-1]], M)
     # Do this instead:
-    return (M_prim, M_sec)
+    return (M_prim, M_sec) + ((ii,) if return_sort_order else ())

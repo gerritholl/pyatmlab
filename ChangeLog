@@ -1,3 +1,24 @@
+2015-04-08  Gerrit Holl  <gerrit.holl@utoronta.ca>:
+
+	* pyatmlab-0-0-76
+
+	* pyatmlab/collocations.py:
+
+	(ProfileCollocationDescriber):
+
+	- Calculate full range of nd based on different p/T alternatives, take
+	the mean and range.
+
+	- Correctly divide secondary error by √N.  Requires quite some
+	recoding.
+
+	- Correctly calculate regression confidence band using statsmodels
+	standard method
+
+	(collapse):
+
+	- Return sort order, needed by some
+
 2015-04-06  Gerrit Holl  <gerrit.holl@utoronto.ca>:
 
 	* pyatmlab-0-0-75
