@@ -206,7 +206,7 @@ class CollocatedDataset(dataset.HomemadeDataset):
                         (end_date + maxint)))
                     newsec = newsec[inrange]
                     if inrange.any() and not inrange.all():
-                        logging.info(("Reading only {:d}/{:d} profiles"
+                        logging.info(("Reading only {:d}/{:d} profiles "
                                       "from {!s}").format(
                             inrange.sum(), inrange.size, gran_sec))
                 except (dataset.InvalidFileError, 
@@ -226,7 +226,8 @@ class CollocatedDataset(dataset.HomemadeDataset):
                     "Yielding {:.2f} MB").format(
                         i, n_pairs, (primsize+secsize)/constants.MB))
                 logging.debug("Yielding due to size")
-                yield (numpy.concatenate(prim), numpy.concatenate(sec))
+                yield (self.primary.flag(numpy.concatenate(prim)),
+                       self.secondary.flag(numpy.concatenate(sec)))
                 prim = []
                 sec = []
                 # If primary granules are much longer than secondary
@@ -247,7 +248,8 @@ class CollocatedDataset(dataset.HomemadeDataset):
         if len(prim) == 0 or len(sec) == 0:
             return
 
-        yield (numpy.concatenate(prim), numpy.concatenate(sec))
+        yield (self.primary.flag(numpy.concatenate(prim)),
+               self.secondary.flag(numpy.concatenate(sec)))
 
 
     ########################################################
@@ -1666,7 +1668,8 @@ class ProfileCollocationDescriber(CollocationDescriber):
                     self.s_col[["time"]][self.mask],
                     s_int[[self.cd.secondary.aliases["CH4_profile"]]][self.mask]),
                     flatten=True),
-                fields=[self.cd.secondary.aliases["CH4_profile"]])
+                fields_primary=[self.cd.primary.aliases["CH4_profile"]],
+                fields_secondary=[self.cd.secondary.aliases["CH4_profile"]])
             p_ch4_int = p["mean"][self.cd.primary.aliases["CH4_profile"]]
             s_ch4_int = s["mean"][self.cd.secondary.aliases["CH4_profile"]]
         else:
@@ -2003,8 +2006,8 @@ class ProfileCollocationDescriber(CollocationDescriber):
             parcol_specie="parcol_CH4",
             ak_specie="ch4_ak",
             field_S="S_CH4_profile",
-            p_conv_fact=1,
-            s_conv_fact=1):
+            p_conv_fact=None,
+            s_conv_fact=None):
         # should only do self.mask at the end
         targ = (self.p_col, self.s_col)[self.target]#[self.mask]
         nontarg = (self.p_col, self.s_col)[1-self.target]#[self.mask]
@@ -2061,6 +2064,11 @@ class ProfileCollocationDescriber(CollocationDescriber):
         # vmr to nd
         #S_1 *= conv_fact_targ
         #S_2 *= conv_fact_nontarg
+        #
+        if conv_fact_targ is None:
+            conv_fact_targ = numpy.ones(shape=S_1.shape[:2])
+        if conv_fact_nontarg is None:
+            conv_fact_nontarg = numpy.ones_like(conv_fact_targ)
         #
         logging.info("Calculating error propagation for {:d} profiles".format(p_int.size))
         # FIXME: keep track of all error components?
@@ -2402,8 +2410,8 @@ class ProfileCollocationDescriber(CollocationDescriber):
             S_ppc = S_ppc[valid]
             S_spc = S_spc[valid]
             S_dpc = S_dpc[valid]
-            S_dpc_pT_up = s_dpc_pT_up[valid]
-            S_dpc_pT_down = s_dpc_pT_dn[valid]
+            S_dpc_pT_up = S_dpc_pT_up[valid]
+            S_dpc_pT_down = S_dpc_pT_dn[valid]
 
         (f, a) = matplotlib.pyplot.subplots()
         a.errorbar(p_parcol, d_parcol, 

@@ -79,7 +79,9 @@ class Dataset(metaclass=tools.DocStringInheritor):
     - related::
 
         Dictionary whose keys may refer to other datasets with related
-        information, such as DMPs.
+        information, such as DMPs or flags.
+
+    - timezone::
 
     """
 
@@ -165,6 +167,10 @@ class Dataset(metaclass=tools.DocStringInheritor):
 #            if isinstance(contents[0], numpy.ma.MaskedArray)
 #            else numpy.concatenate)(contents)
         arr = numpy.concatenate(contents)
+
+        if "flags" in self.related:
+            arr = self.flag(arr)
+                
         return arr if fields == "all" else arr[fields]
 #        return numpy.ma.concatenate(list(
 #            self.read(f) for f in self.find_granules(start, end)))
@@ -248,7 +254,7 @@ class Dataset(metaclass=tools.DocStringInheritor):
                 (numpy.isclose(my_data[i][f], other_data[f])
                     if issubclass(my_data[f].dtype.type, numpy.inexact)
                     else my_data[i][f] == other_data[f]).nonzero()[0]
-                        for f in self.unique_fields]
+                        for f in self.unique_fields & other_obj.unique_fields]
             # N arrays of numbers, find numbers occuring in each array.
             # Should be exactly one!
             secondaries = functools.reduce(numpy.lib.arraysetops.intersect1d, ident)
@@ -320,6 +326,11 @@ class Dataset(metaclass=tools.DocStringInheritor):
             data=[physics.AKStats(M["ch4_ak"],
                     name="DUMMY").dofs()],
             dtypes=["f4"])
+
+    def flag(self, arr):
+        """Must be implemented by child
+        """
+        return arr
 
 class SingleFileDataset(Dataset):
     """Represents a dataset where all measurements are in one file.

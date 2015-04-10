@@ -1,3 +1,31 @@
+2015-04-10  Gerrit Holl  <gerrit.holl@utoronto.ca>:
+
+	* pyatmlab-0-0-77
+
+	* pyatmlab/collocations.py:
+
+	(CollocatedDataset):
+
+	- Incorporate the ability to flag data
+
+	(ProfileCollocationDescriber):
+
+	- Fix bugs regarding conversion factors
+
+	- Fix bug in processing uncollapsed data
+
+	* pyatmlab/dataset.py:
+
+	- Incorporate flagging.  Implement by child making a flag() method.
+
+	- More flexible matching for 'unique fields', now both self and
+	other_obj have this set and the intersection is used.  Allows for
+	different fields to be used when matching DMPs or flags.
+
+	* pyatmlab/datasets.py(ACEFTS):
+
+	- Implement flagging method and set unique_fields accordingly.
+
 2015-04-08  Gerrit Holl  <gerrit.holl@utoronta.ca>:
 
 	* pyatmlab-0-0-76

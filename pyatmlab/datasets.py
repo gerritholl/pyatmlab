@@ -571,8 +571,8 @@ class ACEFTS(dataset.SingleMeasurementPerFileDataset,
         "delta_CH4_profile": "CH4_err",
         "p": "P_pa",
         "S_CH4_profile": "CH4_SA_fake"}
-    filename_fields = {"orbit": "u4", "version": "S3"}
-    unique_fields = {"orbit", "time"}
+    filename_fields = {"orbit": "u4", "version": "U3", "type": "U2"}
+    unique_fields = {"orbit", "type", "time"}
     n_prof = "z"
     range = (5e3, 150e3)
 
@@ -677,7 +677,23 @@ class ACEFTS(dataset.SingleMeasurementPerFileDataset,
             return m * 1e3
         else:
             return m
-            
+
+    def flag(self, arr):
+        flagged = self.combine(arr, self.related["flags"])
+        flnm = self.related["flags"].aliases["flag"]
+        # See e-mail Patrick 2014-06-04
+        with numpy.errstate(invalid="ignore"):
+            badlev = flagged[flnm]>2
+            badprof = ((flagged[flnm]>=4) & (flagged[flnm]<=6)).any(1)
+        logging.info("Flagging {:d}/{:d} profiles and {:d}/{:d} levels".format(
+            badprof.sum(), badprof.size, badlev.sum(), badlev.size))
+        arr["CH4"][badlev] = numpy.nan
+        arr["CH4"][badprof, :] = numpy.nan
+        arr["CH4_err"][badlev] = numpy.nan
+        arr["CH4_err"][badprof, :] = numpy.nan
+        arr["CH4_SA_fake"][numpy.tile(badlev[:, :, numpy.newaxis], (1,1,150))] = numpy.nan
+        arr["CH4_SA_fake"][badprof, :, :] = numpy.nan
+        return arr
 
 class Eureka_PRL_CH4_HDF(dataset.MultiFileDataset, dataset.ProfileDataset):
     # NOTE: there is a bug in older versions of Python-hdf4 that causes it to
