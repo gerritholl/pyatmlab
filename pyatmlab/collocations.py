@@ -1099,6 +1099,7 @@ class ProfileCollocationDescriber(CollocationDescriber):
         "_targ{self.target}"
         "_clps{collapsed}.")
 
+    figname_dof_pc = ("dof_partial_columns_ch4_{dataset:s}_{other:s}_{note:s}")
 
     #z_range = None
 
@@ -1644,12 +1645,26 @@ class ProfileCollocationDescriber(CollocationDescriber):
                     S[numpy.ix_(range(S.shape[0]), g_int!=0, g_int!=0)]).dot(
                     numpy.atleast_2d(g_int[g_int!=0]).T).squeeze()
                 for S in (S_p, S_s, S_d)]
-
         z_range = (z[valid_range].min(), z[valid_range].max())
-        #self._S_dpc = S_dpc
+
         return (p if return_profiles else p_parcol,
                 s if return_profiles else s_parcol,
                 z_range, S_ppc, S_spc, S_dpc)
+
+    def get_dof_for_range(self, shared_range):
+        p_dof = numpy.zeros(shape=self.p_col.shape, dtype="f4")
+        s_dof = numpy.zeros_like(p_dof)
+        for i in range(self.p_col.shape[0]):
+            p_rng = ((self.p_col[i]["z"] >= shared_range[0]) & 
+                     (self.p_col[i]["z"] <= shared_range[1]))
+            p_ix = numpy.ix(p_rng, p_rng)
+            p_dof[i] = self.p_col[i][self.cd.primary.aliases["ak"]][p_ix].trace()
+
+            s_rng = ((self.s_col[i]["z"] >= shared_range[0]) & 
+                     (self.s_col[i]["z"] <= shared_range[1]))
+            s_ix = numpy.ix(s_rng, s_rng)
+            s_dof[i] = self.s_col[i][self.cd.primary.aliases["ak"]][s_ix].trace()
+        return (p_dof, s_dof)
 
     @tools.mark_for_disk_cache()
     def _compare_profiles(self, p_int, s_int,
@@ -1677,7 +1692,7 @@ class ProfileCollocationDescriber(CollocationDescriber):
             s_ch4_int = s_int[self.cd.secondary.aliases["CH4_profile"]][self.mask]
 
         D = {}
-        D["diff"] = s_ch4_int - p_ch4_int
+        D["diff"] = s_ch4_int - p_ch4_int # secondary - primary
         D["rmsd"] = (D["diff"] ** 2)**(0.5)
         D["ratio"] = s_ch4_int / p_ch4_int
         D["prim"] = p_ch4_int
@@ -2152,8 +2167,8 @@ class ProfileCollocationDescriber(CollocationDescriber):
         
         logging.info("Summarising sensitivities")
         logging.info("Getting partial columns as I will use them to "
-                     "summarise DOF stats")
-        (p, s, *_) = self.partial_columns(smoothed=True,
+                     "summarise DOF stats and show DOFs for PCs")
+        (p, s, z_range, *_) = self.partial_columns(smoothed=True,
             return_profiles=True, use_T_p="mean")
         if p_ak is not None:
             paks = physics.AKStats(p_ak, 
@@ -2165,6 +2180,19 @@ class ProfileCollocationDescriber(CollocationDescriber):
                           p[["z_proc", "parcol_CH4"]]),
                         flatten=True))
 
+            # and for partial columns, just DOFS
+            with numpy.errstate(invalid="warn"):
+                p_dof_pc = numpy.hstack(
+                    [ak[numpy.ix_( *((z>=z_range[0])&(z<=z_range[1]),)*2)
+                       ].trace()
+                         for (ak, z) in
+                            self.p_col[[self.cd.primary.aliases["ak"], 'z']]
+                    ])
+            self._plot_dof(p_dof_pc,
+                dataset=self.cd.primary.__class__.__name__,
+                other=self.cd.secondary.__class__.__name__,
+                note="parcol")
+
         if s_ak is not None:
             saks = physics.AKStats(s_ak, 
                 name="{}_from_{}".format(
@@ -2175,6 +2203,28 @@ class ProfileCollocationDescriber(CollocationDescriber):
                           s[["z_proc", "parcol_CH4"]]),
                         flatten=True))
 
+            # and again for partial columns
+            with numpy.errstate(invalid="warn"):
+                s_dof_pc = numpy.hstack(
+                    [ak[numpy.ix_(*((z>=z_range[0])&(z<=z_range[1]),)*2)
+                        ].trace()
+                          for (ak, z) in
+                            self.s_col[[self.cd.secondary.aliases["ak"], 'z']]
+                    ])
+            self._plot_dof(s_dof_pc,
+                dataset=self.cd.secondary.__class__.__name__,
+                other=self.cd.primary.__class__.__name__,
+                note="parcol")
+
+    def _plot_dof(self, dofs, N=20, **kwargs):
+        (f, a) = matplotlib.pyplot.subplots()
+        (N, x, p) = a.hist(dofs, N)
+        a.set_xlabel("DOFs")
+        a.set_ylabel("count")
+        a.set_title("DOF {dataset:s} from {other:s} {note:s}".format(**kwargs))
+        graphics.print_or_show(f, False,
+            self.figname_dof_pc.format(**kwargs),
+            data=dofs)
 
     def visualise_profile_comparison(self, z_grid_raw, filters=None,
             collapsed=False):
@@ -2270,7 +2320,7 @@ class ProfileCollocationDescriber(CollocationDescriber):
             a.set_ylabel("Elevation [m]")
             a.set_title("Percentiles 5/25/50/75/95 for" +
                 "CH4 {}, {} vs. {}, {}".format(quantity,
-                    self.cd.primary.name, self.cd.secondary.name,
+                    self.cd.secondary.name, self.cd.primary.name,
                     "collapsed" if collapsed else "uncollapsed"))
             a.grid(which="major")
             a.set_ylim([5e3, 50e3])
@@ -2435,6 +2485,7 @@ class ProfileCollocationDescriber(CollocationDescriber):
         # http://statsmodels.sourceforge.net/0.5.0/examples/generated/example_wls.html
         # seems I need to normalise?
         N = numpy.nanmax(p_parcol)
+        N = numpy.float64(10**round(math.log10(N)))
         weights = 1/(S_dpc/(N**2))
         mod = statsmodels.api.WLS(d_parcol/N, 
             statsmodels.api.add_constant(p_parcol/N),
@@ -2443,6 +2494,9 @@ class ProfileCollocationDescriber(CollocationDescriber):
         modfit = mod.fit()
         with numpy.errstate(all="warn"):
             print(modfit.summary())
+            print("N: {:g}".format(N))
+            print("Params", modfit.params*N)
+            print("Conf-int", modfit.params*N)
         xx = numpy.linspace(.5*xmn/N, 1.5*xmx/N, 5)
         a.plot(xx*N, (modfit.params[0] + modfit.params[1]*xx)*N,
             color="red", linewidth=1)
@@ -2465,7 +2519,7 @@ class ProfileCollocationDescriber(CollocationDescriber):
                    +max(abs(ymn), abs(ymx)))
         a.set_xlabel("CH4 {:s} [molec./m^2]".format(self.cd.primary.name))
         a.set_ylabel("CH4 {:s} - {:s} [molec./m^2]".format(
-            self.cd.primary.name, self.cd.secondary.name))
+            self.cd.secondary.name, self.cd.primary.name))
         a.set_title(("Partial columns {:.1f}--{:.1f}, "
                      "difference {:s} - {:s}").format(
                         valid_range[0]/1e3, valid_range[1]/1e3,

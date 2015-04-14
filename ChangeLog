@@ -1,3 +1,13 @@
+2015-04-14  Gerrit Holl  <gerrit.holl@utoronto.ca>:
+
+	* pyatmlab-0-0-78
+
+	* pyatmlab/collocations.py(ProfileCollocationDescriber):
+
+	- Write DOFs for partial columns
+	- Use rounder number to normalise linear regression so I can easily
+	denormalise it after
+
 2015-04-10  Gerrit Holl  <gerrit.holl@utoronto.ca>:
 
 	* pyatmlab-0-0-77
