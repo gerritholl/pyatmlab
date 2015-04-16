@@ -14,6 +14,7 @@ import numpy
 import matplotlib
 import matplotlib.pyplot
 from . import config
+from . import io
 
 def plotdir():
     """Returns todays plotdir.
@@ -21,15 +22,6 @@ def plotdir():
     Configuration 'plotdir' must be set.  Value is expanded with strftime.
     """
     return datetime.date.today().strftime(config.get_config('plotdir'))
-
-def plotdatadir():
-    """Returns todays plotdatadir.
-
-    Configuration 'plotdatadir' must be set.  Value is expanded with
-    strftime.
-    """
-    return datetime.date.today().strftime(
-        config.get_config("plotdatadir"))
 
 def print_or_show(fig, show, outfile, in_plotdir=True, tikz=None, data=None):
     """Either print or save figure, or both, depending on arguments.
@@ -78,15 +70,22 @@ def print_or_show(fig, show, outfile, in_plotdir=True, tikz=None, data=None):
         print(now(), "Writing also to:", os.path.join(plotdir(), tikz))
         matplotlib2tikz.save(os.path.join(plotdir(), tikz))
     if data is not None:
-        if not os.path.exists(plotdatadir()):
-            os.makedirs(plotdatadir())
+        if not os.path.exists(io.plotdatadir()):
+            os.makedirs(io.plotdatadir())
         if isinstance(data, numpy.ndarray):
             data = (data,)
         # now take it as a loop
         for (i, dat) in enumerate(data):
-            outf = os.path.join(plotdatadir(),
+            outf = os.path.join(io.plotdatadir(),
                 "{:s}{:d}.dat".format(
                     os.path.splitext(outfiles[0])[0], i))
-            numpy.savetxt(outf, dat,
-                fmt="%d" if issubclass(dat.dtype.type, numpy.integer) else '%.18e')
+            fmt = ("%d" if issubclass(dat.dtype.type, numpy.integer) else
+                    '%.18e')
+            if len(dat.shape) < 3:
+                numpy.savetxt(outf, dat, fmt=fmt)
+            elif len(dat.shape) == 3:
+                io.savetxt_3d(outf, dat, fmt=fmt)
+            else:
+                raise ValueError("Cannot write {:d}-dim ndarray to textfile".format(
+                    len(dat.shape)))
 

@@ -234,7 +234,11 @@ class AKStats:
         a.grid(which="major", color="white")
         
         graphics.print_or_show(
-            f, False, self.filename.format(mode="density_z", name=self.name))
+            f, False, self.filename.format(mode="density_z", name=self.name),
+            data=numpy.vstack([(sens_frac[i], z[j], sensmat[i,j])
+                               for i in range(sens_frac.size)
+                               for j in range(z.size)]).reshape(
+                                    sens_frac.size, z.size, 3))
 
     def plot_sensitivity_range(self,
             nstep=11,

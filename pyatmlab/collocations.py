@@ -2541,6 +2541,8 @@ class ProfileCollocationDescriber(CollocationDescriber):
 
         # also print some stats
         diff = {}
+        diff["prim"] = numpy.median(p_parcol)
+        diff["sec"] = numpy.median(s_parcol)
         diff["mean"] = d_parcol.mean()
         diff["std"] = d_parcol.std()
         diff["median"] = numpy.median(d_parcol)

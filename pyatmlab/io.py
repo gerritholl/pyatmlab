@@ -18,7 +18,6 @@ import logging
 
 import numpy
 from . import config
-from .graphics import plotdatadir
 
 def get_chevallier_path(var, tp):
     """Get path to original Chevallier data.
@@ -156,11 +155,20 @@ def datadir():
 
     return datetime.date.today().strftime(config.get_config('datadir'))
 
+def plotdatadir():
+    """Returns todays plotdatadir
+
+    Configuration 'plotdatadir' must be set.  Value is expanded with
+    strftime.
+    """
+    return datetime.date.today().strftime(
+        config.get_config("plotdatadir"))
+
 def write_data_to_files(data, fn):
     """Write data to one or more files
 
     Write single ndarray or dictionary of ndarrays to a set of files.
-    Files are written inside config.get_config('datadir').
+    Files are written inside config.get_config('plotdatadir').
     `data` is a dictionary with ndarrays.  Each element is written to its
     own file.  It can also be a dictionary of dictionaries, etc., of
     arbitrary depth.  `fn` should contain `{}`s corresponding to the
@@ -188,3 +196,11 @@ def write_data_to_files(data, fn):
                         else data.keys()):
             write_data_to_files(data[field],
                 fn.format(*([field] + ["{}"]*(depth_fn-1))))
+
+def savetxt_3d(fname, data, *args, **kwargs):
+    """Write 3D-array to file that pgfplots likes
+    """
+    with open(fname, 'wb') as outfile:
+        for data_slice in data:
+            numpy.savetxt(outfile, data_slice, *args, **kwargs)
+            outfile.write(b"\n")
