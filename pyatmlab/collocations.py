@@ -2280,6 +2280,7 @@ class ProfileCollocationDescriber(CollocationDescriber):
         colours[lab] = "blue"
 
         for fd in filters:
+            fd = fd.copy()
             lab = fd["limit_str"]
             (colours[lab + "_raw"], colours[lab + "_smooth"]) = fd.pop("color")
             self.filter(**fd)
@@ -2540,14 +2541,17 @@ class ProfileCollocationDescriber(CollocationDescriber):
             fn=self.figname_compare_pc[:-1].format(**vars()) + "_{}")
 
         # also print some stats
+        d_frac = d_parcol/p_parcol
         diff = {}
         diff["prim"] = numpy.median(p_parcol)
         diff["sec"] = numpy.median(s_parcol)
         diff["mean"] = d_parcol.mean()
         diff["std"] = d_parcol.std()
         diff["median"] = numpy.median(d_parcol)
+        diff["median_frac"] = numpy.median(d_frac)
         diff["sem"] = scipy.stats.sem(d_parcol)
         diff["mad"] = numpy.median(abs(d_parcol - numpy.median(d_parcol)))
+        diff["mad_frac"] = numpy.median(abs(d_frac - numpy.median(d_frac)))
         for (k, v) in diff.items():
             logging.info("Statistic: {:s}: {:.3e} molecules/m^2".format(k, v))
 

@@ -13,9 +13,19 @@ Contents:
 
 This is pyatmlab.  You can find the code on github_.
 
+Pyatmlab needs a number of other packages: numpy, scipy, matplotlib,
+basemap, h5py, pyhdf, pyproj, pytz, statsmodels, joblib.  Pip knows them
+all.
+
 .. _github: https://github.com/gerritholl/pyatmlab
 
 .. automodule:: pyatmlab
+   :members:
+
+collocations module
+-------------------
+
+.. automodule:: pyatmlab.collocations
    :members:
 
 config module
@@ -30,11 +40,31 @@ constants module
 .. automodule:: pyatmlab.constants
    :members:
 
+dataset module
+--------------
+
+.. automodule:: pyatmlab.dataset
+   :members:
+
+datasets module
+---------------
+
+.. automodule:: pyatmlab.datasets
+   :members:
+
+
 db module
 ---------
 
 .. automodule:: pyatmlab.db
    :members:
+
+geo module
+----------
+
+.. geo:: pyatmlab.geo
+   :members:
+
 
 graphics module
 ---------------
@@ -77,6 +107,12 @@ stats module
 
 .. automodule:: pyatmlab.stats
    :members:
+
+time module
+-----------
+
+.. automodule:: pyatmlab.time
+   :members::
 
 tools module
 ------------

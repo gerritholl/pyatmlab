@@ -1,3 +1,15 @@
+2015-04-28  Gerrit Holl  <gerrit.holl@utoronto.ca>:
+
+	* pyatmlab-0-0-80
+
+	* doc/source/index.rst:
+
+	- Added missing modules, pointed out dependencies
+
+	* pyatmlab/collocations.py(ProfileCollocationDescriber):
+
+	- When summarising partial column differences, also show percentages
+
 2015-04-16  Gerrit Holl  <gerrit.holl@utoronto.ca>:
 
 	* pyatmlab-0-0-79
