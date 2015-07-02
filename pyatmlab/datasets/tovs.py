@@ -85,7 +85,7 @@ class HIRS3(HIRS):
     pdf_definition_pages = (26, 37)
 
     # Obtained using get_definition_from_PDF.  Please note correction!
-    header_dtype =  dtype([('hrs_h_siteid', '|S3', 1),
+    header_dtype =  numpy.dtype([('hrs_h_siteid', '|S3', 1),
                       ('hrs_h_blank', '|S1', 1),
                       ('hrs_h_l1bversnb', '>u2', 1),
                       ('hrs_h_l1bversyr', '>u2', 1),
@@ -186,7 +186,7 @@ class HIRS3(HIRS):
                       ('hrs_h_fwmcur', '>u2', 6),
                       ('hrs_h_scmcur', '>u2', 6),
                       ('hrs_h_pchcpow', '>u2', 6),
-                      ('hrs_h_filler9', '>u4', 890)],
+                      ('hrs_h_filler9', '>u4', 890)])
 
 
 
