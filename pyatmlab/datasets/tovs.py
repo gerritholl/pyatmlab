@@ -24,7 +24,7 @@ class HIRS(dataset.MultiFileDataset):
         else:
             opener = open
         with opener(str(path), 'rb') as f:
-            if f.read(3) == in {b"NSS", b"CMS", b"DSS", b"UKM"}:
+            if f.read(3) in {b"NSS", b"CMS", b"DSS", b"UKM"}:
                 f.seek(0, io.SEEK_SET)
             else: # assuming additional header
                 f.seek(512, io.SEEK_SET)

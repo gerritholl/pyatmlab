@@ -1,6 +1,14 @@
+2015-07-02  Gerrit Holl  <g.holl@reading.ac.uk>
+
+	* pyatmlab-0-0-82
+
+	* pyatmlab/datasets/tovs.py(HIRS):
+
+	- Fix typo
+
 2015-07-02  Gerrit Holl  <g.holl@reading.ac.uk>:
 
-	* pyatmlab-0-0-81:
+	* pyatmlab-0-0-81
 
 	* LICENSE: Updated years
 
