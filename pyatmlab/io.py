@@ -204,3 +204,38 @@ def savetxt_3d(fname, data, *args, **kwargs):
         for data_slice in data:
             numpy.savetxt(outfile, data_slice, *args, **kwargs)
             outfile.write(b"\n")
+
+
+def collect_values(fp, N, dtp):
+    """Collect N values from stream
+
+    Must be contained in exact number of lines.
+    This will advance the stream forward by the number of lines found to
+    contain N numeric values, and return an ndarray of type tp containing
+    those.
+
+    :param file fp: Stream
+    :param int N: Total no. expected values
+    :param dtype tp: dtype for values
+    :returns: ndarray of type dtype with values found in file
+    """ 
+    L = []
+    while len(L) < N:
+        line = fp.readline()
+        if line == "":
+            raise EOFError("File ended prematurely")
+        L.extend(ast.literal_eval(f) for f in line.strip().split())
+    if len(L) != N:
+        raise ValueError("Unexpected number of values.  Expected:"
+            "{N:d}.  Got: {L}".format(N=N, L=len(L)))
+    if numpy.dtype(dtp).isbuiltin == 0:
+        flat_dtp = numpy.dtype(list(zip(
+            (''.join(s) for s in itertools.product(string.ascii_letters, repeat=2)),
+            (item for sublist in 
+            [[x[1]]*(numpy.product(x[2]) if len(x)>2 else 1) for x in numpy.dtype(dtp).descr]
+                    for item in sublist))))
+        return numpy.array(tuple(L), dtype=flat_dtp).view(dtp)
+    else:
+        return numpy.array(L, dtype=dtp)
+
+

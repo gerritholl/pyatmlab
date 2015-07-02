@@ -11,6 +11,8 @@ import struct
 import logging
 import pickle
 import copy
+import ast
+import operator
 
 import numpy
 
@@ -327,3 +329,27 @@ def setmem(obj, memory):
 #                    args["process"] = {k:(v if callable(v) else getattr(obj, v))
 #                        for (k, v) in args["process"].items()}
                 setattr(obj, k, memory.cache(meth, **meth.disk_cache_args))
+
+
+
+# Next part from http://stackoverflow.com/a/9558001/974555
+
+operators = {ast.Add: operator.add, ast.Sub: operator.sub, ast.Mult: operator.mul,
+             ast.Div: operator.truediv, ast.Pow: operator.pow, ast.BitXor: operator.xor,
+             ast.USub: operator.neg}
+
+def safe_eval(expr):
+    """Safely evaluate string that may contain basic arithmetic
+    """
+
+    return _safe_eval_node(ast.parse(expr, mode="eval").body)
+
+def _safe_eval_node(node):
+    if isinstance(node, ast.Num): # <number>
+        return node.n
+    elif isinstance(node, ast.BinOp): # <left> <operator> <right>
+        return operators[type(node.op)](_safe_eval_node(node.left), _safe_eval_node(node.right))
+    elif isinstance(node, ast.UnaryOp): # <operator> <operand> e.g., -1
+        return operators[type(node.op)](_safe_eval_node(node.operand))
+    else:
+        raise TypeError(node)

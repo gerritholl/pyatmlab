@@ -1,3 +1,34 @@
+2015-07-02  Gerrit Holl  <g.holl@reading.ac.uk>:
+
+	* pyatmlab-0-0-81:
+
+	* LICENSE: Updated years
+
+	* setup.py: Added new package pyatmlab.datasets
+
+	* pyatmlab/dataset.py: Use logging.error instead of print
+
+	* pyatmlab/io.py:
+
+	- Move collect_values function here
+
+	* pyatmlab/tools.py:
+
+	- Added a safe_eval function, inspired by
+	  http://stackoverflow.com/a/9558001/974555
+	
+	* pyatmlab/datasets.py:
+
+	- Removed this module
+
+	* pyatmlab/datasets/{__init__,groundbased,tanso}.py:
+
+	- Moved contents of datasets.py to this new package
+
+	* pyatmlab/datasets/tovs.py:
+
+	- Started working on HIRS reading routine
+	
 2015-04-28  Gerrit Holl  <gerrit.holl@utoronto.ca>:
 
 	* pyatmlab-0-0-80

@@ -154,8 +154,8 @@ class Dataset(metaclass=tools.DocStringInheritor):
                 cont = self.read(str(gran), fields=fields)
             except DataFileError as exc:
                 if onerror == "skip":
-                    print("Could not read file {}: {}".format(
-                        gran, exc.args[0], file=sys.stderr))
+                    logging.error("Could not read file {}: {}".format(
+                        gran, exc.args[0]))
                     continue
                 else:
                     raise
