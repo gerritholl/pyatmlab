@@ -1,3 +1,15 @@
+2015-07-06  Gerrit Holl  <g.holl@reading.ac.uk>
+
+	* pyatmlab-0-0-84
+
+	* doc/source/index.rst:
+
+	- Added missing modules
+
+	* pyatmlab/{collocations,dataset,db,io,physics,tools}.py:
+
+	- Fix docstring syntax errors
+	
 2015-07-02  Gerrit Holl  <g.holl@reading.ac.uk>
 
 	* pyatmlab-0-0-83

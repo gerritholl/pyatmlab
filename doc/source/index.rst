@@ -46,12 +46,29 @@ dataset module
 .. automodule:: pyatmlab.dataset
    :members:
 
-datasets module
----------------
+datasets package
+----------------
 
 .. automodule:: pyatmlab.datasets
    :members:
 
+datasets.groundbased module
+---------------------------
+
+.. automodule:: pyatmlab.datasets.groundbased
+   :members:
+
+datasets.tanso module
+---------------------
+
+.. automodule:: pyatmlab.datasets.tanso
+   :members:
+
+datasets.tovs module
+--------------------
+
+.. automodule:: pyatmlab.datasets.tovs
+   :members:
 
 db module
 ---------
@@ -62,7 +79,7 @@ db module
 geo module
 ----------
 
-.. geo:: pyatmlab.geo
+.. automodule:: pyatmlab.geo
    :members:
 
 
@@ -112,7 +129,7 @@ time module
 -----------
 
 .. automodule:: pyatmlab.time
-   :members::
+   :members:
 
 tools module
 ------------

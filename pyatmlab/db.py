@@ -597,13 +597,16 @@ class SimilarityLookupTable:
     def fromData(cls, data, axdata):
         """Build lookup table from data
 
-        `data` should be a structured ndarray with dtype fields `lat`,
+        ``data`` should be a structured ndarray with dtype fields ``lat``
         `lon`, 
 
-        `axdata` should be a `collections.OrderedDict` where the keys
-            refer to fields from `data` to use, and the values are
-            dictionaries with at least the keys:
-                `nsteps`, number of steps in binning data
+        ``axdata`` should be a ``collections.OrderedDict`` where the keys
+        refer to fields from `data` to use, and the values are
+        dictionaries with at least the keys:
+
+        nsteps
+            number of steps in binning data
+
         """
         self = cls()
         bins = [numpy.linspace(numpy.nanmin(data[ax])*0.99,

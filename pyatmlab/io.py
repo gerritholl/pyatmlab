@@ -165,18 +165,18 @@ def plotdatadir():
         config.get_config("plotdatadir"))
 
 def write_data_to_files(data, fn):
-    """Write data to one or more files
+    """Write data to one or more files.
 
     Write single ndarray or dictionary of ndarrays to a set of files.
-    Files are written inside config.get_config('plotdatadir').
-    `data` is a dictionary with ndarrays.  Each element is written to its
+    Files are written inside ``config.get_config('plotdatadir')``.
+    ``data`` is a dictionary with ndarrays.  Each element is written to its
     own file.  It can also be a dictionary of dictionaries, etc., of
-    arbitrary depth.  `fn` should contain `{}`s corresponding to the
+    arbitrary depth.  ``fn`` should contain ``{}``s corresponding to the
     depth of the dictionary.  Should not end in .dat as this is added by
     the function.
 
-    :param data: Dictionary with ndarrays
-    :param fn: Filename, including {}s corresponding to depth, excluding
+    :param data: Dictionary with ndarrays.
+    :param fn: Filename, including ``{}``s corresponding to depth, excluding
         .dat extention.
     """
 

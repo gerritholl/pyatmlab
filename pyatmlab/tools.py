@@ -74,16 +74,18 @@ def validate(func, locals):
 
     Inside an annotated function (see PEP-3107), do type checking on the
     arguments.  An annotation may be either a type or a callable.  Use
-    like this:
+    like this::
 
-    def f(x: str, b: int):
-        validate(f, locals())
-        ... # proceed
+        def f(x: str, b: int):
+            validate(f, locals())
+            ... # proceed
 
-    or use the validator annotation:
-    @validator
-    def f(x: str, b: int):
-        ... # proceed
+    or use the validator annotation::
+
+        @validator
+        def f(x: str, b: int):
+            ... # proceed
+
     """
     for var, test in func.__annotations__.items():
         value = locals[var]
@@ -131,7 +133,7 @@ def validator(func):
         def f(x: numbers.Number, y: numbers.Number, mode: str):
             return x+y
 
-    Does not currently work for *args and **kwargs style arguments.
+    Does not currently work for ``*args`` and ``**kwargs`` style arguments.
     """
 
     @functools.wraps(func)
@@ -317,7 +319,7 @@ def mark_for_disk_cache(**kwargs):
 def setmem(obj, memory):
     """Process marks set by mark_for_disk_cache on a fresh instance
 
-    Meant to be called from __init__ as `setmem(self, memory)
+    Meant to be called from ``__init__`` as ``setmem(self, memory)``.
     """
 
     if memory is not None:

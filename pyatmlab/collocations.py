@@ -37,25 +37,38 @@ from . import constants
 class CollocatedDataset(dataset.HomemadeDataset):
     """Holds collocations.
 
-    Attributes:
+    This class collects functionality for collocating any two datasets.
+
+    Attributes
 
     primary
+        Contains a `dataset.Dataset`.  Primary for collocations.
     secondary
-    max_distance    Maximum distance in m
-    max_interval    Maximum time interval in s.
-    projection      projection to use in calculations
-    stored_name     Filename to store collocs in.  String substition with
-                    object dictionary (cd.__dict__), as well as start_date
-                    and end_date.
-
+        Contains a `dataset.Dataset`.  Secondary for collocations.
+    max_distance
+        Maximum distance in metre.
+    max_interval
+        Maximum time interval in s.
+    projection
+        projection to use in calculations.  Should be a string
+        corresponding to a projection understood by pyproj.  Defaults to
+        "WGS84".
+    stored_name
+        Filename to store collocs in.  String substition with
+        object dictionary (cd.__dict__), as well as start_date
+        and end_date.
 
     The following attributes may be changed at your own risk.  Changing
     should not affect results, but may affect performance.  Optimise based
     on application.  Subject to change.
 
     bin_interval_time
+        Timedelta used in collocation finding algorithm.
     bin_interval_lat
+        Latitude used in the same.
     bin_interval_lon
+        Longitude used in the same.
+
     """
 
     primary = None
@@ -742,11 +755,13 @@ class CollocationDescriber:
     sets of measurements already collocated through
     CollocatedDataset.collocate
 
-    target      When smoothing profiles, smooth to this target.  It means
-                we use the averaging kernel and z-grid therefrom.  The
-                'target' is thus the low resolution profile.  Smoothing in
-                the sense of Rodgers and Connor (2003).
-    visualisation  Contains visualisation hints for drawing maps and so.
+    target
+        When smoothing profiles, smooth to this target.  It means
+        we use the averaging kernel and z-grid therefrom.  The
+        ``target`` is thus the low resolution profile.  Smoothing in
+        the sense of Rodgers and Connor (2003).
+    visualisation
+        Contains visualisation hints for drawing maps and so.
 
     """
 
@@ -2584,16 +2599,16 @@ def collapse(p, s, fields_primary=[], fields_secondary=[],
     :param fields_secondary: Fields to take from secondary.
     :param return_sort_order: If True, also return sort order.
         Defaults to False.
-    :param *global_validators: Functions to be applied to each set of
+    :param ``*global_validators``: Functions to be applied to each set of
         secondaries, which return a mask which ones to proceed with.
-    :param **funcs: Remaining keyword-arguments correspond to functions to
+    :param ``**funcs``: Remaining keyword-arguments correspond to functions to
         be applied to each set of secondaries corresponding to the same
-        primary.  Always applied ale lambda x: x.mean(0) ("mean") and
-        lambda x: x.shape[0] ("numel").  Note that those functions must
-        handle profiles!
+        primary.  Always applied are ``lambda x: x.mean(0)`` ("mean") and
+        ``lambda x: x.shape[0]`` ("numel").  Note that those functions
+        must be able to handle profiles!
     :returns: nd-array with fields according
     
-    Remaining parameters are key=val, with key a string and val a tuple
+    Remaining parameters are ``key=val``, with key a string and val a tuple
     of (func, dtype) with function to be applied and dtype to use.
     Always applied: number of elements, and mean.
     """

@@ -685,38 +685,37 @@ def p2z_hydrostatic(p:numpy.ndarray,
     :param bool extend: If p0, z0 outside of p, z range, extend
         artificially.  WARNING: This will assume CONSTANT T, h2o!
     :returns array z: Array of altitudes [m].  Same size as p and T.
-
-    Original description:
-% PT2Z   Hydrostatic altitudes
-%
-%    Calculates altitudes fulfilling hydrostatic equilibrium, based on
-%    vertical profiles of pressure, temperature and water vapour. Pressure
-%    and altitude of a reference point must be specified.
-%
-%    Molecular weights and gravitational constants are hard coded and
-%    function is only valid for the Earth.
-%
-%    As the gravitation changes with altitude, an iterative process is
-%    needed. The accuracy can be controlled by *z_acc*. The calculations
-%    are repeated until the max change of the altitudes is below *z_acc*. If
-%    z_acc<0, the calculations are run twice, which should give an accuracy
-%    better than 1 m.
-%
-% FORMAT   z = pt2z( p, t, h2o, p0, z0 [,lat,z_acc,refell] )
-%       
-% OUT   z         Altitudes [m].
-% IN    p         Column vector of pressures [Pa].
-%       t         Column vector of temperatures [K].
-%       h2o       Water vapour [VMR]. Vector or a scalar, e.g. 0.
-%       p0        Pressure of reference point [Pa].
-%       z0        Altitude of reference point [m].
-%       lat       Latitude. Default is 45.
-%       z_acc     Accuracy for z. Default is -1.
-%       ellipsoid Reference ellipsoid data, see *ellipsoidmodels*.
-%                 Default is data matching WGS84.
-
-% 2005-05-11   Created by Patrick Eriksson.
 """
+#     Original description:
+# % PT2Z   Hydrostatic altitudes
+# %
+# %    Calculates altitudes fulfilling hydrostatic equilibrium, based on
+# %    vertical profiles of pressure, temperature and water vapour. Pressure
+# %    and altitude of a reference point must be specified.
+# %
+# %    Molecular weights and gravitational constants are hard coded and
+# %    function is only valid for the Earth.
+# %
+# %    As the gravitation changes with altitude, an iterative process is
+# %    needed. The accuracy can be controlled by *z_acc*. The calculations
+# %    are repeated until the max change of the altitudes is below *z_acc*. If
+# %    z_acc<0, the calculations are run twice, which should give an accuracy
+# %    better than 1 m.
+# %
+# % FORMAT   z = pt2z( p, t, h2o, p0, z0 [,lat,z_acc,refell] )
+# %       
+# % OUT   z         Altitudes [m].
+# % IN    p         Column vector of pressures [Pa].
+# %       t         Column vector of temperatures [K].
+# %       h2o       Water vapour [VMR]. Vector or a scalar, e.g. 0.
+# %       p0        Pressure of reference point [Pa].
+# %       z0        Altitude of reference point [m].
+# %       lat       Latitude. Default is 45.
+# %       z_acc     Accuracy for z. Default is -1.
+# %       ellipsoid Reference ellipsoid data, see *ellipsoidmodels*.
+# %                 Default is data matching WGS84.
+# 
+# % 2005-05-11   Created by Patrick Eriksson.
 
 #32  function z = pt2z(p,t,h2o,p0,z0,varargin)
 #33  %

@@ -40,48 +40,38 @@ class InvalidDataError(DataFileError):
 class Dataset(metaclass=tools.DocStringInheritor):
     """Represents a dataset.
 
+    .. _dataset:
+
     This is an abstract class.  More specific subclasses are
     SingleFileDataset and MultiFileDataset.  Do not subclass Dataset
     directly.
 
-    Attributes defined here::
+    Attributes
 
-    - start_date::
-
+    start_date
         Starting date for dataset.  May be used to search through ALL
         granules.  WARNING!  If this is set at a time t_0 before the
         actual first measurement t_1, then the collocation algorith (see
         CollocatedDataset) will conclude that there are 0 collocations
         in [t_0, t_1], and will not realise if data in [t_0, t_1] are
         actually added later!
-
-    - end_date::
-
+    end_date
         Similar to start_date, but for ending.
-
-    - name::
-        
+    name
         Name for the dataset.  May be used for logging purposes and so.
-
-    - aliases::
-
+    aliases
         Aliases for field.  Dictionary can be useful if you want to
         programmatically loop through the same field for many different
-        datasets, but they are named differently.  Aliases known to be
-        used::
-
-        - ch4_profile
-
-    - unique_fields::
-        
-        Set of fields that make any individual measurement unique.
-
-    - related::
-
+        datasets, but they are named differently.  For example, an alias
+        could be "ch4_profile".
+    unique_fields
+        Set of fields that make any individual measurement unique.  For
+        example, the default value is {"time", "lat", "lon"}.
+    related
         Dictionary whose keys may refer to other datasets with related
         information, such as DMPs or flags.
-
-    - timezone::
+    timezone
+        Refers to a pytz timezone object.  Defaults to UTC.
 
     """
 
@@ -221,7 +211,7 @@ class Dataset(metaclass=tools.DocStringInheritor):
         process=dict(
             my_data=lambda x: x.view(dtype="i1")))
     def combine(self, my_data, other_obj):
-        """Combine with data from other dataset
+        """Combine with data from other dataset.
 
         Combine a set of measurements from this dataset with another
         dataset, where each individual measurement correspond to exactly
