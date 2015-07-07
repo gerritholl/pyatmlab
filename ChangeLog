@@ -1,3 +1,13 @@
+2015-07-07  Gerrit Holl  <g.holl@reading.ac.uk>
+	
+	* pyatmlab-0-0-85
+
+	* pyatmlab/io.py(read_arts_srf):
+
+	- Added small function to read SRF from ARTS XML format.  Eventually
+	this should be superseded by more generic functionality to interact
+	with ARTS XML, like was present in PyARTS.
+
 2015-07-06  Gerrit Holl  <g.holl@reading.ac.uk>
 
 	* pyatmlab-0-0-84
