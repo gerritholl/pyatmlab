@@ -22,8 +22,9 @@ import numpy.lib.recfunctions
 import pytz
 
 from . import tools
-from . import time as pytime
+from . import time as atmtime
 from . import physics
+from . import config
 
 class DataFileError(Exception):
     """Superclass for any datafile issues
@@ -89,12 +90,22 @@ class Dataset(metaclass=tools.DocStringInheritor):
         tools.setmem(self, memory)
         for (k, v) in kwargs.items():
             setattr(self, k, v)
+        self.setlocal()
 
     def __setattr__(self, k, v):
         if hasattr(self, k) or hasattr(type(self), k):
             object.__setattr__(self, k, v)
         else:
             raise AttributeError("Unknown attribute: {}. ".format(k))
+
+    def setlocal(self):
+        """Set local attributes, from config or otherwise.
+
+        """
+        if self.name in config.conf:
+            for k in config.conf[self.name]:
+                setattr(self, k, config.conf[self.name][k])
+
 
     @abc.abstractmethod
     def find_granules(self, start=datetime.datetime.min,
@@ -295,7 +306,7 @@ class Dataset(metaclass=tools.DocStringInheritor):
         """
 
         (all_doy, all_mlst) = (numpy.array(x) for x in zip(
-            *[pytime.dt_to_doy_mlst(M[i]["time"].astype(datetime.datetime),
+            *[atmtime.dt_to_doy_mlst(M[i]["time"].astype(datetime.datetime),
                                      M[i]["lon"])
                 for i in range(M.shape[0])]))
         return numpy.lib.recfunctions.append_fields(M, 
@@ -830,3 +841,41 @@ class StationaryDataset(Dataset):
     """
 
     unique_fields = {"time"}
+
+class HyperSpectral(Dataset):
+    """Superclass for any hyperspectral instrument
+    """
+
+    _frequency = None
+    _wavenumber = None
+    _wavelength = None
+
+    @property
+    def frequency(self):
+        return self._frequency
+
+    @frequency.setter
+    def frequency(self, value):
+        self._frequency = value
+        self._wavenumber = physics.frequency2wavenumber(value)
+        self._wavelength = physics.frequency2wavelength(value)
+
+    @property
+    def wavenumber(self):
+        return self._wavenumber
+
+    @wavenumber.setter
+    def wavenumber(self, value):
+        self._wavenumber = value
+        self._frequency = physics.wavenumber2frequency(value)
+        self._wavelength = physics.wavenumber2wavelength(value)
+
+    @property
+    def wavelength(self):
+        return self._wavelength
+
+    @wavelength.setter
+    def wavelength(self, value):
+        self._wavelength = value
+        self._frequency = physics.wavelength2frequency(value)
+        self._wavenumber = physics.wavelength2wavenumber(value)

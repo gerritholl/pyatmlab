@@ -4,8 +4,12 @@
 import io
 import tempfile
 import subprocess
+import datetime
 
 import numpy
+
+import netCDF4
+import dateutil
 
 from .. import dataset
 from .. import tools
@@ -17,6 +21,8 @@ class HIRS(dataset.MultiFileDataset):
 
     Work in progress.
     """
+
+    name = "hirs"
 
     def _read(self, path, fields="all", return_header=False):
         if path.suffix == ".gz":
@@ -188,7 +194,56 @@ class HIRS3(HIRS):
                       ('hrs_h_pchcpow', '>u2', 6),
                       ('hrs_h_filler9', '>u4', 890)])
 
-
-
 class HIRS4(HIRS):
     pdf_definition_pages = (38, 54)
+
+class IASI(dataset.MultiFileDataset, dataset.HyperSpectral):
+    _dtype = numpy.dtype([
+        ("time", "M8[s]"),
+        ("lat", "f4"),
+        ("lon", "f4"),
+        ("satellite_zenith_angle", "f4"),
+        ("satellite_azimuth_angle", "f4"),
+        ("solar_zenith_angle", "f4"),
+        ("solar_azimuth_angle", "f4"),
+        ("spectral_radiance", "f4", 8700)])
+    name = "iasi"
+    start_date = datetime.datetime(2003, 1, 1, 0, 0, 0)
+    end_date = datetime.datetime(2013, 12, 31, 23, 59, 59)
+    granule_duration = datetime.timedelta(seconds=1200)
+    def _read(self, path, fields="all", return_header=False):
+        if fields == "all":
+            fields = self._dtype.names
+        with netCDF4.Dataset(str(path), 'r', clobber=False) as ds:
+            scale = ds["scale_factor"][:]
+            scale_valid = numpy.isfinite(scale) & (scale > 0)
+            wavenumber = ds["wavenumber"][:]
+            wavenumber_valid = numpy.isfinite(wavenumber) & (wavenumber > 0)
+            if not numpy.array_equal(scale_valid, wavenumber_valid):
+                raise ValueError("Scale and wavenumber inconsistently valid")
+            if self.wavenumber is None:
+                self.wavenumber = wavenumber[wavenumber_valid]
+            elif ds["wavenumber"] != wavenumber[wavenumber_valid]:
+                raise ValueError("Inconsistent wavenumbers!")
+
+            dtp = [x for x in self._dtype.descr if x[0] in fields]
+            if dtp[-1][0] == "spectral_radiance":
+                dtp[-1] = (dtp[-1][0], dtp[-1][1], wavenumber_valid.sum())
+
+            M = numpy.zeros(
+                dtype=dtp,
+                shape=(len(ds.dimensions["along_track"]),
+                       len(ds.dimensions["across_track"])))
+            time_ref = numpy.datetime64(datetime.datetime.strptime(
+                        ds["time"].gsics_reference_time,
+                        "%Y-%m-%dT%H:%M:%S+00:00"), "s")
+            dlt = numpy.array(ds["time"][:], dtype="m8[s]")
+            M["time"] = (time_ref + dlt)[:, numpy.newaxis]
+            for var in set(M.dtype.names) - {"time", "spectral_radiance"}:
+                M[var] = ds[var][...]
+            if "spectral_radiance" in M.dtype.names:
+                M["spectral_radiance"][:, :, :] = (
+                        ds["spectral_radiance"][:, :, scale_valid] /
+                        scale[scale_valid][numpy.newaxis, numpy.newaxis, :])
+
+        return M

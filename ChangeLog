@@ -1,3 +1,45 @@
+2015-07-09  Gerrit Holl  <g.holl@reading.ac.uk>
+
+	* pyatmlab-0-0-86
+
+	* pyatmlab/config.py:
+
+	- Use extended interpolation
+
+	- Always load configuration
+
+	* pyatmlab/constants.py:
+
+	- Add centi
+
+	* pyatmlab/dataset.py:
+
+	(Dataset.setlocal()):
+
+	- In this method, called from __init__(), go through configuration
+	file and set attributes from it.  This will be used for any localised
+	settings such as basedir, subdir, etc.
+
+	(Hyperspectral):
+
+	- New mixin class for any hyperspectral instrument, such as IASI.
+
+	* pyatmlab/dataset/tovs.py:
+
+	(IASI):
+
+	- Added class with reader for IASI data
+
+	* pyatmlab/physics.py:
+
+	(wavelength2wavenumber): Added
+
+	(wavenumber2wavelength): Added
+
+	(specrad_wavenumber2frequency): Added
+
+	(specrad_frequency_to_planck_bt): Added
+
 2015-07-07  Gerrit Holl  <g.holl@reading.ac.uk>
 	
 	* pyatmlab-0-0-85

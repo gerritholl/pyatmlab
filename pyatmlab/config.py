@@ -14,7 +14,8 @@ class _Configurator(object):
     config = None
 
     def init(self):
-        config = configparser.RawConfigParser()
+        config = configparser.ConfigParser(
+            interpolation=configparser.ExtendedInterpolation())
         config.read(os.path.expanduser('~/.pyatmlabrc'))
         self.config = config
     
@@ -22,7 +23,9 @@ class _Configurator(object):
         if self.config is None:
             self.init()
         return self.config.get("main", arg)
-
+config = _Configurator()
+config.init()
+conf = config.config
 
 def get_config(arg):
     """Get value for configuration variable.

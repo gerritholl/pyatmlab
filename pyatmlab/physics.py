@@ -589,6 +589,14 @@ def wavelength2frequency(wavelength):
 
     return c.c/wavelength
 
+def wavelength2wavenumber(wavelength):
+    """Converts wavelength (in m) to wavenumber (in m^-1)
+
+    :param wavelength: Wavelength [m]
+    :returns: Wavenumber [m^-1]
+    """
+    return 1/wavelength
+
 def wavenumber2frequency(wavenumber):
     """Converts wavenumber (in m^-1) to frequency (in Hz)
 
@@ -597,6 +605,14 @@ def wavenumber2frequency(wavenumber):
     """
 
     return c.c*wavenumber
+
+def wavenumber2wavelength(wavenumber):
+    """Converts wavenumber (in m^-1) to wavelength (in m)
+
+    :param wavenumber: Wave number [m^-1]
+    :returns: Wavelength [m]
+    """
+    return 1/wavenumber
 
 def frequency2wavelength(frequency):
     """Converts frequency [Hz] to wave length [m]
@@ -614,6 +630,34 @@ def frequency2wavenumber(frequency):
     :returns: Wave number [m^-1]
     """
     return frequency/c.c
+
+def specrad_wavenumber2frequency(specrad_wavenum):
+    """Convert spectral radiance from per wavenumber to per frequency
+    
+    :param specrad_wavenum: Spectral radiance per wavenumber
+         [W·sr^{-1}·m^{-2}·{m^{-1}}^{-1}]
+    :returns: Spectral radiance per frequency [W⋅sr−1⋅m−2⋅Hz−1]
+    """
+    return specrad_wavenum / c.c
+
+def specrad_frequency_to_planck_bt(L, f):
+    """Convert spectral radiance per frequency to brightness temperature
+
+    This function converts monochromatic spectral radiance per frequency
+    to Planck brightness temperature.  This is calculated by inverting the
+    Planck function.
+
+    :param L: Spectral radiance [W m^-2 sr^-1 Hz^-1]
+    :param f: Corresponding frequency [Hz]
+    :returns: Planck brightness temperature [K].
+    """
+
+    # f needs to be double to prevent overflow
+    try:
+        f = f.astype(numpy.float64)
+    except AttributeError: # not a numpy type, leave it
+        pass
+    return (c.h * f) / (c.k * numpy.log((2*c.h*f**3)/(L * c.c**2) + 1))
 
 def vmr2nd(vmr, T, p):
     """Convert volume mixing ratio [] to number density
