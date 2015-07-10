@@ -1,3 +1,11 @@
+2015-07-10  Gerrit Holl  <g.holl@reading.ac.uk>
+
+	* pyatmlab-0-0-87
+
+	* pyatmlab/physics.py(specrad_to_channel_bt):
+
+	- Added function to calculate channel BT from spectral radiances
+
 2015-07-09  Gerrit Holl  <g.holl@reading.ac.uk>
 
 	* pyatmlab-0-0-86

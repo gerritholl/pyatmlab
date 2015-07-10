@@ -14,6 +14,7 @@ import calendar
 import itertools
 
 import numpy
+import scipy.interpolate
 import matplotlib
 import matplotlib.dates
 
@@ -658,6 +659,25 @@ def specrad_frequency_to_planck_bt(L, f):
     except AttributeError: # not a numpy type, leave it
         pass
     return (c.h * f) / (c.k * numpy.log((2*c.h*f**3)/(L * c.c**2) + 1))
+
+def spectral_to_channel_bt(f_L, L_f, f_srf, w_srf):
+    """From a spectrum of radiances and a SRF, calculate channel radiance
+
+    :param ndarray f_L: Frequencies for spectral radiances [Hz]
+    :param ndarray L_f: Spectral radiances [various].  Can be in
+        radiance units or brightness temperatures.  Innermost dimension
+        must correspond to frequencies.
+    :param ndarray f_srf: Frequencys for spectral response function [Hz]
+    :param ndarray w_srf: Weights for spectral response function []
+    :returns: Channel radxiance (same unit as L_f).
+    """
+    # Interpolate onto common frequency grid.  The spectral response
+    # function is more smooth so less harmed by interpolation, so I
+    # interpolate the SRF.
+    f = scipy.interpolate.interp1d(f_srf, w_srf, bounds_error=False, fill_value=0.0)
+    w_on_L_grid = f(f_L)
+    return (w_on_L_grid * L_f).sum(-1) / (w_on_L_grid.sum())
+
 
 def vmr2nd(vmr, T, p):
     """Convert volume mixing ratio [] to number density
