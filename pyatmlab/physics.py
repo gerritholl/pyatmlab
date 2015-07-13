@@ -18,11 +18,12 @@ import scipy.interpolate
 import matplotlib
 import matplotlib.dates
 
+import numexpr
 import pyproj
 
 
-#from .constants import (h, k, R_d, R_v, c)
-from . import constants as c
+from .constants import (h, k, R_d, R_v, c, M_d, M_w)
+#from . import constants as c
 from . import math as pamath
 from . import time as pytime
 from . import tools
@@ -484,7 +485,7 @@ def mixingratio2density(mixingratio, p, T):
     #
     # ρ = p/(R*T)
 
-    m_air = p/(c.R_d*T)
+    m_air = p/(R_d*T)
     return mixingratio * m_air
 
 def mixingratio2rh(w, p, T):
@@ -496,7 +497,7 @@ def mixingratio2rh(w, p, T):
     :returns: relative humidity [1]
     """
 
-    eps = c.R_d/c.R_v # Wallace and Hobbs, 3.14
+    eps = R_d/R_v # Wallace and Hobbs, 3.14
     e = w/(w+eps)*p # Wallace and Hobbs, 3.59
     e_s = vapour_P(T)
     return e/e_s # Wallace and Hobbs, 3.64
@@ -520,7 +521,7 @@ def specific2mixingratio(q):
 
     # Source: extract_arts_1.f90
 
-    eps = c.R_d/c.R_v
+    eps = R_d/R_v
     return q / ( q + eps*(1-q) )
 
 
@@ -588,7 +589,7 @@ def wavelength2frequency(wavelength):
     :returns: Frequency [Hz]
     """
 
-    return c.c/wavelength
+    return c/wavelength
 
 def wavelength2wavenumber(wavelength):
     """Converts wavelength (in m) to wavenumber (in m^-1)
@@ -605,7 +606,7 @@ def wavenumber2frequency(wavenumber):
     :returns: Frequency [Hz]
     """
 
-    return c.c*wavenumber
+    return c*wavenumber
 
 def wavenumber2wavelength(wavenumber):
     """Converts wavenumber (in m^-1) to wavelength (in m)
@@ -622,7 +623,7 @@ def frequency2wavelength(frequency):
     :returns: Wave length [m]
     """
 
-    return c.c/frequency
+    return c/frequency
 
 def frequency2wavenumber(frequency):
     """Converts frequency [Hz] to wave number [m^-1]
@@ -630,7 +631,7 @@ def frequency2wavenumber(frequency):
     :param frequency: Frequency [Hz]
     :returns: Wave number [m^-1]
     """
-    return frequency/c.c
+    return frequency/c
 
 def specrad_wavenumber2frequency(specrad_wavenum):
     """Convert spectral radiance from per wavenumber to per frequency
@@ -639,7 +640,7 @@ def specrad_wavenumber2frequency(specrad_wavenum):
          [W·sr^{-1}·m^{-2}·{m^{-1}}^{-1}]
     :returns: Spectral radiance per frequency [W⋅sr−1⋅m−2⋅Hz−1]
     """
-    return specrad_wavenum / c.c
+    return specrad_wavenum / c
 
 def specrad_frequency_to_planck_bt(L, f):
     """Convert spectral radiance per frequency to brightness temperature
@@ -654,14 +655,32 @@ def specrad_frequency_to_planck_bt(L, f):
     """
 
     # f needs to be double to prevent overflow
-    try:
-        f = f.astype(numpy.float64)
-    except AttributeError: # not a numpy type, leave it
-        pass
-    return (c.h * f) / (c.k * numpy.log((2*c.h*f**3)/(L * c.c**2) + 1))
+#    try:
+#        logging.debug("Frequency to double")
+#        f = f.astype(numpy.float64)
+#    except AttributeError: # not a numpy type, leave it
+#        pass
+    logging.debug("Doing actual BT conversion: {:,} profiles * {:,} "
+                  "frequencies = {:,} radiances".format(
+                        L.size//L.shape[-1], f.size, L.size))
+    #BT = (h * f) / (k * numpy.log((2*h*f**3)/(L * c**2) + 1))
+    BT = numexpr.evaluate("(h * f) / (k * log((2*h*f**3)/(L * c**2) + 1))")
+    logging.debug("(done)")
+    return BT
 
 def spectral_to_channel_bt(f_L, L_f, f_srf, w_srf):
     """From a spectrum of radiances and a SRF, calculate channel radiance
+
+    The spectral response function may not be specified on the same grid
+    as the spectrum of radiances.  Therefore, this function interpolates
+    the spectral response function onto the grid of the radiances.  This
+    is less bad than the reverse, because a spectral response function
+    tends to be more smooth than a spectrum.
+
+    **Approximations:**
+
+    * Interpolation of spectral response function onto frequency grid on
+      which radiances are specified.
 
     :param ndarray f_L: Frequencies for spectral radiances [Hz]
     :param ndarray L_f: Spectral radiances [various].  Can be in
@@ -676,7 +695,11 @@ def spectral_to_channel_bt(f_L, L_f, f_srf, w_srf):
     # interpolate the SRF.
     f = scipy.interpolate.interp1d(f_srf, w_srf, bounds_error=False, fill_value=0.0)
     w_on_L_grid = f(f_L)
-    return (w_on_L_grid * L_f).sum(-1) / (w_on_L_grid.sum())
+    #ch_BT = (w_on_L_grid * L_f).sum(-1) / (w_on_L_grid.sum())
+    # due to numexpr limitation, do sum seperately
+    ch_BT_tot = numexpr.evaluate("sum(w_on_L_grid * L_f, {:d})".format(
+                                L_f.ndim-1))
+    ch_BT = ch_BT_tot / w_on_L_grid.sum()
 
 
 def vmr2nd(vmr, T, p):
@@ -691,7 +714,7 @@ def vmr2nd(vmr, T, p):
     """
 
     # ideal gas law: p = n_0 * k * T
-    return  vmr * p / (c.k * T)
+    return  vmr * p / (k * T)
 
 def p2z_oversimplified(p):
     """Convert pressure to altitude with oversimplified assumptions.
@@ -885,9 +908,9 @@ def p2z_hydrostatic(p:numpy.ndarray,
 #82  mw = 18.016;
 #83  %
 #84  k  = 1-mw/md;        % 1 - eps         
-    k = 1 - c.M_w/c.M_d
+    k = 1 - M_w/M_d
 #85  rd = 1e3 * r / md;   % Gas constant for 1 kg dry air
-    rd = 1e3 * c.R / c.M_d  # gas constant for 1 kg dry air
+    rd = 1e3 * R / M_d  # gas constant for 1 kg dry air
 #86  
 #87  
 #88  %= How to end iterations

@@ -5,6 +5,7 @@ import io
 import tempfile
 import subprocess
 import datetime
+import logging
 
 import numpy
 
@@ -214,6 +215,7 @@ class IASI(dataset.MultiFileDataset, dataset.HyperSpectral):
     def _read(self, path, fields="all", return_header=False):
         if fields == "all":
             fields = self._dtype.names
+        logging.debug("Reading {!s}".format(path))
         with netCDF4.Dataset(str(path), 'r', clobber=False) as ds:
             scale = ds["scale_factor"][:]
             scale_valid = numpy.isfinite(scale) & (scale > 0)

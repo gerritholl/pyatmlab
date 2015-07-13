@@ -1,3 +1,27 @@
+2015-07-13  Gerrit Holl  <g.holl@reading.ac.uk>
+
+	* pyatmlab-0-0-88
+
+	* pyatmlab/datasets/tovs.py(IASI._read):
+
+	- Be more verbose with DEBUG logging
+
+	* pyatmlab/physics.py:
+	
+	- Moved constants out of 'c.' module again, to aid numexpr.
+
+	(specrad_frequency_to_brightness_temperature):
+
+	- Severe speedup using numexpr.  For a single IASI granule (145,190,760
+	radiances), wall time to run this on a JASMIN node is reduced from 25
+	seconds to 2 seconds.
+
+	(spectral_to_channel_bt):
+
+	- Similar speedup as above, but rather from ~2 seconds to ~0.2
+	seconds.  As this may need to be run for each channel the total
+	speedup is similar.
+
 2015-07-10  Gerrit Holl  <g.holl@reading.ac.uk>
 
 	* pyatmlab-0-0-87
