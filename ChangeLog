@@ -1,3 +1,13 @@
+2015-07-14  Gerrit Holl  <g.holl@reading.ac.uk>
+
+	* pyatmlab-0-0-89
+
+	* pyatmlab/constants.py: Add micro=1e-6
+
+	* pyatmlab/datasets.tovs(HIRS*): Add satellites
+
+	* pyatmlab/physics.py(specrad_frequency_to_planck_bt): Bugfix
+
 2015-07-13  Gerrit Holl  <g.holl@reading.ac.uk>
 
 	* pyatmlab-0-0-88

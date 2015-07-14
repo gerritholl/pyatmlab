@@ -87,9 +87,15 @@ class HIRS(dataset.MultiFileDataset):
                          tools.safe_eval(nw)))
         return (head_dtype, line_dtype)
 
+class HIRS2(HIRS):
+    satellites = {"tirosn", "noaa06", "noaa07", "noaa08", "noaa09", "noaa10",
+                  "noaa11", "noaa12", "noaa13", "noaa14"}
+    pass # to be defined
     
 class HIRS3(HIRS):
     pdf_definition_pages = (26, 37)
+
+    satellites = {"noaa15", "noaa16", "noaa17"}
 
     # Obtained using get_definition_from_PDF.  Please note correction!
     header_dtype =  numpy.dtype([('hrs_h_siteid', '|S3', 1),
@@ -196,6 +202,7 @@ class HIRS3(HIRS):
                       ('hrs_h_filler9', '>u4', 890)])
 
 class HIRS4(HIRS):
+    satellites = {"noaa18", "noaa19", "metopa", "metopb"}
     pdf_definition_pages = (38, 54)
 
 class IASI(dataset.MultiFileDataset, dataset.HyperSpectral):
