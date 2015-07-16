@@ -1,3 +1,14 @@
+2015-07-16  Gerrit Holl  <g.holl@reading.ac.uk>
+
+	* pyatmlab-0-0-90
+
+	* pyatmlab/physics.py(spectral_to_channel_bt):
+
+	- Added note that the physics here is incorrect and that the
+	calculation needs to change.
+
+	- Added missing return statement, oops.
+
 2015-07-14  Gerrit Holl  <g.holl@reading.ac.uk>
 
 	* pyatmlab-0-0-89

@@ -682,6 +682,10 @@ def spectral_to_channel_bt(f_L, L_f, f_srf, w_srf):
     * Interpolation of spectral response function onto frequency grid on
       which radiances are specified.
 
+    FIXME BUG!  The conversion is incorrect and should be done in terms of
+    spectral radiances, not brightness temperatures.  Consider discussion
+    with Jon.  Need to read up on this.  FIXME BUG!
+
     :param ndarray f_L: Frequencies for spectral radiances [Hz]
     :param ndarray L_f: Spectral radiances [various].  Can be in
         radiance units or brightness temperatures.  Innermost dimension
@@ -700,6 +704,7 @@ def spectral_to_channel_bt(f_L, L_f, f_srf, w_srf):
     ch_BT_tot = numexpr.evaluate("sum(w_on_L_grid * L_f, {:d})".format(
                                 L_f.ndim-1))
     ch_BT = ch_BT_tot / w_on_L_grid.sum()
+    return ch_BT
 
 
 def vmr2nd(vmr, T, p):
