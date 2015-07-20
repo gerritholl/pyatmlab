@@ -1,3 +1,23 @@
+2015-06-20  Gerrit Holl  <g.holl@reading.ac.uk>
+
+	* pyatmlab-0-0-91
+
+	* pyatmlab/io.py(read_arts_srf):
+	
+	- Also return centres
+
+	* pyatmlab/physics:
+	
+	(planck_f):
+
+	- Add function to calculate Planck function (per frequency)
+
+	(estimate_effective_temperature):
+
+	- Calculate effective temperature according to Weinreb et al. (1981).
+	  This is to be used in polychromatic radiance to brightness
+	  temperature conversions.
+
 2015-07-16  Gerrit Holl  <g.holl@reading.ac.uk>
 
 	* pyatmlab-0-0-90

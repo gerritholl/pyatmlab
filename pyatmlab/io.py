@@ -252,7 +252,8 @@ def read_arts_srf(f_backend, backend_channel_response):
         NOAA18_HIRS.f_backend.xml).  Expect a single Vector.
     :param str backend_channel_response: Path to channel response (such as
         NOAA18_HIRS.backend_channel_ressponse.xml).
-    :returns list: List of tuples (frequency, weight) where frequency and
+    :returns (centres, response): ndarray with centres and
+        list of tuples (frequency, weight) where frequency and
         weight are ndarrays of dtype float32.
     """
     root = xml.etree.ElementTree.parse(f_backend).getroot()
@@ -261,7 +262,7 @@ def read_arts_srf(f_backend, backend_channel_response):
     response = [(numpy.fromstring(x[0].text, sep=" ")+c,
                  numpy.fromstring(x[1].text, sep=" "))
                     for (x, c) in zip(root[0], centres)]
-    return response
+    return (centres, response)
 
 # For ArtsXML types, should eventually subclass
 # xml.etree.ElementTree.ElementTree and friends to restrict to ARTS types

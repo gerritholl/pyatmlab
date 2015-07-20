@@ -468,7 +468,18 @@ class AKStats:
 
                     
                     
-                    
+def planck_f(f, T):
+    """Planck law expressed in frequency
+
+    :param f: Frequency [Hz]
+    :param T: Temperature [K]
+    """
+    try:
+        f = f.astype(numpy.float64)
+    except AttributeError:
+        pass
+    return ((2 * h * f**3) / (c ** 2) *
+            1 / (numpy.exp((h*f)/(k*T)) - 1))
         
 def mixingratio2density(mixingratio, p, T):
     """Converts mixing ratio (e.g. kg/kg) to density (kg/m^3) for dry air.
@@ -660,15 +671,17 @@ def specrad_frequency_to_planck_bt(L, f):
         f = f.astype(numpy.float64)
     except AttributeError: # not a numpy type, leave it
         pass
-    logging.debug("Doing actual BT conversion: {:,} profiles * {:,} "
-                  "frequencies = {:,} radiances".format(
-                        L.size//L.shape[-1], f.size, L.size))
+    if L.size > 5000:
+        logging.debug("Doing actual BT conversion: {:,} profiles * {:,} "
+                      "frequencies = {:,} radiances".format(
+                            L.size//L.shape[-1], f.size, L.size))
     #BT = (h * f) / (k * numpy.log((2*h*f**3)/(L * c**2) + 1))
     BT = numexpr.evaluate("(h * f) / (k * log((2*h*f**3)/(L * c**2) + 1))")
-    logging.debug("(done)")
+    if L.size > 5000:
+        logging.debug("(done)")
     return BT
 
-def spectral_to_channel_bt(f_L, L_f, f_srf, w_srf):
+def spectral_to_channel(f_L, L_f, f_srf, w_srf):
     """From a spectrum of radiances and a SRF, calculate channel radiance
 
     The spectral response function may not be specified on the same grid
@@ -1038,3 +1051,36 @@ def lat2g0(lat):
     return 9.780327 * ( 1 + 5.3024e-3*numpy.sin(numpy.deg2rad(x))**2 
                           + 5.8e-6*numpy.sin(numpy.deg2rad(2*x)**2 ))
 
+
+def estimate_effective_temperature(f, W, f_c, T):
+    r"""Estimate effective temperature for SRF
+
+    For a monochromatic radiance, one can easily convert radiance to
+    brightness temperature using the Planck function.  For a polychromatic
+    radiance such as a channel radiance, this is incorrect.  Weinreb et
+    al. (1981) propose a solution in calculating an effective temperature:
+
+    T_e = B^{-1}(\int_{f_1}^{f_2} \phi B df)
+
+    where $T_e$ is the effective temperature, $B$ is the Planck function,
+    $f_1$ and $f_2$ are the lower and upper limit of the channel, $\phi$
+    is the normalised channel radiance.  This, used with the central
+    wavenumber, is correct FIXME VERIFY.  According to Weinreb et al.
+    (1981) this is "from the theorem"...  I should understand this!
+    
+    Weinreb, M.P., Fleming, H.E., McMillin, L.M., Neuendorffer, A.C,
+    Transmittances for the TIROS operational vertical sounder,
+    1981, NOAA Technical Report NESS 85.
+
+    :param ndarray f: Frequency [Hz] for spectral response function.
+    :param ndarray W: Weight [1] for spectral response function.  Should
+        be normalised to be integrated to 1.
+    :param f_c: Central frequency to be used with Planck function.
+    :param T: Temperature [K]
+    :returns: Effective temperature [K].
+    """
+
+    B = planck_f(f, T)
+    chanrad = spectral_to_channel(f, B, f.squeeze(), W)
+    T_e = specrad_frequency_to_planck_bt(chanrad, f_c)
+    return T_e
