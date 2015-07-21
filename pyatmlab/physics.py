@@ -466,7 +466,102 @@ class AKStats:
                                 datetime.date.fromordinal(D["time"]["data"][i]),
                                 D[names['y']]["data"][i], dofs[i]))
 
-                    
+class SRF:
+    """Respresents a spectral response function
+    """
+
+    T_lookup_table = numpy.arange(150, 350.01, 0.05)
+    lookup_table = None
+    L_to_T = None
+
+    def __init__(self, f, W):
+        """Initialise SRF object
+
+        :param ndarray f: Array of frequencies
+        :param ndarray W: Array of associated weights
+        """
+
+        self.f = f
+        self.W = W
+
+    def centroid(self):
+        """Calculate centre frequency
+        """
+        return numpy.average(self.f, weights=self.W)
+
+    def blackbody_radiance(self, T):
+        """Calculate integrated radiance for blackbody at temperature T
+
+        :param T: Temperature [K]
+        """
+        return self.integrate_radiances(self.f, planck_f(self.f[numpy.newaxis, :], T[:, numpy.newaxis]))
+
+    def make_lookup_table(self):
+        """Construct lookup table radiance <-> BT
+
+        To convert a channel radiance to a brightness temperature,
+        applying the (inverse) Planck function is not correct, because the
+        Planck function applies to monochromatic radiances only.  Instead,
+        to convert from radiance (in W m^-2 sr^-1 Hz^-1) to brightness
+        temperature, we use a lookup table.  This lookup table is
+        constructed by considering blackbodies at a range of temperatures,
+        then calculating the channel radiance.  This table can then be
+        used to get a mapping from radiance to brightness temperature.
+
+        This method does not return anything, but fill self.lookup_table.
+        """
+        self.lookup_table = numpy.zeros(shape=(2, self.T_lookup_table.size), dtype=numpy.float64)
+        self.lookup_table[0, :] = self.T_lookup_table
+        self.lookup_table[1, :] = self.blackbody_radiance(self.T_lookup_table)
+        self.L_to_T = scipy.interpolate.interp1d(self.lookup_table[1, :],
+                                                 self.lookup_table[0, :],
+                                                 kind='linear')
+
+    def integrate_radiances(self, f, L):
+        """From a spectrum of radiances and a SRF, calculate channel radiance
+
+        The spectral response function may not be specified on the same grid
+        as the spectrum of radiances.  Therefore, this function interpolates
+        the spectral response function onto the grid of the radiances.  This
+        is less bad than the reverse, because a spectral response function
+        tends to be more smooth than a spectrum.
+
+        **Approximations:**
+
+        * Interpolation of spectral response function onto frequency grid on
+          which radiances are specified.
+
+        :param ndarray f: Frequencies for spectral radiances [Hz]
+        :param ndarray L: Spectral radiances [W m^-2 sr^-1 Hz^-1].
+            Can be in radiance units of various kinds.  Make sure this is
+            consistent with the spectral response function.
+            Innermost dimension must correspond to frequencies.
+        :returns: Channel radiance [W m^-2 sr^-1]
+        """
+        # Interpolate onto common frequency grid.  The spectral response
+        # function is more smooth so less harmed by interpolation, so I
+        # interpolate the SRF.
+        fnc = scipy.interpolate.interp1d(self.f, self.W, bounds_error=False, fill_value=0.0)
+        w_on_L_grid = fnc(f)
+        #ch_BT = (w_on_L_grid * L_f).sum(-1) / (w_on_L_grid.sum())
+        # due to numexpr limitation, do sum seperately
+        ch_rad_tot = numexpr.evaluate("sum(w_on_L_grid * L, {:d})".format(
+                                    L.ndim-1))
+        ch_rad = ch_rad_tot / w_on_L_grid.sum()
+        return ch_rad
+
+    def channel_radiance2bt(self, L):
+        """Convert channel radiance to brightness temperature
+
+        Using the lookup table, convert channel radiance to brightness
+        temperature.  Will construct lookup table on first call.
+
+        :param L: Radiance [W m^-2 sr^-1]
+        """
+        if self.lookup_table is None:
+            self.make_lookup_table()
+        return self.L_to_T(L)
+
                     
 def planck_f(f, T):
     """Planck law expressed in frequency
@@ -478,6 +573,9 @@ def planck_f(f, T):
         f = f.astype(numpy.float64)
     except AttributeError:
         pass
+    if (f.size * T.size) > 1e5:
+        return numexpr.evaluate("(2 * h * f**3) / (c**2) * "
+                                "1 / (exp((h*f)/(k*T)) - 1)")
     return ((2 * h * f**3) / (c ** 2) *
             1 / (numpy.exp((h*f)/(k*T)) - 1))
         
@@ -660,6 +758,10 @@ def specrad_frequency_to_planck_bt(L, f):
     to Planck brightness temperature.  This is calculated by inverting the
     Planck function.
 
+    Note that this function is NOT correct to estimate polychromatic
+    brightness temperatures such as channel brightness temperatures.  For
+    this, you need the spectral response function — see the SRF class.
+
     :param L: Spectral radiance [W m^-2 sr^-1 Hz^-1]
     :param f: Corresponding frequency [Hz]
     :returns: Planck brightness temperature [K].
@@ -671,13 +773,13 @@ def specrad_frequency_to_planck_bt(L, f):
         f = f.astype(numpy.float64)
     except AttributeError: # not a numpy type, leave it
         pass
-    if L.size > 5000:
+    if L.size > 25000:
         logging.debug("Doing actual BT conversion: {:,} profiles * {:,} "
                       "frequencies = {:,} radiances".format(
                             L.size//L.shape[-1], f.size, L.size))
     #BT = (h * f) / (k * numpy.log((2*h*f**3)/(L * c**2) + 1))
     BT = numexpr.evaluate("(h * f) / (k * log((2*h*f**3)/(L * c**2) + 1))")
-    if L.size > 5000:
+    if L.size > 25000:
         logging.debug("(done)")
     return BT
 

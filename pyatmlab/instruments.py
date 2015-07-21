@@ -5,9 +5,10 @@
 Describe a channel by its centre frequency, width, shape, no. of
 sidebands, etc., and write out its SRF.  The same for an entire
 instrument, which is essentially a collection of channels.
-"""
 
-# $Id: instruments.py 8140 2013-01-24 15:47:30Z gerrit $
+Those are theoretical, idealised instruments, not real instruments with
+real SRFs.  For real SRFs, look in physics.SRF.
+"""
 
 import datetime
 now = datetime.datetime.now
@@ -21,8 +22,8 @@ import numbers
 from . import physics
 from . import tools
 
-class Channel(object):
-    """Represents a (rectangular) radiometer channel.
+class Channel:
+    """Represents an idealised (rectangular) radiometer channel.
 
     """
 
@@ -132,8 +133,8 @@ class Channel(object):
     def __repr__(self):
         return "<Channel:{} GHz>".format(self.get_chanstr())
 
-class Radiometer(object):
-    """Represents a radiometer.
+class Radiometer:
+    """Represents an ideal radiometer.
 
     Initialise with list of Channel-objects.
     """

@@ -1,4 +1,17 @@
-2015-06-20  Gerrit Holl  <g.holl@reading.ac.uk>
+2015-07-21  Gerrit Holl  <g.holl@reading.ac.uk>
+
+	* pyatmlab-0-0-92
+
+	* pyatmlab/instruments.py:
+
+	- Point out those are theoretical/idealised instruments, not suitable
+	for actual SRFs.
+
+	* pyatmlab/physics.py(SRF):
+
+	- Added class where I consolidate functionality related to real SRFs.
+
+2015-07-20  Gerrit Holl  <g.holl@reading.ac.uk>
 
 	* pyatmlab-0-0-91
 
