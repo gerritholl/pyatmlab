@@ -137,7 +137,7 @@ def bin_nd_sparse(binners, bins):
         if numpy.isnan(binner).any():
             raise ValueError("I found nans in bin {:d}.  I refuse to bin nans!".format(
                 i))
-        M[:, i] = numpy.digitize(binner, bin_n)
+        M[:, i] = numpy.digitize(numpy.atleast_1d(binner), bin_n)
     return M
         
 

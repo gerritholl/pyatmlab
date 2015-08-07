@@ -22,7 +22,7 @@ import numexpr
 import pyproj
 
 
-from .constants import (h, k, R_d, R_v, c, M_d, M_w)
+from .constants import (h, k, R_d, R_v, c, M_d, M_w, micro)
 #from . import constants as c
 from . import math as pamath
 from . import time as pytime
@@ -470,7 +470,7 @@ class SRF:
     """Respresents a spectral response function
     """
 
-    T_lookup_table = numpy.arange(150, 350.01, 0.05)
+    T_lookup_table = numpy.arange(100, 370.01, 0.05)
     lookup_table = None
     L_to_T = None
 
@@ -515,7 +515,9 @@ class SRF:
         self.lookup_table[1, :] = self.blackbody_radiance(self.T_lookup_table)
         self.L_to_T = scipy.interpolate.interp1d(self.lookup_table[1, :],
                                                  self.lookup_table[0, :],
-                                                 kind='linear')
+                                                 kind='linear',
+                                                 bounds_error=False,
+                                                 fill_value=0)
 
     def integrate_radiances(self, f, L):
         """From a spectrum of radiances and a SRF, calculate channel radiance
@@ -548,6 +550,11 @@ class SRF:
         ch_rad_tot = numexpr.evaluate("sum(w_on_L_grid * L, {:d})".format(
                                     L.ndim-1))
         ch_rad = ch_rad_tot / w_on_L_grid.sum()
+#        if (ch_rad<0).any():
+#            logging.error("Found negative integrated radiances for {:.3f} µm "
+#                           "channel at positions {!s}".format(
+#                           frequency2wavelength(self.centroid())/micro,
+#                          ", ".join(str(x) for x in zip(*(ch_rad<0).nonzero()))))
         return ch_rad
 
     def channel_radiance2bt(self, L):
@@ -560,8 +567,10 @@ class SRF:
         """
         if self.lookup_table is None:
             self.make_lookup_table()
+#        L_BT = numpy.zeros_like(L)
+#        L_BT[L==0] = 0
+#        L_BT[L!=0] = self.L_to_T(L[L!=0])
         return self.L_to_T(L)
-
                     
 def planck_f(f, T):
     """Planck law expressed in frequency

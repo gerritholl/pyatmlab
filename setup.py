@@ -25,7 +25,7 @@ setup(
     license = "Modified BSD License",
     keywords = "atmosphere, satellite, remote sensing, radiative transfer",
     url = "http://packages.python.org/pyatmlab",
-    packages=['pyatmlab', 'tests', 'pyatmlab.datasets'],
+    packages=['pyatmlab', 'tests', 'pyatmlab.datasets', 'pyatmlab.arts'],
     long_description=read('README'),
     classifiers=[
         "Development Status :: 3 - Alpha",

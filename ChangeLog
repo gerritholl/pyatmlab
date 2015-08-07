@@ -1,3 +1,34 @@
+2015-08-07  Gerrit Holl  <g.holl@reading.ac.uk>
+
+	* pyatmlab-0-0-93
+	
+	* pyatmlab/arts/*.py:
+
+	- New package with functionality to read ArtsXML data.
+
+	* doc/source/index.rst:
+
+	- Add new package arts and new module arts.xml
+
+	* pyatmlab/datasets/tovs.py(IASI): 
+	
+	- Bugfix
+
+	* pyatmlab/db.py:
+
+	- Reimplement lookup table.  Functionality now distributed over a
+	number of different classes, depending on small (in-memory) or large
+	(on-disk) and on what is done with the cells (store all, store one,
+	store stats).
+
+	* pyatmlab/physics.py:
+
+	- Several small bugfixes
+
+	* setup.py:
+
+	- Also consider pyatmlab.arts package
+
 2015-07-21  Gerrit Holl  <g.holl@reading.ac.uk>
 
 	* pyatmlab-0-0-92

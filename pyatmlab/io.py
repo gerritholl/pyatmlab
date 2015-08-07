@@ -267,3 +267,5 @@ def read_arts_srf(f_backend, backend_channel_response):
 # For ArtsXML types, should eventually subclass
 # xml.etree.ElementTree.ElementTree and friends to restrict to ARTS types
 # and provide easy access to underlying values.  To be implemented.
+# Or perhaps a different approach altogether?  Needs to treat things like
+# Array natively.

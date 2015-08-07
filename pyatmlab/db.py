@@ -8,10 +8,14 @@ from a variety of formats and write it to a variety of formats.
 Mostly obtained from PyARTS.
 """
 
+import abc
 import copy
 import random
 import itertools
 import pickle
+import pathlib
+import logging
+import lzma
 
 import numpy
 import datetime
@@ -26,6 +30,7 @@ import scipy.io
 
 from . import tools
 from . import stats
+from . import config
 
 class AtmosphericDatabase:
     """Represents an atmospheric database
@@ -522,7 +527,7 @@ class AtmosphericDatabase:
                          appendmat=False,
                          do_compression=True, oned_as="column")
 
-class SimilarityLookupTable:
+class LookupTable(abc.ABC):
     """Use a lookup table to consider similar measurements
 
     This table is used to represent a large set of measurements by a small
@@ -548,25 +553,23 @@ class SimilarityLookupTable:
 
         bins
         db
+
+    TODO:
+        - Need more intelligent binning when using multiple dimensions.
+          Bins for variable n might depend on the value of the bins in
+          n-1.  In practice, this may be easiest to implement by binning
+          the *difference* between variable n and n-1.  Which raises the
+          question if n+1 should be differenced to n or to n-1.  Needs
+          some thinking.
     """
 
     #axes = ("doy", "mlst", "lat", "lon", "parcol")
     # higher for doy as this has the largest control.
     #axsizes = dict(doy=20, mlst=10, lat=10, lon=10, parcol=10)
 
-    _loaded = False
+    #_loaded = False
     axdata = bins = db = None
 
-    @classmethod
-    def fromFile(cls, file):
-        with open(file, 'rb') as fp:
-            (axdata, bins, db) = pickle.load(fp)
-        self = cls()
-        self.axdata = axdata
-        self.bins = bins
-        self.db = db
-        self._loaded = True
-        return self
 
     def compact_summary(self):
         """Return string with compact summary
@@ -574,67 +577,15 @@ class SimilarityLookupTable:
         Suitable in filename
         """
 
-        s = "".join(
-                ["{:s}{:d}".format(k,v["nsteps"])
-                    for (k, v) in self.axdata.items()])
+        s = "-".join(
+                ["{:s}_{:d}".format(k,v["nsteps"])
+                    for (k, v) in sorted(self.axdata.items())])
         return s
 
     def __repr__(self):
         return "<{}:{}>".format(self.__class__.__name__,
             self.compact_summary())
 
-    def propose_filename(self):
-        return "tanso_similarity_db_{}".format(self.compact_summary())
-
-    def toFile(self, file):
-        """Store lookup table to a file
-        """
-        with open(file, 'wb') as fp:
-            pickle.dump((self.axdata, self.bins, self.db), fp,
-                    protocol=4)
-
-    @classmethod
-    def fromData(cls, data, axdata):
-        """Build lookup table from data
-
-        ``data`` should be a structured ndarray with dtype fields ``lat``
-        `lon`, 
-
-        ``axdata`` should be a ``collections.OrderedDict`` where the keys
-        refer to fields from `data` to use, and the values are
-        dictionaries with at least the keys:
-
-        nsteps
-            number of steps in binning data
-
-        """
-        self = cls()
-        bins = [numpy.linspace(numpy.nanmin(data[ax])*0.99,
-                               numpy.nanmax(data[ax])*1.01,
-                               axdata[ax]["nsteps"])
-                    for ax in list(axdata.keys())]
-        binned_indices = stats.bin_nd(
-            [data[ax] for ax in axdata.keys()], bins)
-        db = {}
-        # select one wherever there is at least one
-        for ii in itertools.product(*(range(i) for i in
-                binned_indices.shape)):
-            # ii should be a tuple that can be passed directly
-            if binned_indices[ii].size > 0:
-                db[ii] = data[self._choose(binned_indices[ii])]
-
-        self.axdata = axdata
-        self.bins = bins
-        self.db = db
-        self._loaded = True
-        return self
-
-    @staticmethod
-    def _choose(data):
-        """Choose one of the data to use for building the db
-        """
-
-        return random.choice(data)
 
     def get_index_tuple(self, dat):
         """Get a tuple of indices for use in the lookup table
@@ -645,12 +596,10 @@ class SimilarityLookupTable:
     def get_index_tuples(self, data):
         """Yield tuples of indices for use in the lookup table
         """
-        yield from (self.get_index_tuple(dat) for dat in data)
+        for dat in data:
+            yield (self.get_index_tuple(dat), dat)
 
-    def lookup(self, dat):
-        tup = self.get_index_tuple(dat)
-        return self.db[tup]
-        
+       
     def lookup_all(self, data):
         for dat in data:
             try:
@@ -668,3 +617,284 @@ class SimilarityLookupTable:
         tup = self.get_index_tuple(dat)
         manytup = itertools.product(*[range(i-1,i+2) for i in tup])
         yield from (t for t in manytup if t in self.db)
+
+    @staticmethod
+    def _get_bins_from_axdata(axdata):
+        bins = []
+        for ax in axdata.keys():
+            if "range" in axdata[ax].keys():
+                (rmin, rmax) = axdata[ax]["range"]
+            else:
+                rmin = numpy.nanmin(data[ax])*0.99
+                rmax = numpy.nanmin(data[ax])*1.01
+
+            for case in tools.switch(axdata[ax].get("mode", "linear")):
+                if case("linear"):
+                    b = numpy.linspace(rmin, rmax, axdata[ax]["nsteps"])
+                    break
+                if case("optimal"):
+                    inrange = (data[ax] >= rmin) & (data[ax] <= rmax)
+                    b = scipy.stats.scoreatpercentile(data[ax][inrange],
+                            numpy.linspace(0, 100, axdata[ax]["nsteps"]))
+                    break
+                if case():
+                    raise ValueError("ax {!s} unknown mode {!s}, I know "
+                        "'linear' and 'optimal'".format(axdata[ax], axdata[ax]["mode"]))
+            bins.append(b)
+        return bins
+
+    def lookup(self, dat):
+        tup = self.get_index_tuple(dat)
+        return self[tup]
+
+    @staticmethod
+    @abc.abstractmethod
+    def _choose():
+        ...
+
+    @classmethod
+    @abc.abstractmethod
+    def fromData(cls):
+        ...
+
+    @abc.abstractmethod
+    def __getitem__(self):
+        ...
+
+    @abc.abstractmethod
+    def __setitem__(self):
+        ...
+
+class SmallLookupTable(LookupTable):
+    """Lookup table small enough to be in memory
+    """
+    @classmethod
+    def fromFile(cls, file):
+        with open(file, 'rb') as fp:
+            (axdata, bins, db) = pickle.load(fp)
+        self = cls()
+        self.axdata = axdata
+        self.bins = bins
+        self.db = db
+        #self._loaded = True
+        return self
+
+    def propose_filename(self):
+        return "similarity_db_{}".format(self.compact_summary())
+
+    def toFile(self, file):
+        """Store lookup table to a file
+        """
+        with open(file, 'wb') as fp:
+            pickle.dump((self.axdata, self.bins, self.db), fp,
+                    protocol=4)
+
+    @classmethod
+    def fromData(cls, data, axdata):
+        """Build lookup table from data
+
+        ``data`` should be a structured ndarray with dtype fields
+
+        ``axdata`` should be a ``collections.OrderedDict`` where the keys
+        refer to fields from `data` to use, and the values are
+        dictionaries with the keys:
+
+        nsteps (mandatory)
+            number of steps in binning data
+        mode
+            string that can be either "linear" (use linspace between
+            extremes) or "optimal" (choose bins based on percentiles so
+            1-D binning would create equal content in each).
+            Defaults to linear.
+        range
+            tuple with (min, max) of range within which to bin data.
+            Defaults to extremes of data.
+
+        """
+        self = cls()
+        bins = self._get_bins_from_axdata(axdata)
+        binned_indices = stats.bin_nd(
+            [data[ax] for ax in axdata.keys()], bins)
+        db = {}
+        # select one wherever there is at least one
+        for ii in itertools.product(*(range(i) for i in
+                binned_indices.shape)):
+            # ii should be a tuple that can be passed directly
+            if binned_indices[ii].size > 0:
+                db[ii] = data[self._choose(binned_indices[ii])]
+
+        self.axdata = axdata
+        self.bins = bins
+        self.db = db
+        #self._loaded = True
+        return self
+
+    def __getitem__(self, tup):
+        return self.db[tup]
+
+    def keys(self):
+        yield from self.db.keys()
+ 
+class LargeLookupTable(LookupTable):
+    """Lookup table too large in memory, mapped to directory
+
+    Needs caching/flushing!
+    """
+    basename = "bucket/{coor:s}/contents.npy.xz"
+    _db = {}
+    _maxcache = 1e9 # 100 MB
+    _N = 0
+
+    def propose_dirname(self):
+        return "large_similarity_db_{}".format(self.compact_summary())
+
+    @classmethod
+    def fromData(cls, data, axdata):
+        self = cls()
+        bins = self._get_bins_from_axdata(axdata)
+        self.axdata = axdata
+        self.bins = bins
+        if not self.bucket_dir().is_dir():
+            self.bucket_dir().mkdir(parents=True)
+        self.addData(data)
+        return self
+    fromData.__doc__ = SmallLookupTable.__doc__
+
+    def addData(self, data):
+        """Add a lot of data
+        """
+        k = set()
+        for (t, contents) in self.get_index_tuples(data):
+            if t in k:
+                cur = self[t]
+#                contents = contents[numpy.array([contents[i] not in cur
+#                        for i in range(contents.size)])]
+#                if contents.size > 0:
+                if contents not in cur:
+                    self[t] = numpy.hstack((self[t], numpy.atleast_1d(contents)))
+            else:
+                self[t] = numpy.atleast_1d(contents)
+            k.add(t)
+        self.dumpcache() # store and clear
+
+    @classmethod
+    def fromDir(cls, dir):
+        """Initialise from directory
+
+        """
+        with (pathlib.Path(dir) / "info.npy").open(mode="rb") as fp:
+            (self.axdata, self.bins) = pickle.load(fp)
+
+    def keys(self):
+        """Yield keys one by one.  Reads from directory, no caching!
+        """
+        for p in self.bucket_dir().iterdir():
+            if p.name.startswith("bucket_") and p.name.endswith(".npy.xz"):
+                yield tuple(int(s) for s in p.name[7:-7].split("-"))
+
+    def __setitem__(self, tup, data):
+        self._db[tup] = data
+        if len(self._db) > self._N: # recalculate size
+            totsize = sum(v.nbytes for v in self._db.values())
+            if totsize > self._maxcache:
+                logging.debug("Size {:,} exceeds max cache {:,}, "
+                              "dumping {:d} keys".format(totsize,
+                              self._maxcache, len(self._db)))
+                self.dumpcache()
+            else:
+                self._N += 10
+
+    def __getitem__(self, tup):
+        if tup in self._db: # cached
+            return self._db[tup]
+        else:
+            path = self.bucket_name(tup)
+            with lzma.open(str(path), mode="rb") as fp:
+                v = numpy.load(fp)
+            self._db[tup] = v
+            return v
+
+    def dumpcache(self):
+        for (i, (k, v)) in enumerate(self._db.items()):
+            path = self.bucket_name(k)
+            if v.nbytes > 6e5 or not path.parent.is_dir():
+                logging.debug("Storing {:d}/{:d}, {:,} bytes to {!s}".format(
+                    i, len(self._db), v.nbytes, path))
+            if not path.parent.is_dir():
+                path.parent.mkdir(parents=True)
+            with lzma.open(str(path), mode="wb") as fp:
+                numpy.save(fp, v)
+        self.clearcache()
+
+    def storemeta(self):
+        """Store metadata for database
+        """
+        d = self.bucket_dir()
+        with (d / "info.npy").open(mode="wb") as fp:
+            pickle.dump((self.axdata, self.bins), fp, protocol=4)
+
+    def loadmeta(self):
+        """Load metadata for database
+        """
+        d = self.bucket_dir()
+        with (d / "info.npy").open(mode="rb") as fp:
+            (self.axdata, self.bins) = pickle.load(fp)
+
+    def clearcache(self):
+        self._db = {}
+        self._N = 0
+
+    def bucket_dir(self):
+        return (pathlib.Path(config.conf["main"]["lookup_table_dir"]) /
+                self.propose_dirname())
+
+    def bucket_name(self, coor):
+        """Return full path to bucket at coor
+        """
+        return (self.bucket_dir() /
+                self.basename.format(coor="/".join("{:02d}".format(x) for x in coor)))
+
+class SimilarityLookupTable(LookupTable):
+    def propose_filename(self):
+        return "tanso_similarity_db_{}".format(self.compact_summary())
+
+    @staticmethod
+    def _choose(data):
+        """Choose one of the data to use for building the db
+        """
+
+        return random.choice(data)
+
+
+class FullLookupTable(LookupTable):
+    """Like a similarity lookup table, but keeps all entries
+
+    """
+
+    @staticmethod
+    def _choose(data):
+        return data
+
+
+class CountingLookupTable(LookupTable):
+    """Provide counting only, effectively creating a histogram.
+    """
+
+    @staticmethod
+    def _choose(data):
+        return data.size
+
+class SmallSimilarityLookupTable(SmallLookupTable, SimilarityLookupTable):
+    pass
+
+class LargeSimilarityLookupTable(LargeLookupTable, SimilarityLookupTable):
+    pass
+
+class SmallFullLookupTable(SmallLookupTable, FullLookupTable):
+    pass
+
+class LargeFullLookupTable(LargeLookupTable, FullLookupTable):
+    pass
+
+class SmallCountingLookupTable(SmallLookupTable, CountingLookupTable):
+    pass

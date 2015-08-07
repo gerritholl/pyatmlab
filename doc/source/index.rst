@@ -22,6 +22,16 @@ all.
 .. automodule:: pyatmlab
    :members:
 
+arts package
+------------
+
+.. automodule:: pyatmlab.arts
+
+arts.xml module
+---------------
+
+.. automodule:: pyatmlab.arts.xml
+
 collocations module
 -------------------
 
