@@ -14,7 +14,7 @@ def get_version(path_to_changelog):
     :returns: String with version number major.minor.micro
     """
 
-    with open(path_to_changelog, 'r') as f:
+    with open(path_to_changelog, 'r', encoding='utf-8') as f:
         # should be on third line
         f.readline()
         f.readline()
