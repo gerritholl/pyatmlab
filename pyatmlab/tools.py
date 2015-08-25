@@ -333,6 +333,56 @@ def setmem(obj, memory):
                 setattr(obj, k, memory.cache(meth, **meth.disk_cache_args))
 
 
+def find_next_time_instant(dt1, month=None, day=None, hour=None,
+        minute=None, second=None):
+    """First following time-instant given fields.
+
+    Given a datetime object and fields
+    (year/month/day/hour/minute/second), find the first instant /after/
+    the given datetime meeting those fields.  For example, datetime(2009,
+    2, 28, 22, 0, 0), with hour=1, minute=15, will yield datetime(2009, 3,
+    1, 1, 15).
+
+    WARNING: UNTESTED!
+
+    :param datetime dt1: Starting time
+    :param int month:
+    :param int day:
+    :param int hour:
+    :param int minute:
+    :param int second:
+    """
+    dt2 = datetime.datetime(dt1.year,
+            month or dt1.month,
+            day or dt1.day,
+            hour or dt1.hour,
+            minute or dt1.minute,
+            second or dt1.second)
+
+    while dt2 < dt1:
+        if dt2.month < dt1.month:
+            dt2 = dt2.replace(year=dt2.year+1)
+            continue
+
+        if dt2.day < dt1.day:
+            # if this makes month from 12 to 1, first if-block will
+            # correct
+            dt2 = dt2.replace(month=(mod(dt2.month+1, 12) or 1))
+            continue
+
+        if dt2.hour < dt1.hour:
+            dt2 += datetime.timedelta(days=1)
+            continue
+
+        if dt2.minute < dt1.minute:
+            dt2 += datetime.timedelta(hours=1)
+            continue
+
+        if dt2.second < dt1.second:
+            dt2 += datetime.timedelta(minutes=1)
+            continue
+    return dt2
+
 
 # Next part from http://stackoverflow.com/a/9558001/974555
 

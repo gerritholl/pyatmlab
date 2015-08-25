@@ -41,7 +41,8 @@ dim_names = ["ncols", "nrows", "npages", "nbooks", "nshelves",
 
 def Matrix(elem):
     flatarr = numpy.fromstring(elem.text, sep=" ")
-    dims = [dim for dim in dim_names if dim in elem.attrib.keys()]
+    # turn dims around: in ARTS, [10 x 1 x 1] means 10 pages, 1 row, 1 col
+    dims = [dim for dim in dim_names if dim in elem.attrib.keys()][::-1]
     return flatarr.reshape([int(elem.attrib[dim]) for dim in dims])
 
 Tensor3 = Tensor4 = Tensor5 = Tensor6 = Tensor7 = Matrix

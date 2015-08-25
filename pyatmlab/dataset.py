@@ -467,7 +467,7 @@ class MultiFileDataset(Dataset):
                 return "day"
             return "year"
 
-    def iterate_subdirs(self, d_start, d_end):
+    def iterate_subdirs(self, d_start, d_end, **extra):
         """Iterate through all subdirs in dataset.
 
         Note that this does not check for existance of those directories.
@@ -477,6 +477,9 @@ class MultiFileDataset(Dataset):
 
         :param date d_start: Starting date
         :param date d_end: Ending date
+        :**extra: Any extra keyword arguments.  This will be passed on to
+            format self.basedir / self.subdir, in case the standard fields
+            like year, month, etc. do not provide enough information.
         """
 
         # depending on resolution, iterate by year, month, or day.
@@ -489,14 +492,15 @@ class MultiFileDataset(Dataset):
             year = d.year
             while datetime.date(year, 1, 1) < d_end:
                 yield (dict(year=year),
-                    pathlib.Path(pst.format(year=year)))
+                    pathlib.Path(pst.format(year=year, **extra)))
                 year += 1
         elif res == "month":
             year = d.year
             month = d.month
             while datetime.date(year, month, 1) < d_end:
                 yield (dict(year=year, month=month),
-                    pathlib.Path(pst.format(year=year, month=month)))
+                    pathlib.Path(pst.format(year=year, month=month,
+                                            **extra)))
                 if month == 12:
                     year += 1
                     month = 1
@@ -508,19 +512,25 @@ class MultiFileDataset(Dataset):
                 while d < d_end:
                     doy = d.timetuple().tm_yday
                     yield (dict(year=d.year, doy=doy),
-                        pathlib.Path(pst.format(year=d.year, doy=doy)))
+                        pathlib.Path(pst.format(year=d.year, doy=doy,
+                                                **extra)))
                     d += datetime.timedelta(days=1)
             else:
                 while d < d_end:
                     yield (dict(year=d.year, month=d.month, day=d.day),
                         pathlib.Path(pst.format(
-                            year=d.year, month=d.month, day=d.day)))
+                            year=d.year, month=d.month, day=d.day,
+                            **extra)))
                     d = d + datetime.timedelta(days=1)
         else:
             yield ({}, self.basedir)
           
-    def find_granules(self, dt_start=None, dt_end=None):
+    def find_granules(self, dt_start=None, dt_end=None, **extra):
         """Yield all granules/measurementfiles in period
+
+        Accepts extra keywoard arguments.  Meaning depends on actual
+        dataset.  Could be something like a satellite name in the case of
+        sensors occurring on multiple platforms, like HIRS.
         """
 
         if dt_start is None:
@@ -537,7 +547,8 @@ class MultiFileDataset(Dataset):
                 else dt_end)
         logging.debug(("Searching for {!s} granules between {!s} and {!s} "
                       ).format(self.name, dt_start, dt_end))
-        for (timeinfo, subdir) in self.iterate_subdirs(d_start, d_end):
+        for (timeinfo, subdir) in self.iterate_subdirs(d_start, d_end,
+                                                       **extra):
             if subdir.exists() and subdir.is_dir():
                 logging.debug("Searching directory {!s}".format(subdir))
                 for child in subdir.iterdir():
@@ -630,9 +641,13 @@ class MultiFileDataset(Dataset):
                 if "tod" in gd and start.time() == datetime.time(0):
                     start += datetime.timedelta(seconds=int(gd["tod"]))
                 if any(k.endswith("_end") for k in gd.keys()):
+                    # FIXME: Does this go well at the end of
+                    # year/month/day boundary?  Should really makes ure
+                    # that end is the first time occurance after
+                    # start_time fulfilling the provided information.
                     end_date = [int(gd.get(
                         p+"_end",
-                        kwargs.get(p+"_end", None))) for p in self.datefields]
+                        kwargs.get(p+"_end", "0"))) for p in self.datefields]
                     end_date[0] = self._getyear(gd, "year_end", kwargs.get("year_end", "0"))
                     end = datetime.datetime(*end_date)
                 elif self.granule_duration is not None:

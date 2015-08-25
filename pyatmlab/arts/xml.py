@@ -11,14 +11,8 @@ FIXME:
 
 import xml.etree.ElementTree
 
-from ..tools import switch
 from . import _handlers
 
-#class ArtsTreeBuilder(xml.etree.ElementTree.TreeBuilder):
-#    pass
-#
-#class ArtsXMLParser(xml.etree.ElementTree.XMLParser):
-#    pass
 
 class ArtsElement(xml.etree.ElementTree.Element):
     """Element with value interpretation
@@ -28,9 +22,6 @@ class ArtsElement(xml.etree.ElementTree.Element):
             return getattr(_handlers, self.tag)(self)
         except AttributeError:
             raise ValueError("Don't know how to handle <{}>!".format(self.tag))
-
-#class ArtsElementTree(xml.etree.ElementTree.ElementTree):
-#    pass
 
 def parse(source):
     """Parse ArtsXML file from source.
@@ -44,5 +35,4 @@ def parse(source):
             parser=xml.etree.ElementTree.XMLParser(
                 target=xml.etree.ElementTree.TreeBuilder(
                     element_factory=ArtsElement)))
-# xml.etree.ElementTree.parse("/group_workspaces/cems/fiduceo/Users/g holl/simulations/clearsky/spectra/Fascod_tropical_abs_species.xml", parser=ArtsXMLParser(target=ArtsTreeBuilder(element_factory=ArtsElement)))
 

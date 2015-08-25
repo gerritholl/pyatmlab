@@ -15,6 +15,7 @@ ppb = 1e-9  # parts per billion
 ppt = 1e-12 # parts per trillion
 hecto = 1e2
 kilo = 1e3
+tera = 1e12
 centi = 1e-2
 micro = 1e-6
 M_d = 28.97 # kg kmol^-1; effective molecular weight of dry air; Wallace and Hobbs

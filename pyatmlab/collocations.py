@@ -748,6 +748,16 @@ class CollocatedDataset(dataset.HomemadeDataset):
         #return p_met, s_met
         return numpy.array([p_ind_met, s_ind_met], dtype=numpy.uint64).T
 
+class SamePlatformCollocatedDataset(dataset.HomemadeDataset):
+    """Holds collocations when two datasets are on the same platform.
+
+    When two datasets are on the same platform, it is considerably easier
+    to calculate collocations.  For example, there might be a direct
+    mapping of scan positions.
+
+    To be implemented.
+    """
+
 class CollocationDescriber:
     """Collects various functions to describe a set of collocations
 

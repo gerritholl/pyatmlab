@@ -1,3 +1,53 @@
+2015-08-25  Gerrit Holl  <g.holl@reading.ac.uk>
+
+	* pyatmlab-0-0-94
+
+	* doc/source/index.rst: Small fixes
+
+	* pyatmlab/arts/_handlers(Matrix):
+
+	- Correct order of dimensions
+
+	* pyatmlab/arts/xml.py:
+
+	- Remove unused classes
+
+	* pyatmlab/collocations.py(SamePlatformCollocatedDataset):
+
+	- Start skeleton class for AVHRR/HIRS.  No content yet.
+
+	* pyatmlab/constants.py:
+
+	- Add constant for tera
+
+	* pyatmlab/dataset.py(MultiFileDataset):
+
+	- In preparating for HIRS, use and propagate an **extra set of
+	keyword arguments, to be used to pass meta-information such as what
+	satellite a sensor part of a series belongs to.
+
+	* pyatmlab/datasets/tovs.py:
+
+	(HIRS):
+
+	- Copy over some information on headers and line.  Not very tested
+	yet.
+
+	(IASI):
+
+	- Introduce tolerance in wavenumber equivalence testing, due to loss
+	of precision when storing this information in text on disk and going
+	back and forth to and from frequencies.
+
+	* pyatmlab/db.py:
+
+	- Add binning based on PCA.  This affects many methods in several
+	classes.
+
+	* pyatmlab/tools.py(find_next_time_instant):
+
+	- Started work on new function, unfinished and untested.
+
 2015-08-07  Gerrit Holl  <g.holl@reading.ac.uk>
 
 	* pyatmlab-0-0-93

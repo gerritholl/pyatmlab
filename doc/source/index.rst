@@ -26,11 +26,13 @@ arts package
 ------------
 
 .. automodule:: pyatmlab.arts
+   :members:
 
 arts.xml module
 ---------------
 
 .. automodule:: pyatmlab.arts.xml
+   :members:
 
 collocations module
 -------------------

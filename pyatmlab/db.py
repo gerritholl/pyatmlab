@@ -25,6 +25,7 @@ import numpy.lib.recfunctions
 #import numpy.ma
 import scipy.io
 
+import matplotlib.mlab # contains PCA class
 #import matplotlib.pyplot
 #import matplotlib.cm
 
@@ -543,6 +544,8 @@ class LookupTable(abc.ABC):
     based on training data.  If newly presented data does not look like
     any pre-trained data, an error is raised.
 
+    Binning based on PCAs is currently being implemented.
+
     Attributes::
 
         axdata.  Dictionary with keys corresponding to the axes to be
@@ -554,21 +557,15 @@ class LookupTable(abc.ABC):
         bins
         db
 
-    TODO:
-        - Need more intelligent binning when using multiple dimensions.
-          Bins for variable n might depend on the value of the bins in
-          n-1.  In practice, this may be easiest to implement by binning
-          the *difference* between variable n and n-1.  Which raises the
-          question if n+1 should be differenced to n or to n-1.  Needs
-          some thinking.
-    """
+    To create an instance, use either .fromData or .fromFile (if
+    available).
 
-    #axes = ("doy", "mlst", "lat", "lon", "parcol")
-    # higher for doy as this has the largest control.
-    #axsizes = dict(doy=20, mlst=10, lat=10, lon=10, parcol=10)
+    """
 
     #_loaded = False
     axdata = bins = db = None
+
+    use_pca = False
 
 
     def compact_summary(self):
@@ -577,9 +574,15 @@ class LookupTable(abc.ABC):
         Suitable in filename
         """
 
-        s = "-".join(
-                ["{:s}_{:d}".format(k,v["nsteps"])
-                    for (k, v) in sorted(self.axdata.items())])
+        if self.use_pca:
+            s = "PCA_{:s}_{:d}_{:.1f}".format(
+                ",".join(self.axdata["PCA"]["fields"]),
+                self.axdata["PCA"]["npc"],
+                self.axdata["PCA"]["scale"])
+        else:
+            s = "-".join(
+                    ["{:s}_{:d}".format(k,v["nsteps"])
+                        for (k, v) in sorted(self.axdata.items())])
         return s
 
     def __repr__(self):
@@ -587,25 +590,46 @@ class LookupTable(abc.ABC):
             self.compact_summary())
 
 
-    def get_index_tuple(self, dat):
+    def get_index_tuple(self, dat, full=False):
         """Get a tuple of indices for use in the lookup table
+
+        Returns either the full tuple, or only the elements
+        considering to the number of PCs considered originally.
         """
-        return tuple(stats.bin_nd_sparse([dat[ax]
-                for ax in list(self.axdata.keys())], self.bins).squeeze().tolist())
+        if self.use_pca:
+            fields = self.axdata["PCA"]["fields"]
+            t = tuple(
+                stats.bin_nd_sparse(self.pca.project(numpy.vstack(
+                                        [dat[ax] for ax in fields]).T),
+                                    self.bins).squeeze().tolist())
+            if not full:
+                t = t[:self.axdata["PCA"]["npc"]]
+
+            return t
+        else:
+            fields = list(self.axdata.keys())
+            return tuple(stats.bin_nd_sparse([dat[ax]
+                    for ax in fields], self.bins).squeeze().tolist())
 
     def get_index_tuples(self, data):
         """Yield tuples of indices for use in the lookup table
         """
+        # FIXME: can be faster when `dat` is large
         for dat in data:
             yield (self.get_index_tuple(dat), dat)
 
        
     def lookup_all(self, data):
-        for dat in data:
+        # FIXME: can be faster when dat is large
+        logging.info("Looking up {:d} radiances".format(data.size))
+        for (i, dat) in enumerate(data):
             try:
                 yield self.lookup(dat)
             except KeyError:
-                yield None
+                logging.error("Not found for no. {:d}. :( "
+                    "Should implement lookaround or enlarge LUT!".format(i))
+                continue
+                #yield None
         #yield from (self.lookup(dat) for dat in data)
 
     def lookaround(self, dat):
@@ -618,30 +642,88 @@ class LookupTable(abc.ABC):
         manytup = itertools.product(*[range(i-1,i+2) for i in tup])
         yield from (t for t in manytup if t in self.db)
 
-    @staticmethod
-    def _get_bins_from_axdata(axdata):
+    def _get_bins(self, data, axdata, pca=False):
         bins = []
-        for ax in axdata.keys():
-            if "range" in axdata[ax].keys():
-                (rmin, rmax) = axdata[ax]["range"]
-            else:
-                rmin = numpy.nanmin(data[ax])*0.99
-                rmax = numpy.nanmin(data[ax])*1.01
+        if pca:
+            # This means axdata has a single key "PCA" with fields
+            # “scale”.  It also means that `data` is in PCA space, i.e.
+            # pca.Y.
+#            rmin = numpy.nanmin(data, 0)
+#            rmin -= 0.001*abs(rmin)
+#            rmax = numpy.nanmax(data, 0)
+#            rmax += 0.001*abs(rmax)
+            # number of bins per PC
+            nbins = numpy.ceil(self.pca.fracs*100*axdata["PCA"]["scale"])
+            bins = [numpy.linspace(data[:, i].min(),
+                                   data[:, i].max(),
+                                   max(p, 2))
+                        for (i, p) in enumerate(nbins)]
+            return bins[:axdata["PCA"]["npc"]]
+#            b = [self._get_bins_from_range(rmi, rma, axdata, "PCA")
+#                    for (rmi, rma) in zip(rmin, rmax)]
+#            raise NotImplementedError("Not implemented yet!")
+        else:
+            for ax in axdata.keys():
+                if "range" in axdata[ax].keys():
+                    (rmin, rmax) = axdata[ax]["range"]
+                else:
+                    rmin = numpy.nanmin(data[ax])
+                    rmin -= 0.001*abs(rmin)
+                    rmax = numpy.nanmin(data[ax])
+                    rmax += 0.001*abs(rmax)
 
-            for case in tools.switch(axdata[ax].get("mode", "linear")):
-                if case("linear"):
-                    b = numpy.linspace(rmin, rmax, axdata[ax]["nsteps"])
-                    break
-                if case("optimal"):
-                    inrange = (data[ax] >= rmin) & (data[ax] <= rmax)
-                    b = scipy.stats.scoreatpercentile(data[ax][inrange],
-                            numpy.linspace(0, 100, axdata[ax]["nsteps"]))
-                    break
-                if case():
-                    raise ValueError("ax {!s} unknown mode {!s}, I know "
-                        "'linear' and 'optimal'".format(axdata[ax], axdata[ax]["mode"]))
-            bins.append(b)
-        return bins
+                b = self._get_bins_from_range(rmin, rmax, axdata, ax)
+#                for case in tools.switch(axdata[ax].get("mode", "linear")):
+#                    if case("linear"):
+#                        b = numpy.linspace(rmin, rmax, axdata[ax]["nsteps"])
+#                        break
+#                    if case("optimal"):
+#                        inrange = (data[ax] >= rmin) & (data[ax] <= rmax)
+#                        b = scipy.stats.scoreatpercentile(data[ax][inrange],
+#                                numpy.linspace(0, 100, axdata[ax]["nsteps"]))
+#                        break
+#                    if case():
+#                        raise ValueError("ax {!s} unknown mode {!s}, I know "
+#                            "'linear' and 'optimal'".format(axdata[ax], axdata[ax]["mode"]))
+                bins.append(b)
+            return bins
+            # end for
+        # end if
+
+    @staticmethod
+    def _get_bins_from_range(rmin, rmax, axdata, ax):
+        """Small helper for _get_bins.
+
+        From extrema and `axdata` description, get either linearly or
+        logarithmically spaced bins.
+        """
+        for case in tools.switch(axdata[ax].get("mode", "linear")):
+            if case("linear"):
+                b = numpy.linspace(rmin, rmax, axdata[ax]["nsteps"])
+                break
+            if case("optimal"):
+                inrange = (data[ax] >= rmin) & (data[ax] <= rmax)
+                b = scipy.stats.scoreatpercentile(data[ax][inrange],
+                        numpy.linspace(0, 100, axdata[ax]["nsteps"]))
+                break
+            if case():
+                raise ValueError("ax {!s} unknown mode {!s}, I know "
+                    "'linear' and 'optimal'".format(ax, axdata[ax]["mode"]))
+        return b
+
+    @staticmethod
+    def _make_pca(data, axdata):
+        
+        fields = axdata["PCA"]["fields"]
+        valid_range = axdata["PCA"]["valid_range"]
+        if not all([issubclass(data[x].dtype.type, numpy.floating)
+                        for x in fields]):
+            logging.warning("Casting all data to float64 for PCA")
+
+        data_mat = numpy.vstack([data[x] for x in fields]).T
+        valid = numpy.all((data_mat > valid_range[0]) &
+                          (data_mat < valid_range[1]), 1)
+        return matplotlib.mlab.PCA(data_mat[valid, :])
 
     def lookup(self, dat):
         tup = self.get_index_tuple(dat)
@@ -697,26 +779,65 @@ class SmallLookupTable(LookupTable):
 
         ``axdata`` should be a ``collections.OrderedDict`` where the keys
         refer to fields from `data` to use, and the values are
-        dictionaries with the keys:
+        dictionaries with the keys.  If regular binning is used (i.e. no
+        PCA), those keys are:
 
-        nsteps (mandatory)
-            number of steps in binning data
-        mode
-            string that can be either "linear" (use linspace between
-            extremes) or "optimal" (choose bins based on percentiles so
-            1-D binning would create equal content in each).
-            Defaults to linear.
-        range
-            tuple with (min, max) of range within which to bin data.
-            Defaults to extremes of data.
+            nsteps (mandatory)
+                number of steps in binning data
+            mode
+                string that can be either "linear" (use linspace between
+                extremes) or "optimal" (choose bins based on percentiles so
+                1-D binning would create equal content in each).
+                Defaults to linear.
+            range
+                tuple with (min, max) of range within which to bin data.
+                Defaults to extremes of data.
+
+        
+        It is also possible to bin based on PCA.  In this case, ``axdata''
+        should have a single key "PCA".  When binning based on PCA, the
+        number of bins per PC are proportional the the proportion of
+        variance along each PC axis (pca.fracs).  By default, the number
+        of bins is the % of variability associated with the axis, i.e. if
+        the first PC explains 67% of variability and the second 25%, there
+        will be 67 and 25 bins, respectively.  This can be scaled by
+        setting the key `scale` to something other than one.
+
+            fields
+                Sequence of strings: what fields to use in PCA-based
+                analysis.
+
+            npc
+                Integer, how many PCs to consider
+
+            scale
+                Float, defaults to 1.0, for scaling the number of bins.
+
+            valid_range
+                Before performing PCA, require that ALL input vectors are
+                within this range, otherwise discard.
 
         """
         self = cls()
-        bins = self._get_bins_from_axdata(axdata)
-        binned_indices = stats.bin_nd(
-            [data[ax] for ax in axdata.keys()], bins)
+        self.use_pca = list(axdata.keys()) == ["PCA"]
+        self.pca = None
+        if self.use_pca:
+            # _make_pca considers axdata["PCA"]["fields"]
+            self.pca = self._make_pca(data, axdata)
+            # _get_bins considers axdata["PCA"]["npc"]
+            #                 and axdata["PCA"]["scale"]
+            bins = self._get_bins(self.pca.Y, axdata, pca=True)
+            binned_indices = stats.bin_nd(
+                [self.pca.Y[:, i] for i in range(self.pca.Y.shape[1])])
+        else:
+            fields = axdata.keys()
+            bins = self._get_bins(data, axdata, pca=False)
+            binned_indices = stats.bin_nd(
+                [data[ax] for ax in fields], bins)
         db = {}
-        # select one wherever there is at least one
+        # Do something for every bin.  `_choose` is implemented in another
+        # class, it might do a count, it might choose one, or it might
+        # choose all.
         for ii in itertools.product(*(range(i) for i in
                 binned_indices.shape)):
             # ii should be a tuple that can be passed directly
@@ -749,13 +870,21 @@ class LargeLookupTable(LookupTable):
         return "large_similarity_db_{}".format(self.compact_summary())
 
     @classmethod
-    def fromData(cls, data, axdata):
+    def fromData(cls, data, axdata, use_pca=False):
+        # docstring copied from SmallLookupTable
+
         self = cls()
-        bins = self._get_bins_from_axdata(axdata)
+        self.use_pca = use_pca
+        if use_pca:
+            self.pca = self._make_pca(data, axdata)
+            bins = self._get_bins(self.pca.Y, axdata, pca=True)
+        else:
+            bins = self._get_bins(data, axdata, pca=False)
         self.axdata = axdata
         self.bins = bins
         if not self.bucket_dir().is_dir():
             self.bucket_dir().mkdir(parents=True)
+        self.storemeta()
         self.addData(data)
         return self
     fromData.__doc__ = SmallLookupTable.__doc__
@@ -776,14 +905,21 @@ class LargeLookupTable(LookupTable):
                 self[t] = numpy.atleast_1d(contents)
             k.add(t)
         self.dumpcache() # store and clear
+        self.storemeta()
 
     @classmethod
     def fromDir(cls, dir):
         """Initialise from directory
 
         """
+        self = cls()
         with (pathlib.Path(dir) / "info.npy").open(mode="rb") as fp:
             (self.axdata, self.bins) = pickle.load(fp)
+        if "PCA" in self.axdata:
+            self.use_pca = True
+            with (pathlib.Path(dir) / "pca.npy").open(mode="rb") as fp:
+                self.pca = pickle.load(fp)
+        return self
 
     def keys(self):
         """Yield keys one by one.  Reads from directory, no caching!
@@ -809,6 +945,8 @@ class LargeLookupTable(LookupTable):
             return self._db[tup]
         else:
             path = self.bucket_name(tup)
+            if not path.exists():
+                raise KeyError("No entry for {!s}".format(tup))
             with lzma.open(str(path), mode="rb") as fp:
                 v = numpy.load(fp)
             self._db[tup] = v
@@ -832,6 +970,9 @@ class LargeLookupTable(LookupTable):
         d = self.bucket_dir()
         with (d / "info.npy").open(mode="wb") as fp:
             pickle.dump((self.axdata, self.bins), fp, protocol=4)
+        if self.use_pca:
+            with (d / "pca.npy").open(mode="wb") as fp:
+                pickle.dump(self.pca, fp, protocol=4)
 
     def loadmeta(self):
         """Load metadata for database
