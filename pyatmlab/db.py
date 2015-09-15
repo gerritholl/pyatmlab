@@ -29,6 +29,8 @@ import matplotlib.mlab # contains PCA class
 #import matplotlib.pyplot
 #import matplotlib.cm
 
+import progressbar
+
 from . import tools
 from . import stats
 from . import config
@@ -627,7 +629,7 @@ class LookupTable(abc.ABC):
                 yield self.lookup(dat)
             except KeyError:
                 logging.error("Not found for no. {:d}. :( "
-                    "Should implement lookaround or enlarge LUT!".format(i))
+                    "Should implement lookaround, enlarge LUT, or make it denser!".format(i))
                 continue
                 #yield None
         #yield from (self.lookup(dat) for dat in data)
@@ -859,7 +861,6 @@ class SmallLookupTable(LookupTable):
 class LargeLookupTable(LookupTable):
     """Lookup table too large in memory, mapped to directory
 
-    Needs caching/flushing!
     """
     basename = "bucket/{coor:s}/contents.npy.xz"
     _db = {}
@@ -893,7 +894,11 @@ class LargeLookupTable(LookupTable):
         """Add a lot of data
         """
         k = set()
-        for (t, contents) in self.get_index_tuples(data):
+        bar = progressbar.ProgressBar(maxval=len(data),
+            widgets=[progressbar.Bar("=", "[", "]"), " ",
+                    progressbar.Percentage()])
+        bar.start()
+        for (i, (t, contents)) in enumerate(self.get_index_tuples(data)):
             if t in k:
                 cur = self[t]
 #                contents = contents[numpy.array([contents[i] not in cur
@@ -904,6 +909,8 @@ class LargeLookupTable(LookupTable):
             else:
                 self[t] = numpy.atleast_1d(contents)
             k.add(t)
+            bar.update(i+1)
+        bar.finish()
         self.dumpcache() # store and clear
         self.storemeta()
 
@@ -938,7 +945,7 @@ class LargeLookupTable(LookupTable):
                               self._maxcache, len(self._db)))
                 self.dumpcache()
             else:
-                self._N += 10
+                self._N += 10 # i.e. after every 10 new entries, check size
 
     def __getitem__(self, tup):
         if tup in self._db: # cached
@@ -953,15 +960,32 @@ class LargeLookupTable(LookupTable):
             return v
 
     def dumpcache(self):
+        sizes = [v.size for v in self._db.values()]
+        logging.info("Dumping cache for {:,} profiles in {:d} buckets to {!s}".format(
+                    sum(sizes), len(self._db), self.bucket_dir()))
+        bar = progressbar.ProgressBar(maxval=len(self._db), 
+                    widgets=[progressbar.Bar('=', '[', ']'), ' ',
+                    progressbar.Percentage()])
+        bar.start()
+        newdirs = 0
+        counts = numpy.zeros(dtype=numpy.uint32, shape=(max(sizes)+1),)
         for (i, (k, v)) in enumerate(self._db.items()):
             path = self.bucket_name(k)
-            if v.nbytes > 6e5 or not path.parent.is_dir():
-                logging.debug("Storing {:d}/{:d}, {:,} bytes to {!s}".format(
-                    i, len(self._db), v.nbytes, path))
             if not path.parent.is_dir():
+                #logging.info("Creating directory {!s}".format(path.parent))
                 path.parent.mkdir(parents=True)
+                newdirs += 1
+#            if v.nbytes > 1e6:
+#                logging.debug("Storing {:d}/{:d}, {:,} bytes to {!s}".format(
+#                    i, len(self._db), v.nbytes, path))
+            counts[v.size] += 1
             with lzma.open(str(path), mode="wb") as fp:
                 numpy.save(fp, v)
+            bar.update(i+1)
+        bar.finish()
+        logging.info("Stored cache.  Created {:d} new directories. "
+                     "Profiles per bucket histogram: {!s}".format(newdirs, counts))
+
         self.clearcache()
 
     def storemeta(self):

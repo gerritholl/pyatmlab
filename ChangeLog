@@ -1,3 +1,11 @@
+2015-09-15  Gerrit Holl  <g.holl@reading.ac.uk>
+
+	* pyatmlab-0-0-95:
+
+	* pyatmlab/db.py:
+
+	- Use progressbars, yahoo!
+
 2015-08-25  Gerrit Holl  <g.holl@reading.ac.uk>
 
 	* pyatmlab-0-0-94
