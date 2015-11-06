@@ -23,7 +23,8 @@ def plotdir():
     """
     return datetime.date.today().strftime(config.get_config('plotdir'))
 
-def print_or_show(fig, show, outfile, in_plotdir=True, tikz=None, data=None):
+def print_or_show(fig, show, outfile, in_plotdir=True, tikz=None,
+                  data=None, store_meta=None):
     """Either print or save figure, or both, depending on arguments.
 
     Taking a figure, show and/or save figure in the default directory,
@@ -45,6 +46,13 @@ def print_or_show(fig, show, outfile, in_plotdir=True, tikz=None, data=None):
     :param data: Store associated data in .dat file (useful for pgfplots).
         May be a list of ndarrays, which results in multiple numbered datafiles.
     :type data: ndarray or list thereof
+    :param store_meta: Also store other info.  This is a string that will
+        be written to a file.  If not set or set to None, it will just
+        write the pyatmlab version.  The file will use the same basename
+        as the outfile, but replacing the extention by "info".  However,
+        this only works if outfile is a string and not a list thereof.
+        To write nothing, pass an empty string.
+    :type store_meta: str.
     """
 
     if outfile is not None:
@@ -52,8 +60,10 @@ def print_or_show(fig, show, outfile, in_plotdir=True, tikz=None, data=None):
         if isinstance(outfile, str):
             if outfile.endswith("."):
                 outfiles = [outfile+ext for ext in ("png", "pdf")]
+                infofile = outfile + "info"
             else:
                 outfiles = [outfile]
+                infofile = None
 
         # interpret as sequence
         for outf in outfiles:
@@ -63,8 +73,17 @@ def print_or_show(fig, show, outfile, in_plotdir=True, tikz=None, data=None):
             if not os.path.exists(os.path.dirname(outf)):
                 os.makedirs(os.path.dirname(outf))
             fig.canvas.print_figure(outf)
+        if store_meta is None:
+            info = "pyatmlab-{:s}".format(meta.get_full_version())
+        else:
+            info = store_meta
+
+        if infofile is not None and info:
+            with open(infofile, "w", encoding="utf-8") as fp:
+                fp.write(info)
     if show:
         matplotlib.pyplot.show()
+
     if tikz is not None:
         import matplotlib2tikz
         print(now(), "Writing also to:", os.path.join(plotdir(), tikz))
