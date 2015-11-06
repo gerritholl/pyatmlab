@@ -5,6 +5,7 @@
 """
 
 import sys
+import pkg_resources
 
 def get_version(path_to_changelog):
     """Obtain version number from latest ChangeLog entry
@@ -29,3 +30,9 @@ def expanddoc(f):
     """
     f.__doc__ = f.__doc__.format(**vars(sys.modules[f.__module__]))
     return f
+
+def get_full_version():
+    """Get version number from pkg_resources
+    """
+
+    return pkg_resources.get_distribution("pyatmlab").version
