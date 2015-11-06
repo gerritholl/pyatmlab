@@ -34,7 +34,7 @@ setup(
     packages=['pyatmlab', 'tests', 'pyatmlab.datasets', 'pyatmlab.arts'],
     install_requires=["numpy>=1.10", "scipy>=0.16", "pyproj>=1.9",
                       "statsmodels>=0.6", "pytz>=2015.4",
-                      "progressbar>2.3",
+                      "progressbar2>=3.3",
                       "matplotlib>=1.4"],
     long_description=read('README'),
     classifiers=[
