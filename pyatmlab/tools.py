@@ -216,37 +216,44 @@ def mutable_cache(maxsize=10):
                 logging.debug(("Getting result from cache "
                     " (key {!s}").format(key))
                 return result
+            if kwds.get("CLEAR_CACHE"):
+                del kwds["CLEAR_CACHE"]
+                cache.clear()
+                keylist.clear()
 #            logging.debug("No result in cache")
             result = user_function(*args, **kwds)
 #            logging.debug("Storing result in cache")
             cache[key] = result
             keylist.append(key)
             if len(keylist) > maxsize:
-                del cache[keylist[0]]
-                del keylist[0]
+                try:
+                    del cache[keylist[0]]
+                    del keylist[0]
+                except KeyError:
+                    pass
             return result
 
         return functools.update_wrapper(wrapper, user_function)
 
     return decorating_function
 
-
-    def __init__(self, fn):
-        self.fn = fn
-        self.memo = {}
-        self.keys = [] # don't store too many
-
-    def __call__(self, *args, **kwds):
-        str = pickle.dumps(args, 1)+pickle.dumps(kwds, 1)
-        if not str in self.memo:
-            self.memo[str] = self.fn(*args, **kwds)
-            self.keys.append(str)
-            if len(self.keys) > maxsize:
-                del self.memo[self.keys[0]]
-                del self.keys[0]
-
-        return self.memo[str]
-
+#
+#    def __init__(self, fn):
+#        self.fn = fn
+#        self.memo = {}
+#        self.keys = [] # don't store too many
+#
+#    def __call__(self, *args, **kwds):
+#        str = pickle.dumps(args, 1)+pickle.dumps(kwds, 1)
+#        if not str in self.memo:
+#            self.memo[str] = self.fn(*args, **kwds)
+#            self.keys.append(str)
+#            if len(self.keys) > maxsize:
+#                del self.memo[self.keys[0]]
+#                del self.keys[0]
+#
+#        return self.memo[str]
+#
 class NotTrueNorFalseType:
     """Not true, nor false.
 

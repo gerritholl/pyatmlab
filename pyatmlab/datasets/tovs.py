@@ -246,6 +246,7 @@ class HIRS4(HIRS):
     satellites = {"noaa18", "noaa19", "metopa", "metopb"}
     pdf_definition_pages = (38, 54)
 
+    # Obtained using get_definition_from_PDF.  Please note correction!
     head_dtype = numpy.dtype([('hrs_h_siteid', '|S3', 1),
                       ('hrs_h_blank', '|S1', 1),
                       ('hrs_h_l1bversnb', '>i2', 1),

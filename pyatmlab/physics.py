@@ -484,6 +484,19 @@ class SRF:
         self.f = f
         self.W = W
 
+    def __repr__(self):
+        """Get string representation.
+
+        Uses centroid
+        """
+        cf = self.centroid()
+        if cf > 1e13:
+            cw = frequency2wavelength(cf)
+            s = "{:.3f} µm".format(cw/micro)
+        else:
+            s = "{:.3f} GHz".format(cw/giga)
+        return "<{:s}: {:s}>".format(self.__class__.__name__, s)
+
     def centroid(self):
         """Calculate centre frequency
         """
@@ -571,6 +584,17 @@ class SRF:
 #        L_BT[L==0] = 0
 #        L_BT[L!=0] = self.L_to_T(L[L!=0])
         return self.L_to_T(L)
+
+    # Methods returning new SRFs with some changes
+    def shift(self, amount):
+        """Get new SRF, shifted by <amount>
+
+        Return a new SRF, shifted by <amount> Hz.  The shape of the SRF is
+        retained.
+
+        :param float amount: Distance to shift SRF [Hz]
+        """
+        return self.__class__(self.f+amount, self.W)
                     
 def planck_f(f, T):
     """Planck law expressed in frequency

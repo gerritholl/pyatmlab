@@ -8,6 +8,7 @@ from a variety of formats and write it to a variety of formats.
 Mostly obtained from PyARTS.
 """
 
+import sys
 import abc
 import copy
 import random
@@ -592,6 +593,13 @@ class LookupTable(abc.ABC):
             self.compact_summary())
 
 
+    @property
+    def fields(self):
+        if self.use_pca:
+            return self.axdata["PCA"]["fields"]
+        else:
+            return self.axdata["fields"]
+
     def get_index_tuple(self, dat, full=False):
         """Get a tuple of indices for use in the lookup table
 
@@ -915,12 +923,23 @@ class LargeLookupTable(LookupTable):
         self.storemeta()
 
     @classmethod
-    def fromDir(cls, dir):
+    def fromDir(cls, arg):
         """Initialise from directory
 
+        `arg` can be either a directory (str or pathlib.Path), or a
+        dictionary of axdata describing such (see fromData docstring).
         """
         self = cls()
+
+        if isinstance(arg, dict):
+            self.axdata = arg
+            self.use_pca = "PCA" in arg
+            dir = self.bucket_dir()
+        else:
+            dir = arg
+
         with (pathlib.Path(dir) / "info.npy").open(mode="rb") as fp:
+            logging.info("Reading into {!s}".format(pathlib.Path(dir)))
             (self.axdata, self.bins) = pickle.load(fp)
         if "PCA" in self.axdata:
             self.use_pca = True
@@ -955,7 +974,11 @@ class LargeLookupTable(LookupTable):
             if not path.exists():
                 raise KeyError("No entry for {!s}".format(tup))
             with lzma.open(str(path), mode="rb") as fp:
-                v = numpy.load(fp)
+                try:
+                    v = numpy.load(fp)
+                except Exception as e:
+                    raise type(e)(str(e) + " while reading {!s}".format(
+                        path)).with_traceback(sys.exc_info()[2])
             self._db[tup] = v
             return v
 
@@ -1006,7 +1029,7 @@ class LargeLookupTable(LookupTable):
             (self.axdata, self.bins) = pickle.load(fp)
 
     def clearcache(self):
-        self._db = {}
+        self._db.clear()
         self._N = 0
 
     def bucket_dir(self):

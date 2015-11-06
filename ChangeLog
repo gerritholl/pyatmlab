@@ -1,6 +1,27 @@
+2015-11-06 NOTE
+
+This Changelog is now abandoned.  Use git log instead.
+
+2015-11-06  Gerrit Holl  <g.holl@reading.ac.uk>
+
+	* pyatmlab-0-0-96
+
+	* pyatmlab/constants.py: Add nano and giga
+
+	* pyatmlab/datasets/tovs.py: Add clarification comment
+
+	* pyatmlab/db.py: Initialise fromDir from existing argdict.
+		Fix bug with db clear.
+
+	* pyatmlab/physics.py(SRF): Add methods for string representation and
+	SRF shift
+
+	* pyatmlab/tools.py(mutable_cache): Comment out unreachable code and
+	fix bug
+	
 2015-09-15  Gerrit Holl  <g.holl@reading.ac.uk>
 
-	* pyatmlab-0-0-95:
+	* pyatmlab-0-0-95
 
 	* pyatmlab/db.py:
 
