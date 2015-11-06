@@ -619,7 +619,7 @@ class MultiFileDataset(Dataset):
         """For granule stored in `path`, get start and end times.
 
         May take hints for year, month, day, hour, minute, second, and
-        their endings, according to self.date_fields
+        their endings, according to self.datefields
         """
         if not isinstance(p, pathlib.PurePath):
             p = pathlib.PurePath(p)
@@ -645,11 +645,15 @@ class MultiFileDataset(Dataset):
                     # year/month/day boundary?  Should really makes ure
                     # that end is the first time occurance after
                     # start_time fulfilling the provided information.
-                    end_date = [int(gd.get(
-                        p+"_end",
-                        kwargs.get(p+"_end", "0"))) for p in self.datefields]
-                    end_date[0] = self._getyear(gd, "year_end", kwargs.get("year_end", "0"))
+                    end_date = st_date.copy()
+                    end_date[0] = self._getyear(gd, "year_end", kwargs.get("year_end", st_date[0]))
+                    end_date[1:] = [int(gd.get(p+"_end",
+                                               kwargs.get(p+"_end", sd_x)))
+                                   for (p, sd_x) in zip(self.datefields[1:],
+                                                        st_date[1:])]
                     end = datetime.datetime(*end_date)
+                    if end_date < st_date: # must have crossed date boundary
+                        end += datetime.timedelta(days=1)
                 elif self.granule_duration is not None:
                     end = start + self.granule_duration
                 else:
