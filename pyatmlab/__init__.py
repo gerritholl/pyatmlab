@@ -2,7 +2,7 @@
 
 from . import meta
 
-#__version__ = meta.get_version()
+__version__ = "0.1.0+"
 
 __doc__ = """This is pyatmlab
 """
