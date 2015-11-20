@@ -160,12 +160,11 @@ class HIRS3(HIRS):
                       ('hrs_h_filler5', '>u4', 2),
                       ('hrs_h_tempradcnv', '>u4', 57),
                       ('hrs_h_20solfiltirrad', '>u2', 1),
+                      ('hrs_h_20equifiltwidth', '>u2', 1),
                       # CORRECTION! NWPSAF guide says there is 1 field
                       # here, but in reality it is 2 (see NOAA KLM User's
-                      # Guide, page 8-109, PDF page 420)
-                      #('hrs_h_20equifiltwidth', '>u2', 1), 
-                      ('hrs_h_20equifiltwidth', '>u2', 2), # CORRECTION!
-                      ('hrs_h_filler6', '>u4', 1),
+                      # Guide, page 8-110, PDF page 421)
+                      ('hrs_h_filler6', '>u4', 2),
                       ('hrs_h_modelid', '|S8', 1),
                       ('hrs_h_nadloctol', '>u2', 1),
                       ('hrs_h_locbit', '>u2', 1),
