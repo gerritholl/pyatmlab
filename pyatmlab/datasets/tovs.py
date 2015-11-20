@@ -6,6 +6,7 @@ import tempfile
 import subprocess
 import datetime
 import logging
+import gzip
 
 import numpy
 
@@ -32,7 +33,7 @@ class HIRS(dataset.MultiFileDataset, Radiometer):
     format_definition_file = ""
 
     def _read(self, path, fields="all", return_header=False):
-        if path.suffix == ".gz":
+        if path.endswith(".gz"):
             opener = gzip.open
         else:
             opener = open
@@ -42,10 +43,10 @@ class HIRS(dataset.MultiFileDataset, Radiometer):
             else: # assuming additional header
                 f.seek(512, io.SEEK_SET)
 
-            header_bytes = f.read(4608)
+            header_bytes = f.read(self.header_dtype.itemsize)
             header = numpy.frombuffer(header_bytes, self.header_dtype)
             scanlines_bytes = f.read()
-            scanlines = numpy.frombuffer(scanlines_bytes, self.scanline_dtype)
+            scanlines = numpy.frombuffer(scanlines_bytes, self.line_dtype)
         if fields != "all":
             scanlines = scanlines[fields]
         return (header, scanlines) if return_header else scanlines
@@ -205,6 +206,9 @@ class HIRS3(HIRS):
                       ('hrs_h_fwmcur', '>u2', 6),
                       ('hrs_h_scmcur', '>u2', 6),
                       ('hrs_h_pchcpow', '>u2', 6),
+                      # CORRECTION: Due to the earlier error, there's 889
+                      # left, not 890, for the total itemsize must remain
+                      # 4608
                       ('hrs_h_filler9', '>u4', 890)])
 
     line_dtype = numpy.dtype([('hrs_scnlin', '>i2', 1),
@@ -247,7 +251,7 @@ class HIRS4(HIRS):
     pdf_definition_pages = (38, 54)
 
     # Obtained using get_definition_from_PDF.  Please note correction!
-    head_dtype = numpy.dtype([('hrs_h_siteid', '|S3', 1),
+    header_dtype = numpy.dtype([('hrs_h_siteid', '|S3', 1),
                       ('hrs_h_blank', '|S1', 1),
                       ('hrs_h_l1bversnb', '>i2', 1),
                       ('hrs_h_l1bversyr', '>i2', 1),
@@ -272,7 +276,11 @@ class HIRS4(HIRS):
                       ('hrs_h_enddatatime', '>i4', 1),
                       ('hrs_h_cpidsyr', '>i2', 1),
                       ('hrs_h_cpidsdy', '>i2', 1),
-                      ('hrs_h_fov1offset', '>i2', 4),
+                      # CORRECTION! NWPSAF guide says there are 4 fields
+                      # here, but in reality there is 1 (see NOAA KLM
+                      # Users Guide – April 2014 Revision, page 8-117, PDF
+                      # page 428
+                      ('hrs_h_fov1offset', '>i2', 1),
                       ('hrs_h_instrtype', '|S6', 1),
                       ('hrs_h_inststat1', '>i4', 1),
                       ('hrs_h_filler1', '>i2', 1),
@@ -300,13 +308,17 @@ class HIRS4(HIRS):
                       ('hrs_h_solarcalyr', '>i2', 1),
                       ('hrs_h_solarcaldy', '>i2', 1),
                       ('hrs_h_calinf', '>i4', 80),
-                      # CORRECTION! NWPSAF calls his hrs_h_filler5, which
+                      # CORRECTION! NWPSAF calls this hrs_h_filler5, which
                       # already occurs a few lines down.
                       ('hrs_h_filler4', '>i4', 2),
                       ('hrs_h_tempradcnv', '>i4', 57),
                       ('hrs_h_20solfiltirrad', '>i2', 1),
                       ('hrs_h_20equifiltwidth', '>i2', 1),
-                      ('hrs_h_filler5', '>i4', 1),
+                      # CORRECTION! NWPSAF guide says there is 1 such
+                      # field, in reality there are 2.  See NOAA KLM
+                      # User's Guide, April 2014 Revision, Page 8-124 /
+                      # PDF Page 435
+                      ('hrs_h_filler5', '>i4', 2),
                       ('hrs_h_modelid', '|S8', 1),
                       ('hrs_h_nadloctol', '>i2', 1),
                       ('hrs_h_locbit', '>i2', 1),
