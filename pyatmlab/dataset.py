@@ -467,6 +467,18 @@ class MultiFileDataset(Dataset):
                 return "day"
             return "year"
 
+    def get_path_format_variables(self):
+        """What extra format variables are needed in find_granules?
+
+        Depending on the dataset, `find_granules` needs zero or more extra
+        formatting valiables.  For example, TOVS instruments require the
+        satellite.  Required formatting arguments are determined by
+        self.basedir and self.subdir.
+        """
+        return {x[1] for x in string.Formatter().parse(
+                    str(self.basedir / self.subdir))} - {"year", "month",
+                                                         "day"}
+
     def iterate_subdirs(self, d_start, d_end, **extra):
         """Iterate through all subdirs in dataset.
 
@@ -528,9 +540,11 @@ class MultiFileDataset(Dataset):
     def find_granules(self, dt_start=None, dt_end=None, **extra):
         """Yield all granules/measurementfiles in period
 
-        Accepts extra keywoard arguments.  Meaning depends on actual
+        Accepts extra keyword arguments.  Meaning depends on actual
         dataset.  Could be something like a satellite name in the case of
-        sensors occurring on multiple platforms, like HIRS.
+        sensors occurring on multiple platforms, like HIRS.  To see what
+        keyword arguments are accepted or possibly needed for a particular
+        dataset, call self.get_path_format_variables()
         """
 
         if dt_start is None:
