@@ -202,17 +202,19 @@ class Dataset(metaclass=tools.DocStringInheritor):
 
     #@functools.lru_cache(maxsize=10)
     @tools.mutable_cache(maxsize=10)
-    def read(self, f=None, fields="all"):
+    def read(self, f=None, fields="all", **kwargs):
         """Read granule in file and do some other fixes
 
         Uses self._read.  Do not override, override _read instead.
 
         :param str f: Path to file
         :param list fields: Fields to read or "all" (default)
+
+        Any further keyword arguments are passed on.
         """
         if isinstance(f, pathlib.PurePath):
             f = str(f)
-        M = self._read(f) if f is not None else self._read()
+        M = self._read(f, **kwargs) if f is not None else self._read(**kwargs)
         return M
 
     def __str__(self):
