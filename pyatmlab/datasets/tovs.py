@@ -15,6 +15,8 @@ import dateutil
 
 from .. import dataset
 from .. import tools
+from .. import constants
+from .. import physics
 
 from . import _tovs_defs
 
@@ -35,7 +37,7 @@ class HIRS(dataset.MultiFileDataset, Radiometer):
     format_definition_file = ""
 
     def _read(self, path, fields="all", return_header=False,
-                    apply_scale_factors=True):
+                    apply_scale_factors=True, calibrate=True):
         if path.endswith(".gz"):
             opener = gzip.open
         else:
@@ -54,6 +56,38 @@ class HIRS(dataset.MultiFileDataset, Radiometer):
             scanlines = scanlines[fields]
         if apply_scale_factors:
             (header, scanlines) = self._apply_scale_factors(header, scanlines)
+        if calibrate:
+            if not apply_scale_factors:
+                raise ValueError("Can't calibrate if not also applying"
+                                 " scale factors!")
+            lat = scanlines["hrs_pos"][:, ::2]
+            lon = scanlines["hrs_pos"][:, 1::2]
+
+            cc = scanlines["hrs_calcof"].reshape(864, 20, 3)
+            cc = cc[:, self.channel_order-1, :]
+            counts = scanlines["hrs_elem"].reshape(864, 64, 24)[:, :56, 2:22]-(2<<11)
+            counts = counts[:, :, self.channel_order-1]
+            rad_wn = self.calibrate(cc, counts)
+            # Convert radiance to BT
+            (wn, c1, c2) = header["hrs_h_tempradcnv"].reshape(19, 3).T
+            # convert wn to SI units
+            wn /= constants.centi
+            bt = self.rad2bt(rad_wn[:, :, :19], wn, c1, c2)
+            # Copy over all fields... could use
+            # numpy.lib.recfunctions.append_fields but incredibly slow!
+            scanlines_new = numpy.empty(shape=scanlines.shape,
+                dtype=(scanlines.dtype.descr +
+                    [("radiance", "f8", (56, 20,)),
+                     ("bt", "f8", (56, 19,))]))
+            for f in scanlines.dtype.names:
+                scanlines_new[f] = scanlines[f]
+            scanlines_new["radiance"] = physics.specrad_wavenumber2frequency(rad_wn)
+            scanlines_new["bt"] = bt
+            scanlines = scanlines_new
+#            scanlines = numpy.lib.recfunctions.append_fields(
+#                scanlines, ("radiance", "bt"), 
+#                (physics.specrad_wavenumber2frequency(rad_wn), bt))
+
         return (header, scanlines) if return_header else scanlines
             
     def _apply_scale_factors(self, header, scanlines):
@@ -79,6 +113,60 @@ class HIRS(dataset.MultiFileDataset, Radiometer):
                 else:
                     targ[f] = src[f]
         return (new_head, new_line)
+
+    def calibrate(self, cc, counts):
+        """Apply the standard calibration from NOAA KLM User's Guide.
+
+        NOAA KLM User's Guide, section 7.2, equation (7.2-3), page 7-12,
+        PDF page 286:
+
+        r = a₀ + a₁C + a₂²C
+
+        where C are counts and a₀, a₁, a₂ contained in hrs_calcof as
+        documented in the NOAA KLM User's Guide:
+            - Section 8.3.1.5.3.1, Table 8.3.1.5.3.1-1. and
+            - Section 8.3.1.5.3.2, Table 8.3.1.5.3.2-1.,
+        """
+        rad = (cc[:, numpy.newaxis, :, 2]
+             + cc[:, numpy.newaxis, :, 1] * counts 
+             + cc[:, numpy.newaxis, :, 0]**2 * counts)
+        # This is apparently calibrated in units of mW/m2-sr-cm-1.
+        # Convert to SI units.
+        rad *= constants.milli
+        rad *= constants.centi # * not /, because it's 1/(cm^{-1}) = cm^1
+        return rad
+        
+    def rad2bt(self, rad_wn, f, c1, c2):
+        """Apply the standard radiance-to-BT conversion from NOAA KLM User's Guide.
+
+        Applies the standard radiance-to-BT conversion as documented by
+        the NOAA KLM User's Guide.  This is based on a linearisation of a
+        radiance-to-BT mapping for the entire channel.  A more accurate
+        method is available in pyatmlab.physics.SRF.channel_radiance2bt,
+        which requires explicit consideration of the SRF.  Such
+        consideration is implicit here.  That means that this method
+        is only valid assuming the nominal SRF!
+
+        This method relies on values reported in the header of each
+        granule.  See NOAA KLM User's Guide, Table 8.3.1.5.2.1-1., page
+        8-108.  Please convert to SI units first.
+
+        NOAA KLM User's Guide, Section 7.2.
+
+        :param rad_wn: Spectral radiance per wanenumber
+            [W·sr^{-1}·m^{-2}·{m^{-1}}^{-1}]
+        :param f: Central wavenumber [m^{-1}].
+            Note that unprefixed SI units are used.
+        """
+
+        rad_f = physics.specrad_wavenumber2frequency(rad_wn)
+        # standard inverse Planck function
+        T_uncorr = physics.specrad_frequency_to_planck_bt(rad_f,
+            physics.wavenumber2frequency(rad_wn))
+
+        T_corr = (T_uncorr - c2)/c1
+
+        return T_corr
 
     # translation from HIRS.l1b format documentation to dtypes
     _trans_tovs2dtype = {"C": "|S",
@@ -137,6 +225,8 @@ class HIRS3(HIRS):
     header_dtype = _tovs_defs.HIRS_header_dtypes[3]
     line_dtype = _tovs_defs.HIRS_line_dtypes[3]
 
+    channel_order = numpy.asarray(_tovs_defs.HIRS_channel_order[3])
+
 class HIRS4(HIRS):
     satellites = {"noaa18", "noaa19", "metopa", "metopb"}
     pdf_definition_pages = (38, 54)
@@ -145,6 +235,7 @@ class HIRS4(HIRS):
     header_dtype = _tovs_defs.HIRS_header_dtypes[4]
     line_dtype = _tovs_defs.HIRS_line_dtypes[4]
     
+    channel_order = numpy.asarray(_tovs_defs.HIRS_channel_order[4])
 
 class IASI(dataset.MultiFileDataset, dataset.HyperSpectral):
     _dtype = numpy.dtype([

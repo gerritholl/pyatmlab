@@ -234,7 +234,6 @@ HIRS_line_dtypes[3] = numpy.dtype([('hrs_scnlin', '>i2', 1),
       ('hrs_anwrd', '>i1', 16),
       ('hrs_filler6', '>i4', 11)])
 
-
 HIRS_header_dtypes[4] = numpy.dtype([('hrs_h_siteid', '|S3', 1),
       ('hrs_h_blank', '|S1', 1),
       ('hrs_h_l1bversnb', '>i2', 1),
@@ -412,3 +411,8 @@ HIRS_line_dtypes[4] = numpy.dtype([('hrs_scnlin', '>i2', 1),
       ('hrs_analogupdatefg', '>i4', 1),
       ('hrs_anwrd', '|S1', 16),
       ('hrs_filler5', '>i4', 11)])
+
+HIRS_channel_order = {}
+HIRS_channel_order[3] = [1, 17, 2, 3, 13, 4, 18, 11, 19, 7, 8, 20, 10, 14,
+                         6, 5, 15, 12, 16, 9]
+HIRS_channel_order[4] = HIRS_channel_order[3].copy()

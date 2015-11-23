@@ -15,6 +15,7 @@ ppb = 1e-9  # parts per billion
 ppt = 1e-12 # parts per trillion
 nano = 1e-9
 micro = 1e-6
+milli = 1e-3
 centi = 1e-2
 hecto = 1e2
 kilo = 1e3
