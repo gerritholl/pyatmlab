@@ -15,7 +15,9 @@ def get_version():
     #from pyatmlab.meta import get_version as get_v
     from pyatmlab import __version__ as v
     if v.endswith("+"):
-        cp = subprocess.run(["git", "log", "--format=%H", "-n", "1"], stdout=subprocess.PIPE, check=True)
+        #cp = subprocess.run(["git", "log", "--format=%H", "-n", "1"], stdout=subprocess.PIPE, check=True)
+        cp = subprocess.run(["git", "rev-parse", "--short", "HEAD"],
+                            stdout=subprocess.PIPE, check=True)
         v += cp.stdout.decode("ascii".strip())
     return v
     #return get_v(os.path.join(os.path.dirname(__file__), "ChangeLog"))

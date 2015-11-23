@@ -16,6 +16,8 @@ import dateutil
 from .. import dataset
 from .. import tools
 
+from . import _tovs_defs
+
 class Radiometer:
     srf_dir = ""
     srf_backend_response = ""
@@ -32,7 +34,8 @@ class HIRS(dataset.MultiFileDataset, Radiometer):
     name = "hirs"
     format_definition_file = ""
 
-    def _read(self, path, fields="all", return_header=False):
+    def _read(self, path, fields="all", return_header=False,
+                    apply_scale_factors=True):
         if path.endswith(".gz"):
             opener = gzip.open
         else:
@@ -49,8 +52,33 @@ class HIRS(dataset.MultiFileDataset, Radiometer):
             scanlines = numpy.frombuffer(scanlines_bytes, self.line_dtype)
         if fields != "all":
             scanlines = scanlines[fields]
+        if apply_scale_factors:
+            (header, scanlines) = self._apply_scale_factors(header, scanlines)
         return (header, scanlines) if return_header else scanlines
             
+    def _apply_scale_factors(self, header, scanlines):
+        new_head_dtype = self.header_dtype.descr.copy()
+        new_line_dtype = self.line_dtype.descr.copy()
+        for (i, dt) in enumerate(self.header_dtype.descr):
+            if dt[0] in _tovs_defs.HIRS_scale_factors[self.version]:
+                new_head_dtype[i] = (dt[0], ">f8") + dt[2:]
+        for (i, dt) in enumerate(self.line_dtype.descr):
+            if dt[0] in _tovs_defs.HIRS_scale_factors[self.version]:
+                new_line_dtype[i] = (dt[0], ">f8") + dt[2:]
+        new_head = numpy.empty(shape=header.shape, dtype=new_head_dtype)
+        new_line = numpy.empty(shape=scanlines.shape, dtype=new_line_dtype)
+        for (targ, src) in [(new_head, header), (new_line, scanlines)]:
+            for f in targ.dtype.names:
+                # NB: I can't simply say targ[f] = src[f] / 10**0, because
+                # this will turn it into a float and refuse to cast it
+                # into an int dtype
+                if f in _tovs_defs.HIRS_scale_factors[self.version]:
+                    # FIXME: does this work for many scanlines?
+                    targ[f] = src[f] / numpy.power(10,
+                            _tovs_defs.HIRS_scale_factors[self.version][f])
+                else:
+                    targ[f] = src[f]
+        return (new_head, new_line)
 
     # translation from HIRS.l1b format documentation to dtypes
     _trans_tovs2dtype = {"C": "|S",
@@ -97,10 +125,12 @@ class HIRS(dataset.MultiFileDataset, Radiometer):
 class HIRS2(HIRS):
     satellites = {"tirosn", "noaa06", "noaa07", "noaa08", "noaa09", "noaa10",
                   "noaa11", "noaa12", "noaa13", "noaa14"}
+    version = 2
     pass # to be defined
     
 class HIRS3(HIRS):
     pdf_definition_pages = (26, 37)
+    version = 3
 
     satellites = {"noaa15", "noaa16", "noaa17"}
 
@@ -248,6 +278,7 @@ class HIRS3(HIRS):
 class HIRS4(HIRS):
     satellites = {"noaa18", "noaa19", "metopa", "metopb"}
     pdf_definition_pages = (38, 54)
+    version = 4
 
     # Obtained using get_definition_from_PDF.  Please note correction!
     header_dtype = numpy.dtype([('hrs_h_siteid', '|S3', 1),
