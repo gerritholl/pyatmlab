@@ -3,7 +3,29 @@
 
 import numpy
 
-# I don't know a practical way of extracting those automatically, as the
+# Sources:
+#
+# For HIRS/2:
+#
+# - NOAA Polar Orbiter Data User's Guide, POD Guide,
+# http://www.ncdc.noaa.gov/oa/pod-guide/ncdc/docs/podug/index.htm
+# http://www1.ncdc.noaa.gov/pub/data/satellite/publications/podguides/TIROS-N%20thru%20N-14/pdf/
+#   Chapter 2, Chapter 4, ...? 
+#
+# For HIRS/3 and HIRS/4:
+#
+# - NOAA KLM User's Guide,
+# http://www.ncdc.noaa.gov/oa/pod-guide/ncdc/docs/klm/index.htm
+# http://www1.ncdc.noaa.gov/pub/data/satellite/publications/podguides/N-15%20thru%20N-19/pdf/0.0%20NOAA%20KLM%20Users%20Guide.pdf
+# -   and NWFSAF guide
+# https://nwpsaf.eu/deliverables/aapp/NWPSAF-MF-UD-003_Formats.pdf
+#
+# HIRS/3, headers: Table 8.3.1.5.2.1-1., page 8-98 – 8-115
+# HIRS/3, data: Table 8.3.1.5.3.1-1., page 8-142 — 8-169
+# HIRS/4, headers: Table 8.3.1.5.2.2-1., page 8-115 – 8-142
+# HIRS/4, data: Table 8.3.1.5.3.2-1., page 8-169 – 8-187
+
+# I don't know a practical way of extracting scale factors automatically, as the
 # NWPSAF document only lists them in comments/text, and I don't know how
 # to automatically map the NWPsaf document to the KLM User's Guide.
 # Values are obtained from NOAA KLM User's Guide, April 2014 revision.
@@ -14,12 +36,9 @@ import numpy
 # Scale factor should either be scalar, or match the size of one line of
 # data.
 
-# HIRS/3, headers: Table 8.3.1.5.2.1-1., page 8-98 – 8-115
-# HIRS/3, data: Table 8.3.1.5.3.1-1., page 8-142 — 8-169
-# HIRS/4, headers: Table 8.3.1.5.2.2-1., page 8-115 – 8-142
-# HIRS/4, data: Table 8.3.1.5.3.2-1., page 8-169 – 8-187
+HIRS_scale_factors = {}
 
-HIRS_scale_factors = {3: dict(
+HIRS_scale_factors[3] = dict(
     hrs_h_calinf = 6,
     hrs_h_tempradcnv = numpy.concatenate((numpy.tile(6, 12*3), numpy.tile((5, 6, 6), 7))),
     hrs_h_20solfiltirrad = 6,
@@ -67,7 +86,329 @@ HIRS_scale_factors = {3: dict(
     hrs_yawang = 3,
     hrs_scalti = 1,
     hrs_ang = 2,
-    hrs_pos = 4)}
+    hrs_pos = 4)
 
 HIRS_scale_factors[4] = HIRS_scale_factors[3].copy()
-    
+
+HIRS_header_dtypes = {}
+HIRS_line_dtypes = {}
+
+# Obtained using get_definition_from_PDF.  Please note correction!
+HIRS_header_dtypes[3] = numpy.dtype([('hrs_h_siteid', '|S3', 1),
+      ('hrs_h_blank', '|S1', 1),
+      ('hrs_h_l1bversnb', '>u2', 1),
+      ('hrs_h_l1bversyr', '>u2', 1),
+      ('hrs_h_l1bversdy', '>u2', 1),
+      ('hrs_h_reclg', '>u2', 1),
+      ('hrs_h_blksz', '>u2', 1),
+      ('hrs_h_hdrcnt', '>u2', 1),
+      ('hrs_h_filler0', '>u2', 3),
+      ('hrs_h_dataname', '|S42', 1),
+      ('hrs_h_prblkid', '|S8', 1),
+      ('hrs_h_satid', '>u2', 1),
+      ('hrs_h_instid', '>u2', 1),
+      ('hrs_h_datatyp', '>u2', 1),
+      ('hrs_h_tipsrc', '>u2', 1),
+      ('hrs_h_startdatajd', '>u4', 1),
+      ('hrs_h_startdatayr', '>u2', 1),
+      ('hrs_h_startdatady', '>u2', 1),
+      ('hrs_h_startdatatime', '>u4', 1),
+      ('hrs_h_enddatajd', '>u4', 1),
+      ('hrs_h_enddatayr', '>u2', 1),
+      ('hrs_h_enddatady', '>u2', 1),
+      ('hrs_h_enddatatime', '>u4', 1),
+      ('hrs_h_cpidsyr', '>u2', 1),
+      ('hrs_h_cpidsdy', '>u2', 1),
+      ('hrs_h_filler1', '>u2', 4),
+      ('hrs_h_inststat1', '>u4', 1),
+      ('hrs_h_filler2', '>u2', 1),
+      ('hrs_h_statchrecnb', '>u2', 1),
+      ('hrs_h_inststat2', '>u4', 1),
+      ('hrs_h_scnlin', '>u2', 1),
+      ('hrs_h_callocsclin', '>u2', 1),
+      ('hrs_h_misscnlin', '>u2', 1),
+      ('hrs_h_datagaps', '>u2', 1),
+      ('hrs_h_okdatafr', '>u2', 1),
+      ('hrs_h_pacsparityerr', '>u2', 1),
+      ('hrs_h_auxsyncerrsum', '>u2', 1),
+      ('hrs_h_timeseqerr', '>u2', 1),
+      ('hrs_h_timeseqerrcode', '>u2', 1),
+      ('hrs_h_socclockupind', '>u2', 1),
+      ('hrs_h_locerrind', '>u2', 1),
+      ('hrs_h_locerrcode', '>u2', 1),
+      ('hrs_h_pacsstatfield', '>u2', 1),
+      ('hrs_h_pacsdatasrc', '>u2', 1),
+      ('hrs_h_filler3', '>u4', 1),
+      ('hrs_h_spare1', '|S8', 1),
+      ('hrs_h_spare2', '|S8', 1),
+      ('hrs_h_filler4', '>u2', 5),
+      ('hrs_h_autocalind', '>u2', 1),
+      ('hrs_h_solarcalyr', '>u2', 1),
+      ('hrs_h_solarcaldy', '>u2', 1),
+      ('hrs_h_calinf', '>u4', 80),
+      ('hrs_h_filler5', '>u4', 2),
+      ('hrs_h_tempradcnv', '>u4', 57),
+      ('hrs_h_20solfiltirrad', '>u2', 1),
+      ('hrs_h_20equifiltwidth', '>u2', 1),
+      # CORRECTION! NWPSAF guide says there is 1 field
+      # here, but in reality it is 2 (see NOAA KLM User's
+      # Guide, page 8-110, PDF page 421)
+      ('hrs_h_filler6', '>u4', 2),
+      ('hrs_h_modelid', '|S8', 1),
+      ('hrs_h_nadloctol', '>u2', 1),
+      ('hrs_h_locbit', '>u2', 1),
+      ('hrs_h_filler7', '>u2', 1),
+      ('hrs_h_rollerr', '>u2', 1),
+      ('hrs_h_pitcherr', '>u2', 1),
+      ('hrs_h_yawerr', '>u2', 1),
+      ('hrs_h_epoyr', '>u2', 1),
+      ('hrs_h_epody', '>u2', 1),
+      ('hrs_h_epotime', '>u4', 1),
+      ('hrs_h_smaxis', '>u4', 1),
+      ('hrs_h_eccen', '>u4', 1),
+      ('hrs_h_incli', '>u4', 1),
+      ('hrs_h_argper', '>u4', 1),
+      ('hrs_h_rascnod', '>u4', 1),
+      ('hrs_h_manom', '>u4', 1),
+      ('hrs_h_xpos', '>u4', 1),
+      ('hrs_h_ypos', '>u4', 1),
+      ('hrs_h_zpos', '>u4', 1),
+      ('hrs_h_xvel', '>u4', 1),
+      ('hrs_h_yvel', '>u4', 1),
+      ('hrs_h_zvel', '>u4', 1),
+      ('hrs_h_earthsun', '>u4', 1),
+      ('hrs_h_filler8', '>u4', 4),
+      ('hrs_h_rdtemp', '>u2', 6),
+      ('hrs_h_bptemp', '>u2', 6),
+      ('hrs_h_eltemp', '>u2', 6),
+      ('hrs_h_pchtemp', '>u2', 6),
+      ('hrs_h_fhcc', '>u2', 6),
+      ('hrs_h_scnmtemp', '>u2', 6),
+      ('hrs_h_fwmtemp', '>u2', 6),
+      ('hrs_h_p5v', '>u2', 6),
+      ('hrs_h_p10v', '>u2', 6),
+      ('hrs_h_p75v', '>u2', 6),
+      ('hrs_h_m75v', '>u2', 6),
+      ('hrs_h_p15v', '>u2', 6),
+      ('hrs_h_m15v', '>u2', 6),
+      ('hrs_h_fwmcur', '>u2', 6),
+      ('hrs_h_scmcur', '>u2', 6),
+      ('hrs_h_pchcpow', '>u2', 6),
+      # CORRECTION: Due to the earlier error, there's 889
+      # left, not 890, for the total itemsize must remain
+      # 4608
+      ('hrs_h_filler9', '>u4', 890)])
+
+HIRS_line_dtypes[3] = numpy.dtype([('hrs_scnlin', '>i2', 1),
+      ('hrs_scnlinyr', '>i2', 1),
+      ('hrs_scnlindy', '>i2', 1),
+      ('hrs_clockdrift', '>i2', 1),
+      ('hrs_scnlintime', '>i4', 1),
+      ('hrs_scnlinf', '>i2', 1),
+      ('hrs_mjfrcnt', '>i2', 1),
+      ('hrs_scnpos', '>i2', 1),
+      ('hrs_scntyp', '>i2', 1),
+      ('hrs_filler1', '>i4', 2),
+      ('hrs_qualind', '>i4', 1),
+      ('hrs_linqualflgs', '>i4', 1),
+      ('hrs_chqualflg', '>i2', 20),
+      ('hrs_mnfrqual', '>i1', 64),
+      ('hrs_filler2', '>i4', 4),
+      ('hrs_calcof', '>i4', 60),
+      ('hrs_scalcof', '>i4', 60),
+      ('hrs_filler3', '>i4', 3),
+      ('hrs_navstat', '>i4', 1),
+      ('hrs_attangtime', '>i4', 1),
+      ('hrs_rollang', '>i2', 1),
+      ('hrs_pitchang', '>i2', 1),
+      ('hrs_yawang', '>i2', 1),
+      ('hrs_scalti', '>i2', 1),
+      ('hrs_ang', '>i2', 168),
+      ('hrs_pos', '>i4', 112),
+      ('hrs_filler4', '>i4', 2),
+      ('hrs_elem', '>i2', 1536),
+      ('hrs_filler5', '>i4', 3),
+      ('hrs_digbinvwbf', '>i2', 1),
+      ('hrs_digitbwrd', '>i2', 1),
+      ('hrs_aninvwbf', '>i4', 1),
+      ('hrs_anwrd', '>i1', 16),
+      ('hrs_filler6', '>i4', 11)])
+
+
+HIRS_header_dtypes[4] = numpy.dtype([('hrs_h_siteid', '|S3', 1),
+      ('hrs_h_blank', '|S1', 1),
+      ('hrs_h_l1bversnb', '>i2', 1),
+      ('hrs_h_l1bversyr', '>i2', 1),
+      ('hrs_h_l1bversdy', '>i2', 1),
+      ('hrs_h_reclg', '>i2', 1),
+      ('hrs_h_blksz', '>i2', 1),
+      ('hrs_h_hdrcnt', '>i2', 1),
+      ('hrs_h_filler0', '>i2', 3),
+      ('hrs_h_dataname', '|S42', 1),
+      ('hrs_h_prblkid', '|S8', 1),
+      ('hrs_h_satid', '>i2', 1),
+      ('hrs_h_instid', '>i2', 1),
+      ('hrs_h_datatyp', '>i2', 1),
+      ('hrs_h_tipsrc', '>i2', 1),
+      ('hrs_h_startdatajd', '>i4', 1),
+      ('hrs_h_startdatayr', '>i2', 1),
+      ('hrs_h_startdatady', '>i2', 1),
+      ('hrs_h_startdatatime', '>i4', 1),
+      ('hrs_h_enddatajd', '>i4', 1),
+      ('hrs_h_enddatayr', '>i2', 1),
+      ('hrs_h_enddatady', '>i2', 1),
+      ('hrs_h_enddatatime', '>i4', 1),
+      ('hrs_h_cpidsyr', '>i2', 1),
+      ('hrs_h_cpidsdy', '>i2', 1),
+      # CORRECTION! NWPSAF guide says there are 4 fields
+      # here, but in reality there is 1 (see NOAA KLM
+      # Users Guide – April 2014 Revision, page 8-117, PDF
+      # page 428)
+      ('hrs_h_fov1offset', '>i2', 1),
+      ('hrs_h_instrtype', '|S6', 1),
+      ('hrs_h_inststat1', '>i4', 1),
+      ('hrs_h_filler1', '>i2', 1),
+      ('hrs_h_statchrecnb', '>i2', 1),
+      ('hrs_h_inststat2', '>i4', 1),
+      ('hrs_h_scnlin', '>i2', 1),
+      ('hrs_h_callocsclin', '>i2', 1),
+      ('hrs_h_misscnlin', '>i2', 1),
+      ('hrs_h_datagaps', '>i2', 1),
+      ('hrs_h_okdatafr', '>i2', 1),
+      ('hrs_h_pacsparityerr', '>i2', 1),
+      ('hrs_h_auxsyncerrsum', '>i2', 1),
+      ('hrs_h_timeseqerr', '>i2', 1),
+      ('hrs_h_timeseqerrcode', '>i2', 1),
+      ('hrs_h_socclockupind', '>i2', 1),
+      ('hrs_h_locerrind', '>i2', 1),
+      ('hrs_h_locerrcode', '>i2', 1),
+      ('hrs_h_pacsstatfield', '>i2', 1),
+      ('hrs_h_pacsdatasrc', '>i2', 1),
+      ('hrs_h_filler2', '>i4', 1),
+      ('hrs_h_spare1', '|S8', 1),
+      ('hrs_h_spare2', '|S8', 1),
+      ('hrs_h_filler3', '>i2', 5),
+      ('hrs_h_autocalind', '>i2', 1),
+      ('hrs_h_solarcalyr', '>i2', 1),
+      ('hrs_h_solarcaldy', '>i2', 1),
+      ('hrs_h_calinf', '>i4', 80),
+      # CORRECTION! NWPSAF calls this hrs_h_filler5, which
+      # already occurs a few lines down.
+      ('hrs_h_filler4', '>i4', 2),
+      ('hrs_h_tempradcnv', '>i4', 57),
+      ('hrs_h_20solfiltirrad', '>i2', 1),
+      ('hrs_h_20equifiltwidth', '>i2', 1),
+      # CORRECTION! NWPSAF guide says there is 1 such
+      # field, in reality there are 2.  See NOAA KLM
+      # User's Guide, April 2014 Revision, Page 8-124 /
+      # PDF Page 435
+      ('hrs_h_filler5', '>i4', 2),
+      ('hrs_h_modelid', '|S8', 1),
+      ('hrs_h_nadloctol', '>i2', 1),
+      ('hrs_h_locbit', '>i2', 1),
+      ('hrs_h_filler6', '>i2', 1),
+      ('hrs_h_rollerr', '>i2', 1),
+      ('hrs_h_pitcherr', '>i2', 1),
+      ('hrs_h_yawerr', '>i2', 1),
+      ('hrs_h_epoyr', '>i2', 1),
+      ('hrs_h_epody', '>i2', 1),
+      ('hrs_h_epotime', '>i4', 1),
+      ('hrs_h_smaxis', '>i4', 1),
+      ('hrs_h_eccen', '>i4', 1),
+      ('hrs_h_incli', '>i4', 1),
+      ('hrs_h_argper', '>i4', 1),
+      ('hrs_h_rascnod', '>i4', 1),
+      ('hrs_h_manom', '>i4', 1),
+      ('hrs_h_xpos', '>i4', 1),
+      ('hrs_h_ypos', '>i4', 1),
+      ('hrs_h_zpos', '>i4', 1),
+      ('hrs_h_xvel', '>i4', 1),
+      ('hrs_h_yvel', '>i4', 1),
+      ('hrs_h_zvel', '>i4', 1),
+      ('hrs_h_earthsun', '>i4', 1),
+      ('hrs_h_filler7', '>i4', 4),
+      ('hrs_h_rdtemp', '>i4', 6),
+      ('hrs_h_bptemp', '>i4', 6),
+      ('hrs_h_eltemp', '>i4', 6),
+      ('hrs_h_pchtemp', '>i4', 6),
+      ('hrs_h_fhcc', '>i4', 6),
+      ('hrs_h_scnmtemp', '>i4', 6),
+      ('hrs_h_fwmtemp', '>i4', 6),
+      ('hrs_h_p5v', '>i4', 6),
+      ('hrs_h_p10v', '>i4', 6),
+      ('hrs_h_p75v', '>i4', 6),
+      ('hrs_h_m75v', '>i4', 6),
+      ('hrs_h_p15v', '>i4', 6),
+      ('hrs_h_m15v', '>i4', 6),
+      ('hrs_h_fwmcur', '>i4', 6),
+      ('hrs_h_scmcur', '>i4', 6),
+      ('hrs_h_pchcpow', '>i4', 6),
+      ('hrs_h_iwtcnttmp', '>i4', 30),
+      ('hrs_h_ictcnttmp', '>i4', 24),
+      ('hrs_h_tttcnttmp', '>i4', 6),
+      ('hrs_h_fwcnttmp', '>i4', 24),
+      ('hrs_h_patchexpcnttmp', '>i4', 6),
+      ('hrs_h_fsradcnttmp', '>i4', 6),
+      ('hrs_h_scmircnttmp', '>i4', 6),
+      ('hrs_h_pttcnttmp', '>i4', 6),
+      ('hrs_h_sttcnttmp', '>i4', 6),
+      ('hrs_h_bpcnttmp', '>i4', 6),
+      ('hrs_h_electcnttmp', '>i4', 6),
+      ('hrs_h_patchfcnttmp', '>i4', 6),
+      ('hrs_h_scmotcnttmp', '>i4', 6),
+      ('hrs_h_fwmcnttmp', '>i4', 6),
+      ('hrs_h_chsgcnttmp', '>i4', 6),
+      ('hrs_h_conversions', '>i4', 11),
+      ('hrs_h_moonscnlin', '>i2', 1),
+      ('hrs_h_moonthresh', '>i2', 1),
+      ('hrs_h_avspcounts', '>i4', 20),
+      ('hrs_h_startmanyr', '>i2', 1),
+      ('hrs_h_startmandy', '>i2', 1),
+      ('hrs_h_startmantime', '>i4', 1),
+      ('hrs_h_endmanyr', '>i2', 1),
+      ('hrs_h_endmandy', '>i2', 1),
+      ('hrs_h_endmantime', '>i4', 1),
+      ('hrs_h_deltav', '>i4', 3),
+      ('hrs_h_mass', '>i4', 2),
+      ('hrs_h_filler8', '>i2', 1302)])
+
+HIRS_line_dtypes[4] = numpy.dtype([('hrs_scnlin', '>i2', 1),
+      ('hrs_scnlinyr', '>i2', 1),
+      ('hrs_scnlindy', '>i2', 1),
+      ('hrs_clockdrift', '>i2', 1),
+      ('hrs_scnlintime', '>i4', 1),
+      ('hrs_scnlinf', '>i2', 1),
+      ('hrs_mjfrcnt', '>i2', 1),
+      ('hrs_scnpos', '>i2', 1),
+      ('hrs_scntyp', '>i2', 1),
+      ('hrs_filler1', '>i4', 2),
+      ('hrs_qualind', '>i4', 1),
+      ('hrs_linqualflgs', '>i4', 1),
+      ('hrs_chqualflg', '>i2', 20),
+      ('hrs_mnfrqual', '|S1', 64),
+      ('hrs_filler2', '>i4', 4),
+      ('hrs_calcof', '>i4', 60),
+      ('hrs_scalcof', '>i4', 60),
+      ('hrs_yawsteering', '>i2', 3),
+      ('hrs_totattcorr', '>i2', 3),
+      ('hrs_navstat', '>i4', 1),
+      ('hrs_attangtime', '>i4', 1),
+      ('hrs_rollang', '>i2', 1),
+      ('hrs_pitchang', '>i2', 1),
+      ('hrs_yawang', '>i2', 1),
+      ('hrs_scalti', '>i2', 1),
+      ('hrs_ang', '>i2', 168),
+      ('hrs_pos', '>i4', 112),
+      ('hrs_moonang', '>i2', 1),
+      # CORRECTION: NWPSAF formatting guide calls this
+      # filler4.  Should be filler3.
+      ('hrs_filler3', '>i2', 3),
+      ('hrs_elem', '>i2', 1536),
+      # CORRECTION: NWPSAF formatting guide calls this
+      # filler5.  Should be filler4.
+      ('hrs_filler4', '>i4', 3),
+      ('hrs_digitbupdatefg', '>i2', 1),
+      ('hrs_digitbwrd', '>i2', 1),
+      ('hrs_analogupdatefg', '>i4', 1),
+      ('hrs_anwrd', '|S1', 16),
+      ('hrs_filler5', '>i4', 11)])
