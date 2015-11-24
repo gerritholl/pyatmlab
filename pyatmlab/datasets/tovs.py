@@ -78,11 +78,15 @@ class HIRS(dataset.MultiFileDataset, Radiometer):
             scanlines_new = numpy.empty(shape=scanlines.shape,
                 dtype=(scanlines.dtype.descr +
                     [("radiance", "f8", (56, 20,)),
-                     ("bt", "f8", (56, 19,))]))
+                     ("bt", "f8", (56, 19,)),
+                     ("lat", "f8", (56,)),
+                     ("lon", "f8", (56,))]))
             for f in scanlines.dtype.names:
                 scanlines_new[f] = scanlines[f]
             scanlines_new["radiance"] = physics.specrad_wavenumber2frequency(rad_wn)
             scanlines_new["bt"] = bt
+            scanlines_new["lat"] = lat
+            scanlines_new["lon"] = lon
             scanlines = scanlines_new
 #            scanlines = numpy.lib.recfunctions.append_fields(
 #                scanlines, ("radiance", "bt"), 
