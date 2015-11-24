@@ -136,7 +136,7 @@ class HIRS(dataset.MultiFileDataset, Radiometer):
         rad *= constants.centi # * not /, because it's 1/(cm^{-1}) = cm^1
         return rad
         
-    def rad2bt(self, rad_wn, f, c1, c2):
+    def rad2bt(self, rad_wn, wn, c1, c2):
         """Apply the standard radiance-to-BT conversion from NOAA KLM User's Guide.
 
         Applies the standard radiance-to-BT conversion as documented by
@@ -155,16 +155,18 @@ class HIRS(dataset.MultiFileDataset, Radiometer):
 
         :param rad_wn: Spectral radiance per wanenumber
             [W·sr^{-1}·m^{-2}·{m^{-1}}^{-1}]
-        :param f: Central wavenumber [m^{-1}].
+        :param wn: Central wavenumber [m^{-1}].
             Note that unprefixed SI units are used.
+        :param c1: c1 as contained in hrs_h_tempradcnv
+        :param c2: c2 as contained in hrs_h_tempradcnv
         """
 
         rad_f = physics.specrad_wavenumber2frequency(rad_wn)
         # standard inverse Planck function
         T_uncorr = physics.specrad_frequency_to_planck_bt(rad_f,
-            physics.wavenumber2frequency(rad_wn))
+            physics.wavenumber2frequency(wn))
 
-        T_corr = (T_uncorr - c2)/c1
+        T_corr = (T_uncorr - c1)/c2
 
         return T_corr
 
