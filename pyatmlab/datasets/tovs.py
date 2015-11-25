@@ -17,6 +17,7 @@ from .. import dataset
 from .. import tools
 from .. import constants
 from .. import physics
+from .. import math as pamath
 
 from . import _tovs_defs
 
@@ -31,13 +32,20 @@ class HIRS(dataset.MultiFileDataset, Radiometer):
     This class can read HIRS l1b as published in the NOAA CLASS archive.
 
     Work in progress.
+
+    TODO/FIXME:
+
+    - What is the correct way to use the odd bit parity?  Information in
+      NOAA KLM User's Guide pages 3-31 and 8-154, but I'm not sure how to
+      apply it.
     """
 
     name = "hirs"
     format_definition_file = ""
 
     def _read(self, path, fields="all", return_header=False,
-                    apply_scale_factors=True, calibrate=True):
+                    apply_scale_factors=True, calibrate=True,
+                    apply_flags=True):
         if path.endswith(".gz"):
             opener = gzip.open
         else:
@@ -65,7 +73,8 @@ class HIRS(dataset.MultiFileDataset, Radiometer):
 
             cc = scanlines["hrs_calcof"].reshape(864, 20, 3)
             cc = cc[:, self.channel_order-1, :]
-            counts = scanlines["hrs_elem"].reshape(864, 64, 24)[:, :56, 2:22]-(2<<11)
+            elem = scanlines["hrs_elem"].reshape(864, 64, 24)
+            counts = elem[:, :56, 2:22]-(2<<11)
             counts = counts[:, :, self.channel_order-1]
             rad_wn = self.calibrate(cc, counts)
             # Convert radiance to BT
@@ -73,7 +82,7 @@ class HIRS(dataset.MultiFileDataset, Radiometer):
             # convert wn to SI units
             wn /= constants.centi
             bt = self.rad2bt(rad_wn[:, :, :19], wn, c1, c2)
-            # Copy over all fields... could use
+            # Copy over all fields... should be able to use
             # numpy.lib.recfunctions.append_fields but incredibly slow!
             scanlines_new = numpy.empty(shape=scanlines.shape,
                 dtype=(scanlines.dtype.descr +
@@ -88,9 +97,12 @@ class HIRS(dataset.MultiFileDataset, Radiometer):
             scanlines_new["lat"] = lat
             scanlines_new["lon"] = lon
             scanlines = scanlines_new
-#            scanlines = numpy.lib.recfunctions.append_fields(
-#                scanlines, ("radiance", "bt"), 
-#                (physics.specrad_wavenumber2frequency(rad_wn), bt))
+            if apply_flags:
+                # initially, nothing is masked
+                scanlines = numpy.ma.masked_array(scanlines)
+                scanlines = self.get_mask_from_flags(scanlines)
+        elif apply_flags:
+            raise ValueError("I refuse to apply flags when not calibrating ☹")
 
         return (header, scanlines) if return_header else scanlines
             
@@ -139,7 +151,48 @@ class HIRS(dataset.MultiFileDataset, Radiometer):
         rad *= constants.milli
         rad *= constants.centi # * not /, because it's 1/(cm^{-1}) = cm^1
         return rad
+
+    def get_mask_from_flags(self, lines):
+        # These four entries are contained in each data frame and consider
+        # the quality of the entire frame.  See Table 8.3.1.5.3.1-1. and
+        # Table 8.3.1.5.3.2-1., 
+        badline = (lines["hrs_qualind"] | lines["hrs_linqualflgs"]) != 0
+        badchan = lines["hrs_chqualflg"] != 0
+        badmnrframe = lines["hrs_mnfrqual"] != 0
+        # NOAA KLM User's Guide, page 8-154: Table 8.3.1.5.3.1-1.
+        # consider flag for “valid”
+        cnt_flags = lines["hrs_elem"].reshape(lines.shape[0], 64, 24)[:, :, 22]
+        valid = (cnt_flags & (1<<15)) != 0
+        badmnrframe |= (~valid)
+        # should consider parity flag... but how?
+        #return (badline, badchannel, badmnrframe)
+
+        # Where a channel is bad, mask the entire scanline
+        lines["bt"].mask |= badchan.mask[:, numpy.newaxis, :19]
+
+        # Where a minor frame is bad, mask all channels
+        lines["bt"].mask |= badmnrframe[:, :56, numpy.newaxis]
+
+        # Where an entire line is bad, mask all channels at entire
+        # scanline
+        lines["bt"].mask |= badline[:, numpy.newaxis, numpy.newaxis]
+
+        return lines
         
+    def check_parity(self, counts):
+        """Verify parity for counts
+        
+        NOAA KLM Users Guide – April 2014 Revision, Section 3.2.2.4,
+        Page 3-31, Table 3.2.2.4-1:
+
+        > Minor Word Parity Check is the last bit of each minor Frame
+        > or data element and is inserted to make the total number of
+        > “ones” in that data element odd. This permits checking for
+        > loss of data integrity between transmission from the instrument
+        > and reconstruction on the ground.
+
+        """
+
     def rad2bt(self, rad_wn, wn, c1, c2):
         """Apply the standard radiance-to-BT conversion from NOAA KLM User's Guide.
 
