@@ -179,6 +179,9 @@ class HIRS(dataset.MultiFileDataset, Radiometer):
         # scanline
         lines["bt"].mask |= badline[:, numpy.newaxis, numpy.newaxis]
 
+        # Where radiances are negative, mask individual values as masked
+        lines["bt"].mask |= (lines["radiance"][:, :, :19] < 0)
+
         return lines
         
     def check_parity(self, counts):
