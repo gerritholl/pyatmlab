@@ -60,6 +60,7 @@ class HIRS(dataset.MultiFileDataset, Radiometer):
             header = numpy.frombuffer(header_bytes, self.header_dtype)
             scanlines_bytes = f.read()
             scanlines = numpy.frombuffer(scanlines_bytes, self.line_dtype)
+        n_lines = header["hrs_h_scnlin"]
         if fields != "all":
             scanlines = scanlines[fields]
         if apply_scale_factors:
@@ -71,9 +72,9 @@ class HIRS(dataset.MultiFileDataset, Radiometer):
             lat = scanlines["hrs_pos"][:, ::2]
             lon = scanlines["hrs_pos"][:, 1::2]
 
-            cc = scanlines["hrs_calcof"].reshape(864, 20, 3)
+            cc = scanlines["hrs_calcof"].reshape(n_lines, 20, 3)
             cc = cc[:, numpy.argsort(self.channel_order), :]
-            elem = scanlines["hrs_elem"].reshape(864, 64, 24)
+            elem = scanlines["hrs_elem"].reshape(n_lines, 64, 24)
             counts = elem[:, :56, 2:22]-(2<<11)
             counts = counts[:, :, numpy.argsort(self.channel_order)]
             rad_wn = self.calibrate(cc, counts)
