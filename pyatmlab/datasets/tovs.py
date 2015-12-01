@@ -72,10 +72,10 @@ class HIRS(dataset.MultiFileDataset, Radiometer):
             lon = scanlines["hrs_pos"][:, 1::2]
 
             cc = scanlines["hrs_calcof"].reshape(864, 20, 3)
-            cc = cc[:, self.channel_order-1, :]
+            cc = cc[:, numpy.argsort(self.channel_order), :]
             elem = scanlines["hrs_elem"].reshape(864, 64, 24)
             counts = elem[:, :56, 2:22]-(2<<11)
-            counts = counts[:, :, self.channel_order-1]
+            counts = counts[:, :, numpy.argsort(self.channel_order)]
             rad_wn = self.calibrate(cc, counts)
             # Convert radiance to BT
             (wn, c1, c2) = header["hrs_h_tempradcnv"].reshape(19, 3).T
@@ -159,6 +159,8 @@ class HIRS(dataset.MultiFileDataset, Radiometer):
         badline = (lines["hrs_qualind"] | lines["hrs_linqualflgs"]) != 0
         badchan = lines["hrs_chqualflg"] != 0
         badmnrframe = lines["hrs_mnfrqual"] != 0
+        # Some lines are marked as space view or black body view
+        badline |= (lines["hrs_scntyp"] != 0)
         # NOAA KLM User's Guide, page 8-154: Table 8.3.1.5.3.1-1.
         # consider flag for “valid”
         cnt_flags = lines["hrs_elem"].reshape(lines.shape[0], 64, 24)[:, :, 22]
