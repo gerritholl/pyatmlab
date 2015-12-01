@@ -60,7 +60,7 @@ class HIRS(dataset.MultiFileDataset, Radiometer):
             header = numpy.frombuffer(header_bytes, self.header_dtype)
             scanlines_bytes = f.read()
             scanlines = numpy.frombuffer(scanlines_bytes, self.line_dtype)
-        n_lines = header["hrs_h_scnlin"]
+        n_lines = header["hrs_h_scnlin"][0]
         if fields != "all":
             scanlines = scanlines[fields]
         if apply_scale_factors:
