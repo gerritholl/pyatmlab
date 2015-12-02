@@ -15,6 +15,7 @@ import matplotlib
 import matplotlib.pyplot
 from . import config
 from . import io
+from . import meta
 
 def plotdir():
     """Returns todays plotdir.
