@@ -80,6 +80,8 @@ def print_or_show(fig, show, outfile, in_plotdir=True, tikz=None,
             info = store_meta
 
         if infofile is not None and info:
+            if in_plotdir and not "/" in infofile:
+                infofile = os.path.join(plotdir(), infofile)
             with open(infofile, "w", encoding="utf-8") as fp:
                 fp.write(info)
     if show:
