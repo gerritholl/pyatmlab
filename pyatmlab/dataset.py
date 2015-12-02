@@ -523,14 +523,14 @@ class MultiFileDataset(Dataset):
         elif res == "day":
             #while d < d_end:
             if any(x[1] == "doy" for x in string.Formatter().parse(pst)):
-                while d < d_end:
+                while d <= d_end:
                     doy = d.timetuple().tm_yday
                     yield (dict(year=d.year, doy=doy),
                         pathlib.Path(pst.format(year=d.year, doy=doy,
                                                 **extra)))
                     d += datetime.timedelta(days=1)
             else:
-                while d < d_end:
+                while d <= d_end:
                     yield (dict(year=d.year, month=d.month, day=d.day),
                         pathlib.Path(pst.format(
                             year=d.year, month=d.month, day=d.day,
