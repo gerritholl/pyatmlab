@@ -87,13 +87,15 @@ class HIRS(dataset.MultiFileDataset, Radiometer):
             # numpy.lib.recfunctions.append_fields but incredibly slow!
             scanlines_new = numpy.empty(shape=scanlines.shape,
                 dtype=(scanlines.dtype.descr +
-                    [("radiance", "f8", (56, 20,)),
-                     ("bt", "f8", (56, 19,)),
+                    [("radiance", "f4", (56, 20,)),
+                     ("counts", "i2", (56, 20,)),
+                     ("bt", "f4", (56, 19,)),
                      ("lat", "f8", (56,)),
                      ("lon", "f8", (56,))]))
             for f in scanlines.dtype.names:
                 scanlines_new[f] = scanlines[f]
             scanlines_new["radiance"] = physics.specrad_wavenumber2frequency(rad_wn)
+            scanlines_new["counts"] = counts
             scanlines_new["bt"] = bt
             scanlines_new["lat"] = lat
             scanlines_new["lon"] = lon
@@ -164,7 +166,8 @@ class HIRS(dataset.MultiFileDataset, Radiometer):
         badline |= (lines["hrs_scntyp"] != 0)
         # NOAA KLM User's Guide, page 8-154: Table 8.3.1.5.3.1-1.
         # consider flag for “valid”
-        cnt_flags = lines["hrs_elem"].reshape(lines.shape[0], 64, 24)[:, :, 22]
+        elem = lines["hrs_elem"].reshape(lines.shape[0], 64, 24)
+        cnt_flags = elem[:, :, 22]
         valid = (cnt_flags & (1<<15)) != 0
         badmnrframe |= (~valid)
         # should consider parity flag... but how?
@@ -182,6 +185,9 @@ class HIRS(dataset.MultiFileDataset, Radiometer):
 
         # Where radiances are negative, mask individual values as masked
         lines["bt"].mask |= (lines["radiance"][:, :, :19] < 0)
+
+        # Where counts==0, mask individual values
+        lines["bt"].mask |= (elem[:, :56, 2:21]==0)
 
         return lines
         
