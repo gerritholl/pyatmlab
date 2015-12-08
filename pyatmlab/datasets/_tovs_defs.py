@@ -418,3 +418,23 @@ HIRS_channel_order = {}
 HIRS_channel_order[3] = [1, 17, 2, 3, 13, 4, 18, 11, 19, 7, 8, 20, 10, 14,
                          6, 5, 15, 12, 16, 9]
 HIRS_channel_order[4] = HIRS_channel_order[3].copy()
+
+# obtained manually from POD User's Guide
+HIRS_header_dtypes[2] = numpy.dtype([
+      ("hrs_h_satid", ">i1", 1),
+      ('hrs_h_datatyp', '>i1', 1),
+      ('hrs_h_startdatadatetime', '|S6', 1), # read as bytes for now
+      ('hrs_h_scnlin', '>i2', 1),
+      ('hrs_h_enddatadatetime', '|S6', 1), # read as bytes for now  
+      ('hrs_h_pbid', '|S7', 1),
+      ('hrs_h_autocalind', '>i1', 1),
+      ('hrs_h_datagaps', '>i2', 1),
+      ('hrs_h_dacsqual', '|S6', 1),
+      ('hrs_h_calid', '|S2', 1),
+      ('hrs_h_dacsstat', '>i1', 1),
+      ('hrs_h_nadloctol', '>i1', 1),
+      ('hrs_h_filler0', '>i1', 1),
+      ('hrs_h_startdatayr', '>i2', 1),
+      ('hrs_h_dataname', '|S42', 1), # EBCDIC!
+      ('hrs_h_filler1', '>i2', 1),
+      ('hrs_h_filler8', '>i8', 521)])
