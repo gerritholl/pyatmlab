@@ -210,8 +210,10 @@ class PCA(matplotlib.mlab.PCA):
             channel replace by a new estimate.
         """
 
-        idx = numpy.delete(numpy.arange(y.size[1]), n)
+        idx = numpy.delete(numpy.arange(y.shape[1]), n)
 
         yscld = self.center(y)
 
-        est = self.decenter((W[:, idx] @ yscld[:, idx].T).T @ W)
+        est = self.decenter((self.Wt[:, idx] @ yscld[:, idx].T).T @ self.Wt)
+
+        return est
