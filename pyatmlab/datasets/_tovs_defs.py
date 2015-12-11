@@ -415,11 +415,15 @@ HIRS_line_dtypes[4] = numpy.dtype([('hrs_scnlin', '>i2', 1),
       ('hrs_filler5', '>i4', 11)])
 
 HIRS_channel_order = {}
+HIRS_channel_order[2] = [1, 17, 2, 3, 13, 4, 18, 11, 19, 7, 8, 20, 10, 14,
+                         6, 5, 15, 12, 16, 9]
 HIRS_channel_order[3] = [1, 17, 2, 3, 13, 4, 18, 11, 19, 7, 8, 20, 10, 14,
                          6, 5, 15, 12, 16, 9]
 HIRS_channel_order[4] = HIRS_channel_order[3].copy()
 
 # obtained manually from POD User's Guide
+
+# Source: KLM User's Guide, Section 2.0
 HIRS_header_dtypes[2] = numpy.dtype([
       ("hrs_h_satid", ">i1", 1),
       ('hrs_h_datatyp', '>i1', 1),
@@ -429,12 +433,26 @@ HIRS_header_dtypes[2] = numpy.dtype([
       ('hrs_h_pbid', '|S7', 1),
       ('hrs_h_autocalind', '>i1', 1),
       ('hrs_h_datagaps', '>i2', 1),
-      ('hrs_h_dacsqual', '|S6', 1),
-      ('hrs_h_calid', '|S2', 1),
+      ('hrs_h_dacsqual', '>u2', 3),
+      ('hrs_h_calid', '>u1', 2),
       ('hrs_h_dacsstat', '>i1', 1),
+      ('hrs_h_attcorr', '>i1', 1),
       ('hrs_h_nadloctol', '>i1', 1),
       ('hrs_h_filler0', '>i1', 1),
       ('hrs_h_startdatayr', '>i2', 1),
       ('hrs_h_dataname', '|S42', 1), # EBCDIC!
       ('hrs_h_filler1', '>i2', 1),
-      ('hrs_h_filler8', '>i8', 521)])
+      ('hrs_h_filler8', '>i4', 1043)])
+
+# Source: POD User's Guide, Section 4-1
+HIRS_line_dtypes[2] = numpy.dtype([('hrs_scnlin', '>i2', 1),
+      ('hrs_scnlintime', '|S6', 1), # read as bytes for now
+      ('hrs_qualind', '>i4', 1),
+      ('hrs_earthlocdelta', '>i4', 1),
+      ('hrs_calcof', '>i4', 60*3),
+      ('hrs_satloc', '>i2', 2),
+      ('hrs_pos', '>i2', 112),
+      ('hrs_elem', '>i2', 1408),
+      ('hrs_mnfrqual', '>i1', 64),
+      ('hrs_h_filler0', '>i1', 412),
+    ])

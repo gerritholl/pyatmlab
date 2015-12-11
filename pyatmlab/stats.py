@@ -1,11 +1,12 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-"""Various small statistical functions
+"""Various statistical functions
 
 """
 
 import numpy
+import matplotlib.mlab
 
 def bin(x, y, bins):
     """Bin/bucket y according to values of x.
@@ -168,3 +169,49 @@ def binsnD_to_2d(bins, ax1, ax2):
             Z[i, j] = numpy.concatenate(bins[slc].ravel())
 
     return Z
+
+
+class PCA(matplotlib.mlab.PCA):
+    """Extend mlabs PCA class with a bit more functionality
+    """
+
+    def reconstruct(self, Y, truncate=0):
+        """Reconstruct original vector from PC vector
+
+        From a vector in PC axes, reconstruct the original vector.
+
+        :param pcdp: L×n vector in PC space
+        :param denormalise: 
+        """
+
+        truncate = truncate or self.Wt.shape[0]
+        yscld = self.Wt[:truncate, :] @ Y[:, :truncate]
+        return self.decenter(yscld)
+
+    def decenter(self, yscld):
+        """Undo self.center
+        """
+        return yscld * self.sigma + self.mu
+
+    def estimate(self, y, n):
+        """Estimate missing value
+
+        Estimate the missing element for a vector.  For example, if twelve
+        channels were used to construct a PCA but we have only 11, we can
+        estimate what the 12th would have been, assuming we know which one
+        is missing, of course.
+
+        :param y: ndarray of dimensions L × n, where L can be any number
+            and n should match the number of PCs.  The element that is to
+            be predicted is thus contained in this array (probably masked)
+            but not used by this method.
+        :param n: index of which element is to be estimated.
+        :returns: Full vector of same dimension as y, but with missing
+            channel replace by a new estimate.
+        """
+
+        idx = numpy.delete(numpy.arange(y.size[1]), n)
+
+        yscld = self.center(y)
+
+        est = self.decenter((W[:, idx] @ yscld[:, idx].T).T @ W)
