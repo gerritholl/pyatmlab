@@ -13,6 +13,7 @@ import pickle
 import copy
 import ast
 import operator
+import abc
 
 import numpy
 
@@ -66,7 +67,11 @@ class DocStringInheritor(type):
                         # added by Gerrit
                         attribute.__doc__ += "\n\nDocstring inherited from parent"
                         break
-        return type.__new__(meta, name, bases, clsdict)
+        # GH: replaced `type` by super() to not break multiple inheritance
+        return super().__new__(meta, name, bases, clsdict)
+
+class AbstractDocStringInheritor(DocStringInheritor, abc.ABCMeta):
+    pass
 
 # Following inspired by http://stackoverflow.com/a/7811344/974555
 def validate(func, locals):

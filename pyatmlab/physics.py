@@ -801,11 +801,7 @@ def specrad_frequency_to_planck_bt(L, f):
     """
 
     # f needs to be double to prevent overflow
-    try:
-#        logging.debug("Frequency to double")
-        f = f.astype(numpy.float64)
-    except AttributeError: # not a numpy type, leave it
-        pass
+    f = numpy.asarray(f).astype(numpy.float64)
     if L.size > 25000:
         logging.debug("Doing actual BT conversion: {:,} profiles * {:,} "
                       "frequencies = {:,} radiances".format(

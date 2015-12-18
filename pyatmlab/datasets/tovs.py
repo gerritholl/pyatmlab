@@ -7,6 +7,7 @@ import subprocess
 import datetime
 import logging
 import gzip
+import abc
 
 import numpy
 
@@ -42,6 +43,13 @@ class HIRS(dataset.MultiFileDataset, Radiometer):
 
     name = "hirs"
     format_definition_file = ""
+    n_channels = 20
+    n_calibchannels = 19
+    n_minorframes = 64
+    n_perline = 56
+    count_start = 2
+    count_end = 22
+    
 
     def _read(self, path, fields="all", return_header=False,
                     apply_scale_factors=True, calibrate=True,
@@ -51,11 +59,7 @@ class HIRS(dataset.MultiFileDataset, Radiometer):
         else:
             opener = open
         with opener(str(path), 'rb') as f:
-            if f.read(3) in {b"NSS", b"CMS", b"DSS", b"UKM"}:
-                f.seek(0, io.SEEK_SET)
-            else: # assuming additional header
-                f.seek(512, io.SEEK_SET)
-
+            self.seekhead(f)
             header_bytes = f.read(self.header_dtype.itemsize)
             header = numpy.frombuffer(header_bytes, self.header_dtype)
             scanlines_bytes = f.read()
@@ -72,26 +76,33 @@ class HIRS(dataset.MultiFileDataset, Radiometer):
             lat = scanlines["hrs_pos"][:, ::2]
             lon = scanlines["hrs_pos"][:, 1::2]
 
-            cc = scanlines["hrs_calcof"].reshape(n_lines, 20, 3)
-            cc = cc[:, numpy.argsort(self.channel_order), :]
-            elem = scanlines["hrs_elem"].reshape(n_lines, 64, 24)
-            counts = elem[:, :56, 2:22]-(2<<11)
+            cc = scanlines["hrs_calcof"].reshape(n_lines, self.n_channels, 
+                    self.line_dtype["hrs_calcof"].shape[0]//self.n_channels)
+            cc = self.get_cc(scanlines)
+            cc = cc[:, numpy.argsort(self.channel_order), ...]
+            elem = scanlines["hrs_elem"].reshape(n_lines,
+                        self.n_minorframes, self.n_wordperframe)
+            # x & ~(1<<12)   ==   x - 1<<12     ==    x - 4096    if this
+            # bit is set
+            counts = elem[:, :self.n_perline, self.count_start:self.count_end]
+            counts = counts - self.counts_offset
             counts = counts[:, :, numpy.argsort(self.channel_order)]
             rad_wn = self.calibrate(cc, counts)
             # Convert radiance to BT
-            (wn, c1, c2) = header["hrs_h_tempradcnv"].reshape(19, 3).T
+            #(wn, c1, c2) = header["hrs_h_tempradcnv"].reshape(self.n_calibchannels, 3).T
+            (wn, c1, c2) = self.get_wn_c1_c2(header)
             # convert wn to SI units
             wn /= constants.centi
-            bt = self.rad2bt(rad_wn[:, :, :19], wn, c1, c2)
+            bt = self.rad2bt(rad_wn[:, :, :self.n_calibchannels], wn, c1, c2)
             # Copy over all fields... should be able to use
             # numpy.lib.recfunctions.append_fields but incredibly slow!
             scanlines_new = numpy.empty(shape=scanlines.shape,
                 dtype=(scanlines.dtype.descr +
-                    [("radiance", "f4", (56, 20,)),
-                     ("counts", "i2", (56, 20,)),
-                     ("bt", "f4", (56, 19,)),
-                     ("lat", "f8", (56,)),
-                     ("lon", "f8", (56,))]))
+                    [("radiance", "f4", (self.n_perline, self.n_channels,)),
+                     ("counts", "i2", (self.n_perline, self.n_channels,)),
+                     ("bt", "f4", (self.n_perline, self.n_calibchannels,)),
+                     ("lat", "f8", (self.n_perline,)),
+                     ("lon", "f8", (self.n_perline,))]))
             for f in scanlines.dtype.names:
                 scanlines_new[f] = scanlines[f]
             scanlines_new["radiance"] = physics.specrad_wavenumber2frequency(rad_wn)
@@ -108,89 +119,7 @@ class HIRS(dataset.MultiFileDataset, Radiometer):
             raise ValueError("I refuse to apply flags when not calibrating ☹")
 
         return (header, scanlines) if return_header else scanlines
-            
-    def _apply_scale_factors(self, header, scanlines):
-        new_head_dtype = self.header_dtype.descr.copy()
-        new_line_dtype = self.line_dtype.descr.copy()
-        for (i, dt) in enumerate(self.header_dtype.descr):
-            if dt[0] in _tovs_defs.HIRS_scale_factors[self.version]:
-                new_head_dtype[i] = (dt[0], ">f8") + dt[2:]
-        for (i, dt) in enumerate(self.line_dtype.descr):
-            if dt[0] in _tovs_defs.HIRS_scale_factors[self.version]:
-                new_line_dtype[i] = (dt[0], ">f8") + dt[2:]
-        new_head = numpy.empty(shape=header.shape, dtype=new_head_dtype)
-        new_line = numpy.empty(shape=scanlines.shape, dtype=new_line_dtype)
-        for (targ, src) in [(new_head, header), (new_line, scanlines)]:
-            for f in targ.dtype.names:
-                # NB: I can't simply say targ[f] = src[f] / 10**0, because
-                # this will turn it into a float and refuse to cast it
-                # into an int dtype
-                if f in _tovs_defs.HIRS_scale_factors[self.version]:
-                    # FIXME: does this work for many scanlines?
-                    targ[f] = src[f] / numpy.power(10,
-                            _tovs_defs.HIRS_scale_factors[self.version][f])
-                else:
-                    targ[f] = src[f]
-        return (new_head, new_line)
-
-    def calibrate(self, cc, counts):
-        """Apply the standard calibration from NOAA KLM User's Guide.
-
-        NOAA KLM User's Guide, section 7.2, equation (7.2-3), page 7-12,
-        PDF page 286:
-
-        r = a₀ + a₁C + a₂²C
-
-        where C are counts and a₀, a₁, a₂ contained in hrs_calcof as
-        documented in the NOAA KLM User's Guide:
-            - Section 8.3.1.5.3.1, Table 8.3.1.5.3.1-1. and
-            - Section 8.3.1.5.3.2, Table 8.3.1.5.3.2-1.,
-        """
-        rad = (cc[:, numpy.newaxis, :, 2]
-             + cc[:, numpy.newaxis, :, 1] * counts 
-             + cc[:, numpy.newaxis, :, 0]**2 * counts)
-        # This is apparently calibrated in units of mW/m2-sr-cm-1.
-        # Convert to SI units.
-        rad *= constants.milli
-        rad *= constants.centi # * not /, because it's 1/(cm^{-1}) = cm^1
-        return rad
-
-    def get_mask_from_flags(self, lines):
-        # These four entries are contained in each data frame and consider
-        # the quality of the entire frame.  See Table 8.3.1.5.3.1-1. and
-        # Table 8.3.1.5.3.2-1., 
-        badline = (lines["hrs_qualind"] | lines["hrs_linqualflgs"]) != 0
-        badchan = lines["hrs_chqualflg"] != 0
-        badmnrframe = lines["hrs_mnfrqual"] != 0
-        # Some lines are marked as space view or black body view
-        badline |= (lines["hrs_scntyp"] != 0)
-        # NOAA KLM User's Guide, page 8-154: Table 8.3.1.5.3.1-1.
-        # consider flag for “valid”
-        elem = lines["hrs_elem"].reshape(lines.shape[0], 64, 24)
-        cnt_flags = elem[:, :, 22]
-        valid = (cnt_flags & (1<<15)) != 0
-        badmnrframe |= (~valid)
-        # should consider parity flag... but how?
-        #return (badline, badchannel, badmnrframe)
-
-        # Where a channel is bad, mask the entire scanline
-        lines["bt"].mask |= badchan.mask[:, numpy.newaxis, :19]
-
-        # Where a minor frame is bad, mask all channels
-        lines["bt"].mask |= badmnrframe[:, :56, numpy.newaxis]
-
-        # Where an entire line is bad, mask all channels at entire
-        # scanline
-        lines["bt"].mask |= badline[:, numpy.newaxis, numpy.newaxis]
-
-        # Where radiances are negative, mask individual values as masked
-        lines["bt"].mask |= (lines["radiance"][:, :, :19] < 0)
-
-        # Where counts==0, mask individual values
-        lines["bt"].mask |= (elem[:, :56, 2:21]==0)
-
-        return lines
-        
+       
     def check_parity(self, counts):
         """Verify parity for counts
         
@@ -281,13 +210,196 @@ class HIRS(dataset.MultiFileDataset, Radiometer):
                          tools.safe_eval(nw)))
         return (head_dtype, line_dtype)
 
-class HIRS2(HIRS):
+    def _apply_scale_factors(self, header, scanlines):
+        new_head_dtype = self.header_dtype.descr.copy()
+        new_line_dtype = self.line_dtype.descr.copy()
+        for (i, dt) in enumerate(self.header_dtype.descr):
+            if dt[0] in _tovs_defs.HIRS_scale_factors[self.version]:
+                new_head_dtype[i] = (dt[0], ">f8") + dt[2:]
+        for (i, dt) in enumerate(self.line_dtype.descr):
+            if dt[0] in _tovs_defs.HIRS_scale_factors[self.version]:
+                new_line_dtype[i] = (dt[0], ">f8") + dt[2:]
+        new_head = numpy.empty(shape=header.shape, dtype=new_head_dtype)
+        new_line = numpy.empty(shape=scanlines.shape, dtype=new_line_dtype)
+        for (targ, src) in [(new_head, header), (new_line, scanlines)]:
+            for f in targ.dtype.names:
+                # NB: I can't simply say targ[f] = src[f] / 10**0, because
+                # this will turn it into a float and refuse to cast it
+                # into an int dtype
+                if f in _tovs_defs.HIRS_scale_factors[self.version]:
+                    # FIXME: does this work for many scanlines?
+                    targ[f] = src[f] / numpy.power(
+                            _tovs_defs.HIRS_scale_bases[self.version],
+                            _tovs_defs.HIRS_scale_factors[self.version][f])
+                else:
+                    targ[f] = src[f]
+        return (new_head, new_line)
+
+    @abc.abstractmethod
+    def get_wn_c1_c2(self, header):
+        ...
+
+    @abc.abstractmethod
+    def seekhead(self, f):
+        ...
+
+    @abc.abstractmethod
+    def calibrate(self, cc, counts):
+        ...
+            
+    @abc.abstractmethod
+    def get_mask_from_flags(self, lines):
+        ...
+
+    @abc.abstractmethod
+    def get_cc(self, scanlines):
+        ...
+ 
+class HIRSPOD(HIRS):
+    n_wordperframe = 22
+    counts_offset = 0
+
+    def seekhead(self, f):
+        f.seek(0, io.SEEK_SET)
+
+    def calibrate(self, cc, counts):
+        """Apply the standard calibration from NOAA POD Guide
+
+        POD Guide, section 4.5
+        """
+
+        # Equation 4.5-1
+        # should normally have no effect as channels should be linear,
+        # according to POD Guide, page 4-26
+        # order is 0th, 1st, 2nd order term
+        nc = cc[:, numpy.newaxis, :, 2, :]
+        counts = nc[..., 0] + nc[..., 1] * counts + nc[..., 2] * counts**2
+
+        # Equation 4.5.1-1
+        # Use auto-coefficient.  There's also manual coefficient.
+        # order is 2nd, 1st, 0th order term
+        ac = cc[:, numpy.newaxis, :, 1, :]
+        rad = ac[..., 2] + ac[..., 1] * counts + ac[..., 0] * counts**2
+
+        if not (cc[:, :, 0, :]==0).all():
+            raise ValueError("Found non-zero values for manual coefficient!")
+
+        return rad
+
+    def get_wn_c1_c2(self, header):
+        return (0, 0, 0) # not implemented yet
+        _tovs_defs.HIRS_coeffs[self.version][self.satno]
+
+    def get_mask_from_flags(self, lines):
+        bad = (lines["hrs_qualind"].data & ((1<<32)-(1<<8))) != 0
+        lines["bt"].mask[bad] = True
+        return lines
+
+    def process_elem(self):
+        #encoder_position = ascontiguousarray(el0[:, 0].view("<u2")) & ((1<<7)-1)
+        #el_cal_level = (ascontiguousarray(el0[:, 0:2]).view("<u4")[:,0] & ((1<<13)-(1<<8))) >> 8
+        #chpm = (ascontiguousarray(el0[:, 0:2]).view("<u4")[:,0] & ((1<<19)-(1<<13))) >> 13
+        #tiptop = ascontiguousarray(el0[:, 0:2]).view(">u4").squeeze()
+        #encoder_position = (ascontiguousarray(el0[:, 0:2]).view(">u4")[:,0] & ((1<<32)-(1<<24)))>>24
+
+        out_of_sync =        (tiptop &  (1<< 6)) >> 6 == 0
+        element_number =     (tiptop & ((1<<13) - (1<<7)))  >>  7
+        ch1_period_monitor = (tiptop & ((1<<19) - (1<<13))) >> 13
+        el_cal_level =       (tiptop & ((1<<24) - (1<<19))) >> 19
+        encoder_position =   (tiptop & ((1<<32) - (1<<24))) >> 24
+        
+    def get_cc(self, scanlines):
+        cc = scanlines["hrs_calcof"].reshape(scanlines.shape[0], 3,
+                self.n_channels, 3)
+        cc = numpy.swapaxes(cc, 2, 1)
+        return cc
+        
+
+class HIRS2(HIRSPOD):
     satellites = {"tirosn", "noaa06", "noaa07", "noaa08", "noaa09", "noaa10",
                   "noaa11", "noaa12", "noaa13", "noaa14"}
     version = 2
-    pass # to be defined
+
+    header_dtype = _tovs_defs.HIRS_header_dtypes[2]
+    line_dtype = _tovs_defs.HIRS_line_dtypes[2]
+    channel_order = numpy.asarray(_tovs_defs.HIRS_channel_order[2])
     
-class HIRS3(HIRS):
+class HIRSKLM(HIRS):
+    counts_offset = 4096
+    n_wordperframe = 24
+    def seekhead(self, f):
+        f.seek(0, io.SEEK_SET)
+        if f.peek(3) in {b"NSS", b"CMS", b"DSS", b"UKM"}:
+            f.seek(0, io.SEEK_SET)
+        else: # assuming additional header
+            f.seek(512, io.SEEK_SET)
+    def calibrate(self, cc, counts):
+        """Apply the standard calibration from NOAA KLM User's Guide.
+
+        NOAA KLM User's Guide, section 7.2, equation (7.2-3), page 7-12,
+        PDF page 286:
+
+        r = a₀ + a₁C + a₂²C
+
+        where C are counts and a₀, a₁, a₂ contained in hrs_calcof as
+        documented in the NOAA KLM User's Guide:
+            - Section 8.3.1.5.3.1, Table 8.3.1.5.3.1-1. and
+            - Section 8.3.1.5.3.2, Table 8.3.1.5.3.2-1.,
+        """
+        rad = (cc[:, numpy.newaxis, :, 2]
+             + cc[:, numpy.newaxis, :, 1] * counts 
+             + cc[:, numpy.newaxis, :, 0]**2 * counts)
+        # This is apparently calibrated in units of mW/m2-sr-cm-1.
+        # Convert to SI units.
+        rad *= constants.milli
+        rad *= constants.centi # * not /, because it's 1/(cm^{-1}) = cm^1
+        return rad
+
+    def get_wn_c1_c2(self, header):
+        return header["hrs_h_tempradcnv"].reshape(self.n_calibchannels, 3).T
+
+    def get_mask_from_flags(self, lines):
+        # These four entries are contained in each data frame and consider
+        # the quality of the entire frame.  See Table 8.3.1.5.3.1-1. and
+        # Table 8.3.1.5.3.2-1., 
+        badline = (lines["hrs_qualind"] | lines["hrs_linqualflgs"]) != 0
+        badchan = lines["hrs_chqualflg"] != 0
+        badmnrframe = lines["hrs_mnfrqual"] != 0
+        # Some lines are marked as space view or black body view
+        badline |= (lines["hrs_scntyp"] != 0)
+        # NOAA KLM User's Guide, page 8-154: Table 8.3.1.5.3.1-1.
+        # consider flag for “valid”
+        elem = lines["hrs_elem"].reshape(lines.shape[0], 64, 24)
+        cnt_flags = elem[:, :, 22]
+        valid = (cnt_flags & (1<<15)) != 0
+        badmnrframe |= (~valid)
+        # should consider parity flag... but how?
+        #return (badline, badchannel, badmnrframe)
+
+        # Where a channel is bad, mask the entire scanline
+        lines["bt"].mask |= badchan.mask[:, numpy.newaxis, :19]
+
+        # Where a minor frame is bad, mask all channels
+        lines["bt"].mask |= badmnrframe[:, :56, numpy.newaxis]
+
+        # Where an entire line is bad, mask all channels at entire
+        # scanline
+        lines["bt"].mask |= badline[:, numpy.newaxis, numpy.newaxis]
+
+        # Where radiances are negative, mask individual values as masked
+        lines["bt"].mask |= (lines["radiance"][:, :, :19] < 0)
+
+        # Where counts==0, mask individual values
+        lines["bt"].mask |= (elem[:, :56, 2:21]==0)
+
+        return lines
+
+    def get_cc(self, scanlines):
+        cc = scanlines["hrs_calcof"].reshape(scanlines.shape[0], self.n_channels, 
+                self.line_dtype["hrs_calcof"].shape[0]//self.n_channels)
+        return cc
+
+class HIRS3(HIRSKLM):
     pdf_definition_pages = (26, 37)
     version = 3
 
@@ -298,7 +410,7 @@ class HIRS3(HIRS):
 
     channel_order = numpy.asarray(_tovs_defs.HIRS_channel_order[3])
 
-class HIRS4(HIRS):
+class HIRS4(HIRSKLM):
     satellites = {"noaa18", "noaa19", "metopa", "metopb"}
     pdf_definition_pages = (38, 54)
     version = 4

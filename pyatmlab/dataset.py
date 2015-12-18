@@ -38,7 +38,7 @@ class InvalidDataError(DataFileError):
     """Raised when data is not how it should be.
     """
 
-class Dataset(metaclass=tools.DocStringInheritor):
+class Dataset(metaclass=tools.AbstractDocStringInheritor):
     """Represents a dataset.
 
     .. _dataset:
