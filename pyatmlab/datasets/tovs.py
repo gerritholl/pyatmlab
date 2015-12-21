@@ -259,6 +259,16 @@ class HIRSPOD(HIRS):
     n_wordperframe = 22
     counts_offset = 0
 
+    def id2no(self, satid):
+        """Translate satellite id to satelline number.
+
+        Follows POD guide, Table 2.0.4-3.
+
+        WARNING: Does not support NOAA-6 or TIROS-N!
+        """
+
+        return _tovs_defs.HIRS_ids[self.version][satid]
+
     def seekhead(self, f):
         f.seek(0, io.SEEK_SET)
 
@@ -287,8 +297,8 @@ class HIRSPOD(HIRS):
         return rad
 
     def get_wn_c1_c2(self, header):
-        return (0, 0, 0) # not implemented yet
-        _tovs_defs.HIRS_coeffs[self.version][self.satno]
+        h =  _tovs_defs.HIRS_coeffs[self.version][self.id2no(header["hrs_h_satid"][0])]
+        return numpy.vstack([h[i] for i in range(1, 20)]).T
 
     def get_mask_from_flags(self, lines):
         bad = (lines["hrs_qualind"].data & ((1<<32)-(1<<8))) != 0
@@ -316,7 +326,10 @@ class HIRSPOD(HIRS):
         
 
 class HIRS2(HIRSPOD):
-    satellites = {"tirosn", "noaa06", "noaa07", "noaa08", "noaa09", "noaa10",
+    #satellites = {"tirosn", "noaa06", "noaa07", "noaa08", "noaa09", "noaa10",
+    # NOAA-6 and TIROS-N currently not supported due to duplicate ids.  To
+    # fix this, would need to improve HIRSPOD.id2no.
+    satellites = {"noaa07", "noaa08", "noaa09", "noaa10",
                   "noaa11", "noaa12", "noaa13", "noaa14"}
     version = 2
 
