@@ -51,6 +51,7 @@ class FwmuMixin:
             self._frequency = value.to(ureg.Hz, "sp")
         except AttributeError:
             value = value * ureg.Hz
+            self._frequency = value
             
         self._wavenumber = value.to(1/ureg.centimeter, "sp")
         self._wavelength = value.to(ureg.metre, "sp")
@@ -65,6 +66,7 @@ class FwmuMixin:
             self._wavenumber = value.to(1/ureg.centimeter, "sp")
         except AttributeError:
             value = value * 1/ureg.centimeter
+            self._wavenumber = value
 
         self._frequency = value.to(ureg.Hz, "sp")
         self._wavelength = value.to(ureg.metre, "sp")
@@ -79,6 +81,7 @@ class FwmuMixin:
             self._wavelength = value.to(ureg.metre, "sp")
         except AttributeError:
             value = value * ureg.meter
+            self._wavelength = value
 
         self._frequency = value.to(ureg.hertz, "sp")
         self._wavenumber = value.to(1/ureg.centimeter, "sp")

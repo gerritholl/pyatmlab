@@ -468,8 +468,8 @@ class IASI(dataset.MultiFileDataset, dataset.HyperSpectral):
                 raise ValueError("Scale and wavenumber inconsistently valid")
             if self.wavenumber is None:
                 self.wavenumber = wavenumber[wavenumber_valid]
-            elif abs(self.wavenumber - wavenumber[wavenumber_valid]).max()
-                    > (0.05 * (1/ureg.centimetre)):
+            elif (abs(self.wavenumber - wavenumber[wavenumber_valid]).max()
+                    > (0.05 * (1/ureg.centimetre))):
                 raise ValueError("Inconsistent wavenumbers!")
 
             dtp = [x for x in self._dtype.descr if x[0] in fields]
