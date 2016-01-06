@@ -9,3 +9,4 @@ __doc__ = """This is pyatmlab
 
 from pint import UnitRegistry
 ureg = UnitRegistry()
+ureg.define("micro- = 1e-6 = µ-")
