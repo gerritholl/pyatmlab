@@ -30,9 +30,12 @@ from . import tools
 from . import graphics
 from . import stats
 from . import io as pyio
+from . import ureg
 
 class FwmuMixin:
     """Mixing for frequency/wavelength/wavenumber neutrality
+
+    Best to use pint ureg quantities at all times.
     """
     _frequency = None
     _wavenumber = None
@@ -44,9 +47,13 @@ class FwmuMixin:
 
     @frequency.setter
     def frequency(self, value):
-        self._frequency = value
-        self._wavenumber = frequency2wavenumber(value)
-        self._wavelength = frequency2wavelength(value)
+        try:
+            self._frequency = value.to(ureg.Hz, "sp")
+        except AttributeError:
+            value = value * ureg.Hz
+            
+        self._wavenumber = value.to(1/ureg.centimeter, "sp")
+        self._wavelength = value.to(ureg.wavelength, "sp")
 
     @property
     def wavenumber(self):
@@ -54,9 +61,13 @@ class FwmuMixin:
 
     @wavenumber.setter
     def wavenumber(self, value):
-        self._wavenumber = value
-        self._frequency = wavenumber2frequency(value)
-        self._wavelength = wavenumber2wavelength(value)
+        try:
+            self._wavenumber = value.to(1/ureg.centimeter, "sp")
+        except AttributeError:
+            value = value * 1/ureg.centimeter
+
+        self._frequency = value.to(ureg.frequency, "sp")
+        self._wavelength = value.to(ureg.wavelength, "sp")
 
     @property
     def wavelength(self):
@@ -64,9 +75,13 @@ class FwmuMixin:
 
     @wavelength.setter
     def wavelength(self, value):
-        self._wavelength = value
-        self._frequency = wavelength2frequency(value)
-        self._wavenumber = wavelength2wavenumber(value)
+        try:
+            self._wavelength = value.to(ureg.wavelength, "sp")
+        except AttributeError:
+            value = value * ureg.meter
+
+        self._frequency = value.to(ureg.frequency, "sp")
+        self._wavenumber = value.to(1/ureg.centimeter, "sp")
 
 class AKStats:
 
@@ -537,7 +552,7 @@ class SRF(FwmuMixin):
     def centroid(self):
         """Calculate centre frequency
         """
-        return numpy.average(self.frequency, weights=self.W)
+        return numpy.average(self.frequency, weights=self.W) * self.frequency.units
 
     def blackbody_radiance(self, T):
         """Calculate integrated radiance for blackbody at temperature T
