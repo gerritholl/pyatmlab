@@ -463,12 +463,13 @@ class IASI(dataset.MultiFileDataset, dataset.HyperSpectral):
             scale = ds["scale_factor"][:]
             scale_valid = numpy.isfinite(scale) & (scale > 0)
             wavenumber = ds["wavenumber"][:] * ureg.parse_expression(ds["wavenumber"].units.replace("m-1", "m^-1"))
-            wavenumber_valid = numpy.isfinite(wavenumber) & (wavenumber > 0)
+            wavenumber_valid = numpy.isfinite(wavenumber) & (wavenumber.m > 0)
             if not numpy.array_equal(scale_valid, wavenumber_valid):
                 raise ValueError("Scale and wavenumber inconsistently valid")
             if self.wavenumber is None:
                 self.wavenumber = wavenumber[wavenumber_valid]
-            elif abs(self.wavenumber - wavenumber[wavenumber_valid]).max() > 0.05:
+            elif abs(self.wavenumber - wavenumber[wavenumber_valid]).max()
+                    > (0.05 * (1/ureg.centimetre)):
                 raise ValueError("Inconsistent wavenumbers!")
 
             dtp = [x for x in self._dtype.descr if x[0] in fields]
