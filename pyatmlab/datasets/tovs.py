@@ -19,6 +19,7 @@ from .. import tools
 from .. import constants
 from .. import physics
 from .. import math as pamath
+from .. import ureg
 
 from . import _tovs_defs
 
@@ -461,7 +462,7 @@ class IASI(dataset.MultiFileDataset, dataset.HyperSpectral):
         with netCDF4.Dataset(str(path), 'r', clobber=False) as ds:
             scale = ds["scale_factor"][:]
             scale_valid = numpy.isfinite(scale) & (scale > 0)
-            wavenumber = ds["wavenumber"][:]
+            wavenumber = ds["wavenumber"][:] * ureg.parse_expression(ds["wavenumber"].units.replace("m-1", "m^-1"))
             wavenumber_valid = numpy.isfinite(wavenumber) & (wavenumber > 0)
             if not numpy.array_equal(scale_valid, wavenumber_valid):
                 raise ValueError("Scale and wavenumber inconsistently valid")
