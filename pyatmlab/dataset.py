@@ -877,40 +877,6 @@ class StationaryDataset(Dataset):
 
     unique_fields = {"time"}
 
-class HyperSpectral(Dataset):
+class HyperSpectral(Dataset, physics.FwmuMixin):
     """Superclass for any hyperspectral instrument
     """
-
-    _frequency = None
-    _wavenumber = None
-    _wavelength = None
-
-    @property
-    def frequency(self):
-        return self._frequency
-
-    @frequency.setter
-    def frequency(self, value):
-        self._frequency = value
-        self._wavenumber = physics.frequency2wavenumber(value)
-        self._wavelength = physics.frequency2wavelength(value)
-
-    @property
-    def wavenumber(self):
-        return self._wavenumber
-
-    @wavenumber.setter
-    def wavenumber(self, value):
-        self._wavenumber = value
-        self._frequency = physics.wavenumber2frequency(value)
-        self._wavelength = physics.wavenumber2wavelength(value)
-
-    @property
-    def wavelength(self):
-        return self._wavelength
-
-    @wavelength.setter
-    def wavelength(self, value):
-        self._wavelength = value
-        self._frequency = physics.wavelength2frequency(value)
-        self._wavenumber = physics.wavelength2wavenumber(value)

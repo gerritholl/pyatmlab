@@ -31,6 +31,43 @@ from . import graphics
 from . import stats
 from . import io as pyio
 
+class FwmuMixin:
+    """Mixing for frequency/wavelength/wavenumber neutrality
+    """
+    _frequency = None
+    _wavenumber = None
+    _wavelength = None
+
+    @property
+    def frequency(self):
+        return self._frequency
+
+    @frequency.setter
+    def frequency(self, value):
+        self._frequency = value
+        self._wavenumber = frequency2wavenumber(value)
+        self._wavelength = frequency2wavelength(value)
+
+    @property
+    def wavenumber(self):
+        return self._wavenumber
+
+    @wavenumber.setter
+    def wavenumber(self, value):
+        self._wavenumber = value
+        self._frequency = wavenumber2frequency(value)
+        self._wavelength = wavenumber2wavelength(value)
+
+    @property
+    def wavelength(self):
+        return self._wavelength
+
+    @wavelength.setter
+    def wavelength(self, value):
+        self._wavelength = value
+        self._frequency = wavelength2frequency(value)
+        self._wavenumber = wavelength2wavenumber(value)
+
 class AKStats:
 
     filename = "sensitivity_{mode}_matrix_{name}."
@@ -466,7 +503,7 @@ class AKStats:
                                 datetime.date.fromordinal(D["time"]["data"][i]),
                                 D[names['y']]["data"][i], dofs[i]))
 
-class SRF:
+class SRF(FwmuMixin):
     """Respresents a spectral response function
     """
 
@@ -481,7 +518,7 @@ class SRF:
         :param ndarray W: Array of associated weights
         """
 
-        self.f = f
+        self.frequency = f
         self.W = W
 
     def __repr__(self):
@@ -500,14 +537,15 @@ class SRF:
     def centroid(self):
         """Calculate centre frequency
         """
-        return numpy.average(self.f, weights=self.W)
+        return numpy.average(self.frequency, weights=self.W)
 
     def blackbody_radiance(self, T):
         """Calculate integrated radiance for blackbody at temperature T
 
         :param T: Temperature [K]
         """
-        return self.integrate_radiances(self.f, planck_f(self.f[numpy.newaxis, :], T[:, numpy.newaxis]))
+        return self.integrate_radiances(self.frequency,
+                    planck_f(self.frequency[numpy.newaxis, :], T[:, numpy.newaxis]))
 
     def make_lookup_table(self):
         """Construct lookup table radiance <-> BT
@@ -556,7 +594,7 @@ class SRF:
         # Interpolate onto common frequency grid.  The spectral response
         # function is more smooth so less harmed by interpolation, so I
         # interpolate the SRF.
-        fnc = scipy.interpolate.interp1d(self.f, self.W, bounds_error=False, fill_value=0.0)
+        fnc = scipy.interpolate.interp1d(self.frequency, self.W, bounds_error=False, fill_value=0.0)
         w_on_L_grid = fnc(f)
         #ch_BT = (w_on_L_grid * L_f).sum(-1) / (w_on_L_grid.sum())
         # due to numexpr limitation, do sum seperately
@@ -594,7 +632,7 @@ class SRF:
 
         :param float amount: Distance to shift SRF [Hz]
         """
-        return self.__class__(self.f+amount, self.W)
+        return self.__class__(self.frequency+amount, self.W)
                     
 def planck_f(f, T):
     """Planck law expressed in frequency
