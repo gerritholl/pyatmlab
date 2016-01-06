@@ -53,7 +53,7 @@ class FwmuMixin:
             value = value * ureg.Hz
             
         self._wavenumber = value.to(1/ureg.centimeter, "sp")
-        self._wavelength = value.to(ureg.wavelength, "sp")
+        self._wavelength = value.to(ureg.metre, "sp")
 
     @property
     def wavenumber(self):
@@ -66,8 +66,8 @@ class FwmuMixin:
         except AttributeError:
             value = value * 1/ureg.centimeter
 
-        self._frequency = value.to(ureg.frequency, "sp")
-        self._wavelength = value.to(ureg.wavelength, "sp")
+        self._frequency = value.to(ureg.Hz, "sp")
+        self._wavelength = value.to(ureg.metre, "sp")
 
     @property
     def wavelength(self):
@@ -76,11 +76,11 @@ class FwmuMixin:
     @wavelength.setter
     def wavelength(self, value):
         try:
-            self._wavelength = value.to(ureg.wavelength, "sp")
+            self._wavelength = value.to(ureg.metre, "sp")
         except AttributeError:
             value = value * ureg.meter
 
-        self._frequency = value.to(ureg.frequency, "sp")
+        self._frequency = value.to(ureg.hertz, "sp")
         self._wavenumber = value.to(1/ureg.centimeter, "sp")
 
 class AKStats:
