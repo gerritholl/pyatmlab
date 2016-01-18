@@ -545,7 +545,7 @@ class SRF(FwmuMixin):
         Uses centroid
         """
         cf = self.centroid()
-        if cf > 1e13:
+        if cf.m > 1e13:
             cw = frequency2wavelength(cf)
             s = "{:.3f} µm".format(cw/micro)
         else:
