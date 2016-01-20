@@ -527,12 +527,13 @@ class IASIEPS(dataset.MultiFileDataset, dataset.HyperSpectral):
         return fieldall
 
     def _read(self, path, fields="all", return_header=False):
-        with tempfile.NamedTemporaryFile(mode="wb") as tmpfile:
+        with tempfile.NamedTemporaryFile(mode="wb", delete=False) as tmpfile:
             with gzip.open(str(path), "rb") as gzfile:
+                logging.debug("Decompressing {!s} to {!s}".format(path, tmpfile.name))
                 tmpfile.write(gzfile.read())
 
             # All the hard work is in coda
-            c = coda.fetch(tmpfile)
+            c = coda.fetch(tmpfile.name)
             n_scanlines = c.MPHR.TOTAL_MDR
             start = datetime.datetime(*coda.time_double_to_parts_utc(c.MPHR.SENSING_START))
             dlt = c.MDR[0].MDR.OnboardUTC - c.MPHR.SENSING_START
