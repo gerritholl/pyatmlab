@@ -518,7 +518,7 @@ class IASIEPS(dataset.MultiFileDataset, dataset.HyperSpectral):
         ("satellite_azimuth_angle", "f4"),
         ("solar_zenith_angle", "f4"),
         ("solar_azimuth_angle", "f4"),
-        ("spectral_radiance", "f4", (30, 4, 8700)])
+        ("spectral_radiance", "f4", (30, 4, 8700))])
 
     @staticmethod
     def __obtain_from_mdr(c, field):
@@ -531,6 +531,7 @@ class IASIEPS(dataset.MultiFileDataset, dataset.HyperSpectral):
             with gzip.open(str(path), "rb") as gzfile:
                 tmpfile.write(gzfile.read())
 
+            # All the hard work is in coda
             c = coda.fetch(tmpfile)
             n_scanlines = c.MPHR.TOTAL_MDR
             start = datetime.datetime(*coda.time_double_to_parts_utc(c.MPHR.SENSING_START))

@@ -504,14 +504,14 @@ class MultiFileDataset(Dataset):
         pst = str(self.basedir / self.subdir)
         if res == "year":
             year = d.year
-            while datetime.date(year, 1, 1) < d_end:
+            while datetime.date(year, 1, 1) <= d_end:
                 yield (dict(year=year),
                     pathlib.Path(pst.format(year=year, **extra)))
                 year += 1
         elif res == "month":
             year = d.year
             month = d.month
-            while datetime.date(year, month, 1) < d_end:
+            while datetime.date(year, month, 1) <= d_end:
                 yield (dict(year=year, month=month),
                     pathlib.Path(pst.format(year=year, month=month,
                                             **extra)))
