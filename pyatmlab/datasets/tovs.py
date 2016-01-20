@@ -14,6 +14,12 @@ import numpy
 import netCDF4
 import dateutil
 
+try:
+    import coda
+except ImportError:
+    logging.warn("Unable to import coda, won't read IASI EPS L1C")
+    
+
 from .. import dataset
 from .. import tools
 from .. import constants
@@ -434,7 +440,9 @@ class HIRS4(HIRSKLM):
     
     channel_order = numpy.asarray(_tovs_defs.HIRS_channel_order[4])
 
-class IASI(dataset.MultiFileDataset, dataset.HyperSpectral):
+class IASINC(dataset.MultiFileDataset, dataset.HyperSpectral):
+    """Read IASI from NetCDF
+    """
     _dtype = numpy.dtype([
         ("time", "M8[s]"),
         ("lat", "f4"),
@@ -444,7 +452,7 @@ class IASI(dataset.MultiFileDataset, dataset.HyperSpectral):
         ("solar_zenith_angle", "f4"),
         ("solar_azimuth_angle", "f4"),
         ("spectral_radiance", "f4", 8700)])
-    name = "iasi"
+    name = "iasinc"
     start_date = datetime.datetime(2003, 1, 1, 0, 0, 0)
     end_date = datetime.datetime(2013, 12, 31, 23, 59, 59)
     granule_duration = datetime.timedelta(seconds=1200)
@@ -493,3 +501,58 @@ class IASI(dataset.MultiFileDataset, dataset.HyperSpectral):
                         scale[scale_valid][numpy.newaxis, numpy.newaxis, :])
 
         return M
+
+class IASIEPS(dataset.MultiFileDataset, dataset.HyperSpectral):
+    """Read IASI from EUMETSAT EPS L1C
+    """
+
+    name = "iasi"
+    start_date = datetime.datetime(2007, 5,  29, 5, 8, 56)
+    end_date = datetime.datetime(2015, 11, 17, 16, 38, 59)
+    granule_duration = datetime.timedelta(seconds=6200)
+    _dtype = numpy.dtype([
+        ("time", "M8[ms]"),
+        ("lat", "f4"),
+        ("lon", "f4"),
+        ("satellite_zenith_angle", "f4"),
+        ("satellite_azimuth_angle", "f4"),
+        ("solar_zenith_angle", "f4"),
+        ("solar_azimuth_angle", "f4"),
+        ("spectral_radiance", "f4", (30, 4, 8700)])
+
+    @staticmethod
+    def __obtain_from_mdr(c, field):
+        fieldall = numpy.concatenate([getattr(x.MDR, field)[:, :, :, numpy.newaxis] for x in c.MDR], 3)
+        fieldall = numpy.transpose(specall, [3, 0, 1, 2])
+        return fieldall
+
+    def _read(self, path, fields="all", return_header=False):
+        with tempfile.NamedTemporaryFile(mode="wb") as tmpfile:
+            with gzip.open(str(path), "rb") as gzfile:
+                tmpfile.write(gzfile.read())
+
+            c = coda.fetch(tmpfile)
+            n_scanlines = c.MPHR.TOTAL_MDR
+            start = datetime.datetime(*coda.time_double_to_parts_utc(c.MPHR.SENSING_START))
+            dlt = c.MDR[0].MDR.OnboardUTC - c.MPHR.SENSING_START
+            M = numpy.zeros(
+                dtype=self._dtype,
+                shape=n_scanlines)
+            M["time"] = numpy.datetime64(start, "ms") + numpy.array(dlt*1e3, "m8[ms]")
+            specall = self.__obtain_from_mdr(c, "GS1cSpect")
+            M["spectral_radiance"] = specall
+            locall = self.__obtain_from_mdr(c, "GGeoSondLoc")
+            M["lon"] = locall[:, :, :, 0]
+            M["lat"] = locall[:, :, :, 1]
+            satangall = self.__obtain_from_mdr(c, "GGeoSondAnglesMETOP")
+            M["satellite_zenith_angle"] = satangall[:, :, :, 0]
+            M["satellite_azimuth_angle"] = satangall[:, :, :, 1]
+            solangall = self.__obtain_from_mdr(c, "GGeoSondAnglesSUN")
+            M["solar_zenith_angle"] = solangall[:, :, :, 0]
+            M["solar_azimuth_angle"] = solangall[:, :, :, 1]
+            wavenumber = (m.IDefSpectDWn1b * arange(m.IDefNsfirst1b, m.IDefNslast1b+0.1) * (1/ureg.metre))
+            if self.wavenumber is None:
+                self.wavenumber = wavenumber
+            elif abs(self.wavenumber - wavenumber).max() > (0.05 * 1/(ureg.centimetre)):
+                raise ValueError("Inconsistent wavenumbers")
+            return M
