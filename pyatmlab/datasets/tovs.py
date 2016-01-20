@@ -533,7 +533,9 @@ class IASIEPS(dataset.MultiFileDataset, dataset.HyperSpectral):
                 tmpfile.write(gzfile.read())
 
             # All the hard work is in coda
-            c = coda.fetch(tmpfile.name)
+            logging.debug("Reading {!s}".format(tmpfile.name))
+            cfp = coda.open(tmpfile.name)
+            c = coda.fetch(cfp)
             n_scanlines = c.MPHR.TOTAL_MDR
             start = datetime.datetime(*coda.time_double_to_parts_utc(c.MPHR.SENSING_START))
             dlt = c.MDR[0].MDR.OnboardUTC - c.MPHR.SENSING_START
