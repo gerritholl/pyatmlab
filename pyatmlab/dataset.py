@@ -773,10 +773,7 @@ class SingleMeasurementPerFileDataset(MultiFileDataset):
 class HomemadeDataset(MultiFileDataset):
     """For any dataset created by pyatmlab.
 
-    No content yet.
     """
-    # dummy implementation for abstract methods, so that I can test other
-    # things
 
     stored_name = ""
 
@@ -810,6 +807,11 @@ class HomemadeDataset(MultiFileDataset):
 #
 #        :param str f: File to save to
 #        """
+
+    def save_npz(self, path, M):
+        """Save to compressed npz
+        """
+        numpy.savez_compressed(path, M)
 
 
 class ProfileDataset(Dataset):

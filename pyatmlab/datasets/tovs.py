@@ -565,3 +565,7 @@ class IASIEPS(dataset.MultiFileDataset, dataset.HyperSpectral):
             elif abs(self.wavenumber - wavenumber).max() > (0.05 * 1/(ureg.centimetre)):
                 raise ValueError("Inconsistent wavenumbers")
             return M
+
+class IASISub(dataset.HomeMadeDataset, dataset.Hyperspectral):
+    name = "iasisub"
+    pass
