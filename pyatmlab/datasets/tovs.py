@@ -527,7 +527,7 @@ class IASIEPS(dataset.MultiFileDataset, dataset.HyperSpectral):
         return fieldall
 
     def _read(self, path, fields="all", return_header=False):
-        with tempfile.NamedTemporaryFile(mode="wb", delete=False) as tmpfile:
+        with tempfile.NamedTemporaryFile(mode="wb", delete=True) as tmpfile:
             with gzip.open(str(path), "rb") as gzfile:
                 logging.debug("Decompressing {!s}".format(path))
                 gzcont = gzfile.read()
@@ -545,7 +545,7 @@ class IASIEPS(dataset.MultiFileDataset, dataset.HyperSpectral):
             dlt = numpy.concatenate([m.MDR.OnboardUTC[:, numpy.newaxis] for m in c.MDR], 1) - c.MPHR.SENSING_START
             M = numpy.zeros(
                 dtype=self._dtype,
-                shape=(30, n_scanlines))
+                shape=(n_scanlines, 30))
             M["time"] = numpy.datetime64(start, "ms") + numpy.array(dlt*1e3, "m8[ms]").T
             specall = self.__obtain_from_mdr(c, "GS1cSpect")
             M["spectral_radiance"] = specall
