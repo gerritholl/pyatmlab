@@ -512,37 +512,41 @@ class IASIEPS(dataset.MultiFileDataset, dataset.HyperSpectral):
     granule_duration = datetime.timedelta(seconds=6200)
     _dtype = numpy.dtype([
         ("time", "M8[ms]"),
-        ("lat", "f4"),
-        ("lon", "f4"),
-        ("satellite_zenith_angle", "f4"),
-        ("satellite_azimuth_angle", "f4"),
-        ("solar_zenith_angle", "f4"),
-        ("solar_azimuth_angle", "f4"),
-        ("spectral_radiance", "f4", (30, 4, 8700))])
+        ("lat", "f4", (4,)),
+        ("lon", "f4", (4,)),
+        ("satellite_zenith_angle", "f4", (4,)),
+        ("satellite_azimuth_angle", "f4", (4,)),
+        ("solar_zenith_angle", "f4", (4,)),
+        ("solar_azimuth_angle", "f4", (4,)),
+        ("spectral_radiance", "f4", (4, 8700))])
 
     @staticmethod
     def __obtain_from_mdr(c, field):
         fieldall = numpy.concatenate([getattr(x.MDR, field)[:, :, :, numpy.newaxis] for x in c.MDR], 3)
-        fieldall = numpy.transpose(specall, [3, 0, 1, 2])
+        fieldall = numpy.transpose(fieldall, [3, 0, 1, 2])
         return fieldall
 
     def _read(self, path, fields="all", return_header=False):
         with tempfile.NamedTemporaryFile(mode="wb", delete=False) as tmpfile:
             with gzip.open(str(path), "rb") as gzfile:
-                logging.debug("Decompressing {!s} to {!s}".format(path, tmpfile.name))
-                tmpfile.write(gzfile.read())
+                logging.debug("Decompressing {!s}".format(path))
+                gzcont = gzfile.read()
+                logging.debug("Writing decompressed file to {!s}".format(tmpfile.name))
+                tmpfile.write(gzcont)
+                del gzcont
 
             # All the hard work is in coda
             logging.debug("Reading {!s}".format(tmpfile.name))
             cfp = coda.open(tmpfile.name)
             c = coda.fetch(cfp)
+            logging.debug("Sorting info...")
             n_scanlines = c.MPHR.TOTAL_MDR
             start = datetime.datetime(*coda.time_double_to_parts_utc(c.MPHR.SENSING_START))
-            dlt = c.MDR[0].MDR.OnboardUTC - c.MPHR.SENSING_START
+            dlt = numpy.concatenate([m.MDR.OnboardUTC[:, numpy.newaxis] for m in c.MDR], 1) - c.MPHR.SENSING_START
             M = numpy.zeros(
                 dtype=self._dtype,
-                shape=n_scanlines)
-            M["time"] = numpy.datetime64(start, "ms") + numpy.array(dlt*1e3, "m8[ms]")
+                shape=(30, n_scanlines))
+            M["time"] = numpy.datetime64(start, "ms") + numpy.array(dlt*1e3, "m8[ms]").T
             specall = self.__obtain_from_mdr(c, "GS1cSpect")
             M["spectral_radiance"] = specall
             locall = self.__obtain_from_mdr(c, "GGeoSondLoc")
@@ -554,7 +558,8 @@ class IASIEPS(dataset.MultiFileDataset, dataset.HyperSpectral):
             solangall = self.__obtain_from_mdr(c, "GGeoSondAnglesSUN")
             M["solar_zenith_angle"] = solangall[:, :, :, 0]
             M["solar_azimuth_angle"] = solangall[:, :, :, 1]
-            wavenumber = (m.IDefSpectDWn1b * arange(m.IDefNsfirst1b, m.IDefNslast1b+0.1) * (1/ureg.metre))
+            m = c.MDR[0].MDR
+            wavenumber = (m.IDefSpectDWn1b * numpy.arange(m.IDefNsfirst1b, m.IDefNslast1b+0.1) * (1/ureg.metre))
             if self.wavenumber is None:
                 self.wavenumber = wavenumber
             elif abs(self.wavenumber - wavenumber).max() > (0.05 * 1/(ureg.centimetre)):
