@@ -566,6 +566,6 @@ class IASIEPS(dataset.MultiFileDataset, dataset.HyperSpectral):
                 raise ValueError("Inconsistent wavenumbers")
             return M
 
-class IASISub(dataset.HomeMadeDataset, dataset.Hyperspectral):
+class IASISub(dataset.HomemadeDataset, dataset.HyperSpectral):
     name = "iasisub"
     pass
