@@ -523,7 +523,7 @@ class IASIEPS(dataset.MultiFileDataset, dataset.HyperSpectral):
         ("spectral_radiance", "f4", (4, 8700))])
 
     # Minimum temporary space for unpacking
-    minspace = 2.5e9
+    minspace = 5e9
 
     @staticmethod
     def __obtain_from_mdr(c, field):
