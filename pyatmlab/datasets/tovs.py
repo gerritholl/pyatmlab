@@ -522,7 +522,8 @@ class IASIEPS(dataset.MultiFileDataset, dataset.HyperSpectral):
 
     @staticmethod
     def __obtain_from_mdr(c, field):
-        fieldall = numpy.concatenate([getattr(x.MDR, field)[:, :, :, numpy.newaxis] for x in c.MDR], 3)
+        fieldall = numpy.concatenate([getattr(x.MDR, field)[:, :, :,
+            numpy.newaxis] for x in c.MDR if hasattr(m, 'MDR')], 3)
         fieldall = numpy.transpose(fieldall, [3, 0, 1, 2])
         return fieldall
 
@@ -542,7 +543,8 @@ class IASIEPS(dataset.MultiFileDataset, dataset.HyperSpectral):
             logging.debug("Sorting info...")
             n_scanlines = c.MPHR.TOTAL_MDR
             start = datetime.datetime(*coda.time_double_to_parts_utc(c.MPHR.SENSING_START))
-            dlt = numpy.concatenate([m.MDR.OnboardUTC[:, numpy.newaxis] for m in c.MDR], 1) - c.MPHR.SENSING_START
+            dlt = numpy.concatenate([m.MDR.OnboardUTC[:, numpy.newaxis]
+                for m in c.MDR if hasattr(m, 'MDR')], 1) - c.MPHR.SENSING_START
             M = numpy.zeros(
                 dtype=self._dtype,
                 shape=(n_scanlines, 30))
