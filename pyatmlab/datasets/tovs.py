@@ -7,6 +7,7 @@ import subprocess
 import datetime
 import logging
 import gzip
+import shutil
 import abc
 
 import numpy
