@@ -811,7 +811,9 @@ class HomemadeDataset(MultiFileDataset):
     def save_npz(self, path, M):
         """Save to compressed npz
         """
-        numpy.savez_compressed(path, M)
+        p = pathlib.Path(path)
+        p.parent.mkdir(parents=True, exist_ok=True)
+        numpy.savez_compressed(str(path), M)
 
 
 class ProfileDataset(Dataset):
