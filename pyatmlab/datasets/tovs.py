@@ -556,9 +556,11 @@ class IASIEPS(dataset.MultiFileDataset, dataset.HyperSpectral):
             start = datetime.datetime(*coda.time_double_to_parts_utc(c.MPHR.SENSING_START))
             has_mdr = numpy.array([hasattr(m, 'MDR') for m in c.MDR],
                         dtype=numpy.bool)
-            bad = [(m.MDR.DEGRADED_PROC_MDR|m.MDR.DEGRADED_INST_MDR)
-                if hasattr(m, 'MDR') else True
-                    for m in c.MDR]
+            bad = numpy.array([
+                (m.MDR.DEGRADED_PROC_MDR|m.MDR.DEGRADED_INST_MDR)
+                        if hasattr(m, 'MDR') else True
+                        for m in c.MDR],
+                            dtype=numpy.bool)
             dlt = numpy.concatenate(
                 [m.MDR.OnboardUTC[:, numpy.newaxis]
                     for m in c.MDR
