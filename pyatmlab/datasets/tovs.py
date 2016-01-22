@@ -536,7 +536,7 @@ class IASIEPS(dataset.MultiFileDataset, dataset.HyperSpectral):
         tmpdira = config.conf["main"]["tmpdir"]
         tmpdirb = config.conf["main"]["tmpdirb"]
         tmpdir = (tmpdira 
-            if shutil.disk_usage(tmpdira).free < self.minspace
+            if shutil.disk_usage(tmpdira).free > self.minspace
             else tmpdirb)
             
         with tempfile.NamedTemporaryFile(mode="wb", dir=tmpdir, delete=True) as tmpfile:
