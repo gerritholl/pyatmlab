@@ -26,6 +26,7 @@ from .. import constants
 from .. import physics
 from .. import math as pamath
 from .. import ureg
+from .. import config
 
 from . import _tovs_defs
 
@@ -520,6 +521,9 @@ class IASIEPS(dataset.MultiFileDataset, dataset.HyperSpectral):
         ("solar_azimuth_angle", "f4", (4,)),
         ("spectral_radiance", "f4", (4, 8700))])
 
+    # Minimum temporary space for unpacking
+    minspace = 2.5e9
+
     @staticmethod
     def __obtain_from_mdr(c, field):
         fieldall = numpy.concatenate([getattr(x.MDR, field)[:, :, :,
@@ -528,7 +532,13 @@ class IASIEPS(dataset.MultiFileDataset, dataset.HyperSpectral):
         return fieldall
 
     def _read(self, path, fields="all", return_header=False):
-        with tempfile.NamedTemporaryFile(mode="wb", delete=True) as tmpfile:
+        tmpdira = config.conf["main"]["tmpdir"]
+        tmpdirb = config.conf["main"]["tmpdirb"]
+        tmpdir = (tmpdira 
+            if shutil.disk_usage(tmpdira).free < self.minspace
+            else tmpdirb)
+            
+        with tempfile.NamedTemporaryFile(mode="wb", dir=tmpdir, delete=True) as tmpfile:
             with gzip.open(str(path), "rb") as gzfile:
                 logging.debug("Decompressing {!s}".format(path))
                 gzcont = gzfile.read()
@@ -548,7 +558,6 @@ class IASIEPS(dataset.MultiFileDataset, dataset.HyperSpectral):
             bad = [(m.MDR.DEGRADED_PROC_MDR|m.MDR.DEGRADED_INST_MDR)
                 if hasattr(m, 'MDR') else True
                     for m in c.MDR]
-            c.MDR[730].MDR.DEGRADED_PROC_MDR
             dlt = numpy.concatenate(
                 [m.MDR.OnboardUTC[:, numpy.newaxis]
                     for m in c.MDR
