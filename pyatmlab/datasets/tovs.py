@@ -523,7 +523,7 @@ class IASIEPS(dataset.MultiFileDataset, dataset.HyperSpectral):
     @staticmethod
     def __obtain_from_mdr(c, field):
         fieldall = numpy.concatenate([getattr(x.MDR, field)[:, :, :,
-            numpy.newaxis] for x in c.MDR if hasattr(m, 'MDR')], 3)
+            numpy.newaxis] for x in c.MDR if hasattr(x, 'MDR')], 3)
         fieldall = numpy.transpose(fieldall, [3, 0, 1, 2])
         return fieldall
 
