@@ -543,23 +543,28 @@ class IASIEPS(dataset.MultiFileDataset, dataset.HyperSpectral):
             logging.debug("Sorting info...")
             n_scanlines = c.MPHR.TOTAL_MDR
             start = datetime.datetime(*coda.time_double_to_parts_utc(c.MPHR.SENSING_START))
-            dlt = numpy.concatenate([m.MDR.OnboardUTC[:, numpy.newaxis]
-                for m in c.MDR if hasattr(m, 'MDR')], 1) - c.MPHR.SENSING_START
-            M = numpy.zeros(
+            has_mdr = [hasattr(m, 'MDR') for m in c.MDR]
+            dlt = numpy.concatenate(
+                [m.MDR.OnboardUTC[:, numpy.newaxis]
+                    for m in c.MDR
+                    if hasattr(m, 'MDR')], 1) - c.MPHR.SENSING_START
+            M = numpy.ma.zeros(
                 dtype=self._dtype,
                 shape=(n_scanlines, 30))
-            M["time"] = numpy.datetime64(start, "ms") + numpy.array(dlt*1e3, "m8[ms]").T
+            M["time"][has_mdr] = numpy.datetime64(start, "ms") + numpy.array(dlt*1e3, "m8[ms]").T
             specall = self.__obtain_from_mdr(c, "GS1cSpect")
-            M["spectral_radiance"] = specall
+            M["spectral_radiance"][has_mdr] = specall
             locall = self.__obtain_from_mdr(c, "GGeoSondLoc")
-            M["lon"] = locall[:, :, :, 0]
-            M["lat"] = locall[:, :, :, 1]
+            M["lon"][has_mdr] = locall[:, :, :, 0]
+            M["lat"][has_mdr] = locall[:, :, :, 1]
             satangall = self.__obtain_from_mdr(c, "GGeoSondAnglesMETOP")
-            M["satellite_zenith_angle"] = satangall[:, :, :, 0]
-            M["satellite_azimuth_angle"] = satangall[:, :, :, 1]
+            M["satellite_zenith_angle"][has_mdr] = satangall[:, :, :, 0]
+            M["satellite_azimuth_angle"][has_mdr] = satangall[:, :, :, 1]
             solangall = self.__obtain_from_mdr(c, "GGeoSondAnglesSUN")
-            M["solar_zenith_angle"] = solangall[:, :, :, 0]
-            M["solar_azimuth_angle"] = solangall[:, :, :, 1]
+            M["solar_zenith_angle"][has_mdr] = solangall[:, :, :, 0]
+            M["solar_azimuth_angle"][has_mdr] = solangall[:, :, :, 1]
+            for fld in M.dtype.names:
+                M.mask[fld][...] = True
             m = c.MDR[0].MDR
             wavenumber = (m.IDefSpectDWn1b * numpy.arange(m.IDefNsfirst1b, m.IDefNslast1b+0.1) * (1/ureg.metre))
             if self.wavenumber is None:
