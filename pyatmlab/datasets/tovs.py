@@ -543,7 +543,12 @@ class IASIEPS(dataset.MultiFileDataset, dataset.HyperSpectral):
             logging.debug("Sorting info...")
             n_scanlines = c.MPHR.TOTAL_MDR
             start = datetime.datetime(*coda.time_double_to_parts_utc(c.MPHR.SENSING_START))
-            has_mdr = [hasattr(m, 'MDR') for m in c.MDR]
+            has_mdr = numpy.array([hasattr(m, 'MDR') for m in c.MDR],
+                        dtype=numpy.bool)
+            bad = [(m.MDR.DEGRADED_PROC_MDR|m.MDR.DEGRADED_INST_MDR)
+                if hasattr(m, 'MDR') else True
+                    for m in c.MDR]
+            c.MDR[730].MDR.DEGRADED_PROC_MDR
             dlt = numpy.concatenate(
                 [m.MDR.OnboardUTC[:, numpy.newaxis]
                     for m in c.MDR
@@ -565,6 +570,7 @@ class IASIEPS(dataset.MultiFileDataset, dataset.HyperSpectral):
             M["solar_azimuth_angle"][has_mdr] = solangall[:, :, :, 1]
             for fld in M.dtype.names:
                 M.mask[fld][~has_mdr, ...] = True
+                M.mask[fld][bad, ...] = True
             m = c.MDR[0].MDR
             wavenumber = (m.IDefSpectDWn1b * numpy.arange(m.IDefNsfirst1b, m.IDefNslast1b+0.1) * (1/ureg.metre))
             if self.wavenumber is None:
