@@ -564,7 +564,7 @@ class IASIEPS(dataset.MultiFileDataset, dataset.HyperSpectral):
             M["solar_zenith_angle"][has_mdr] = solangall[:, :, :, 0]
             M["solar_azimuth_angle"][has_mdr] = solangall[:, :, :, 1]
             for fld in M.dtype.names:
-                M.mask[fld][...] = True
+                M.mask[fld][~has_mdr, ...] = True
             m = c.MDR[0].MDR
             wavenumber = (m.IDefSpectDWn1b * numpy.arange(m.IDefNsfirst1b, m.IDefNslast1b+0.1) * (1/ureg.metre))
             if self.wavenumber is None:
