@@ -549,7 +549,7 @@ class SRF(FwmuMixin):
             s = cf.to(ureg.um, "sp")
         else:
             s = cf.to(ureg.GHz, "sp")
-        return "<{:s}: {:~}>".format(self.__class__.__name__, s)
+        return "<{:s}: {:.2~}>".format(self.__class__.__name__, s)
 
     def centroid(self):
         """Calculate centre frequency
@@ -649,8 +649,7 @@ class SRF(FwmuMixin):
 
         :param float amount: Distance to shift SRF [Hz]
         """
-        return self.__class__(self.frequency.to(ureg.Hz, "sp")+
-                              amount.to(ureg.Hz, "sp"), self.W)
+        return self.__class__(self.frequency.to(amount.u, "sp") + amount, self.W)
                     
 def planck_f(f, T):
     """Planck law expressed in frequency
