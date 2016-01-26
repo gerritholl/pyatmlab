@@ -549,7 +549,7 @@ class SRF(FwmuMixin):
             s = cf.to(ureg.um, "sp")
         else:
             s = cf.to(ureg.GHz, "sp")
-        return "<{:s}: {:.2~}>".format(self.__class__.__name__, s)
+        return "<{:s}: {:.4~}>".format(self.__class__.__name__, s)
 
     def centroid(self):
         """Calculate centre frequency
