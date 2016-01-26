@@ -545,12 +545,11 @@ class SRF(FwmuMixin):
         Uses centroid
         """
         cf = self.centroid()
-        if cf.m > 1e13:
-            cw = frequency2wavelength(cf)
-            s = "{:.3f} µm".format(cw/micro)
+        if cf.to("Hz", "sp").m > 3e12:
+            s = cf.to(ureg.um, "sp")
         else:
-            s = "{:.3f} GHz".format(cw/giga)
-        return "<{:s}: {:s}>".format(self.__class__.__name__, s)
+            s = cf.to(ureg.GHz, "sp")
+        return "<{:s}: {:~}>".format(self.__class__.__name__, s)
 
     def centroid(self):
         """Calculate centre frequency
