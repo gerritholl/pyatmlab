@@ -649,7 +649,8 @@ class SRF(FwmuMixin):
 
         :param float amount: Distance to shift SRF [Hz]
         """
-        return self.__class__(self.frequency+amount, self.W)
+        return self.__class__(self.frequency.to(ureg.Hz, "sp")+
+                              amount.to(ureg.Hz, "sp"), self.W)
                     
 def planck_f(f, T):
     """Planck law expressed in frequency
