@@ -38,9 +38,28 @@ import numpy
 
 HIRS_scale_factors = {}
 
+_tmpsclfct = (6., 9., 14., 17., 21., 25.)
+_tmpsclfct4 = numpy.tile(_tmpsclfct, 4)
+_tmpsclfct5 = numpy.tile(_tmpsclfct, 5)
+
 HIRS_scale_factors[3] = dict(
     hrs_h_calinf = 6,
     hrs_h_tempradcnv = numpy.concatenate((numpy.tile(6, 12*3), numpy.tile((5, 6, 6), 7))),
+    hrs_h_iwtcnttmp = _tmpsclfct5,
+    hrs_h_ictcnttmp = _tmpsclfct4,
+    hrs_h_tttcnttmp = _tmpsclfct,
+    hrs_h_fwcnttmp = _tmpsclfct4,
+    hrs_h_patchexpcnttmp = _tmpsclfct,
+    hrs_h_fsradcnttmp = _tmpsclfct,
+    hrs_h_scmircnttmp = _tmpsclfct,
+    hrs_h_pttcnttmp = _tmpsclfct,
+    hrs_h_sttcnttmp = _tmpsclfct,
+    hrs_h_bpcnttmp = _tmpsclfct,
+    hrs_h_electcnttmp = _tmpsclfct,
+    hrs_h_patchfcnttmp = _tmpsclfct,
+    hrs_h_scmotcnttmp = _tmpsclfct,
+    hrs_h_fwmcnttmp = _tmpsclfct,
+    hrs_h_chsgcnttmp = _tmpsclfct,
     hrs_h_20solfiltirrad = 6,
     hrs_h_20equifiltwidth = 6,
     hrs_h_nadloctol = 1,

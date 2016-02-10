@@ -103,6 +103,8 @@ class HIRS(dataset.MultiFileDataset, Radiometer):
             # convert wn to SI units
             wn /= constants.centi
             bt = self.rad2bt(rad_wn[:, :, :self.n_calibchannels], wn, c1, c2)
+            # extract more info from TIP
+            temp = self.get_temp(header, elem)
             # Copy over all fields... should be able to use
             # numpy.lib.recfunctions.append_fields but incredibly slow!
             scanlines_new = numpy.empty(shape=scanlines.shape,
@@ -111,9 +113,13 @@ class HIRS(dataset.MultiFileDataset, Radiometer):
                      ("counts", "i2", (self.n_perline, self.n_channels,)),
                      ("bt", "f4", (self.n_perline, self.n_calibchannels,)),
                      ("lat", "f8", (self.n_perline,)),
-                     ("lon", "f8", (self.n_perline,))]))
+                     ("lon", "f8", (self.n_perline,))] +
+                    [("temp_"+k, "f4", temp[k].squeeze().shape[1:])
+                        for k in temp.keys()]))
             for f in scanlines.dtype.names:
                 scanlines_new[f] = scanlines[f]
+            for f in temp.keys():
+                scanlines_new["temp_" + f] = temp[f].squeeze()
             scanlines_new["radiance"] = physics.specrad_wavenumber2frequency(rad_wn)
             scanlines_new["counts"] = counts
             scanlines_new["bt"] = bt
@@ -127,6 +133,10 @@ class HIRS(dataset.MultiFileDataset, Radiometer):
         elif apply_flags:
             raise ValueError("I refuse to apply flags when not calibrating ☹")
 
+        # TODO:
+        # - Add temperatures
+        # - Add other meta-information from TIP
+        # - Interpret Analog Housekeeping Telemetry data
         return (header, scanlines) if return_header else scanlines
        
     def check_parity(self, counts):
@@ -262,6 +272,10 @@ class HIRS(dataset.MultiFileDataset, Radiometer):
 
     @abc.abstractmethod
     def get_cc(self, scanlines):
+        ...
+
+    @abc.abstractmethod
+    def get_iwt(self, header, elem):
         ...
  
 class HIRSPOD(HIRS):
@@ -421,6 +435,93 @@ class HIRSKLM(HIRS):
                 self.line_dtype["hrs_calcof"].shape[0]//self.n_channels)
         return cc
 
+    
+    @staticmethod
+    def _convert_temp(fact, counts):
+        """Helper for temperature conversions
+
+        Related to IWT, ICT, filter wheel, telescope, etc.
+        """
+
+        # FIXME: Should be able to merge those conditions into a single
+        # expression with some clever use of Ellipsis
+        if counts.ndim == 3:
+            tmp = (counts[:, :, :, numpy.newaxis] **
+                    numpy.arange(1, 6)[numpy.newaxis, numpy.newaxis, numpy.newaxis, :])
+            return (fact[:, 0:1] +
+                        (fact[:, numpy.newaxis, 1:] * tmp).sum(3))
+        elif counts.ndim == 2:
+            tmp = (counts[..., numpy.newaxis] **
+                   numpy.arange(1, 6).reshape((1,)*counts.ndim + (5,))) 
+            return fact[0:1] + (fact[numpy.newaxis, numpy.newaxis, 1:] * tmp).sum(-1)
+        elif counts.ndim == 1:
+            fact = fact.squeeze()
+            return (fact[0] + 
+                    (fact[numpy.newaxis, 1:] * (counts[:, numpy.newaxis]
+                        ** numpy.arange(1, 6)[numpy.newaxis, :])).sum(1))
+        else:
+            raise NotImplementedError("ndim = {:d}".format(counts.ndim))
+
+    def get_iwt(self, header, elem):
+        """Get temperature of internal warm target
+        """
+        (iwt_fact, iwt_counts) = self._get_iwt_info(header, elem)
+        return self._convert_temp(iwt_fact, iwt_counts)
+
+    def _get_temp_common(self, header, elem):
+        N = elem.shape[0]
+        return dict(
+            iwt = self._convert_temp(*self._get_iwt_info(header, elem)),
+            ict = self._convert_temp(*self._get_ict_info(header, elem)),
+            fwh = self._convert_temp(
+                    header["hrs_h_fwcnttmp"].reshape(4,6),
+                    elem[:, 60, 2:22].reshape(N, 4, 5)),
+            patch_exp = self._convert_temp(
+                    header["hrs_h_patchexpcnttmp"],
+                    elem[:, 61, 2:7].reshape(N, 1, 5)),
+            fsr = self._convert_temp(
+                    header["hrs_h_fsradcnttmp"],
+                    elem[:, 61, 7:12].reshape(N, 1, 5)),
+            scanmirror = self._convert_temp(
+                    header["hrs_h_scmircnttmp"],
+                    elem[:, 62, 2]),
+            primtlscp = self._convert_temp(
+                    header["hrs_h_pttcnttmp"],
+                    elem[:, 62, 3]),
+            sectlscp = self._convert_temp(
+                    header["hrs_h_sttcnttmp"],
+                    elem[:, 62, 4]),
+            baseplate = self._convert_temp(
+                    header["hrs_h_bpcnttmp"],
+                    elem[:, 62, 5]),
+            elec = self._convert_temp(
+                    header["hrs_h_electcnttmp"],
+                    elem[:, 62, 6]),
+            patch_full = self._convert_temp(
+                    header["hrs_h_patchfcnttmp"],
+                    elem[:, 62, 7]),
+            scanmotor = self._convert_temp(
+                    header["hrs_h_scmotcnttmp"],
+                    elem[:, 62, 8]),
+            fwm = self._convert_temp(
+                    header["hrs_h_fwmcnttmp"],
+                    elem[:, 62, 9]),
+            ch = self._convert_temp(
+                    header["hrs_h_chsgcnttmp"],
+                    elem[:, 62, 10]))
+
+    @abc.abstractmethod
+    def get_temp(self, header, elem):
+        ...
+
+    @abc.abstractmethod
+    def _get_iwt_info(self, header, elem):
+        ...
+
+    @abc.abstractmethod
+    def _get_ict_info(self, header, elem):
+        ...
+
 class HIRS3(HIRSKLM):
     pdf_definition_pages = (26, 37)
     version = 3
@@ -432,6 +533,20 @@ class HIRS3(HIRSKLM):
 
     channel_order = numpy.asarray(_tovs_defs.HIRS_channel_order[3])
 
+    def _get_iwt_info(self, head, elem):
+        iwt_counts = elem[:, 58, self.count_start:self.count_end].reshape(
+            (elem.shape[0], 5, 4))
+        iwt_fact = (head["hrs_h_iwtcnttmp"]).reshape(5, 6)[:4, :]
+        return (iwt_fact, iwt_counts)
+
+    def get_ict_info(self, head, elem):
+        ict_counts = elem[:, 59, self.count_start:self.count_end]
+        ict_fact = head["hrs_h_ictcntmp"].reshape(4, 6)
+        return (ict_fact, ict_counts)
+
+    def get_temp(self, header, elem):
+        return self._get_temp_common(header, elem)
+
 class HIRS4(HIRSKLM):
     satellites = {"noaa18", "noaa19", "metopa", "metopb"}
     pdf_definition_pages = (38, 54)
@@ -441,6 +556,29 @@ class HIRS4(HIRSKLM):
     line_dtype = _tovs_defs.HIRS_line_dtypes[4]
     
     channel_order = numpy.asarray(_tovs_defs.HIRS_channel_order[4])
+    
+    def _get_iwt_info(self, head, elem):
+        iwt_counts = numpy.concatenate(
+            (elem[:, 58, self.count_start:self.count_end],
+             elem[:, 59, 12:17]), 1).reshape((elem.shape[0], 5, 5))
+        iwt_fact = (head["hrs_h_iwtcnttmp"]).reshape(5, 6)
+        iwt_counts = iwt_counts.astype("int64")
+        return (iwt_fact, iwt_counts)
+
+    def _get_ict_info(self, head, elem):
+        ict_counts = elem[:, 59, 2:7]
+        ict_fact = head["hrs_h_ictcnttmp"][0, :6]
+        return (ict_fact, ict_counts)
+
+    def get_temp(self, header, elem):
+        """Extract temperatures
+        """
+        D = self._get_temp_common(header, elem)
+        # new in HIRS/4
+        D["terttlscp"] = self._convert_temp(
+            header["hrs_h_tttcnttmp"],
+            elem[:, 59, 17:22].reshape(elem.shape[0], 1, 5))
+        return D
 
 class IASINC(dataset.MultiFileDataset, dataset.HyperSpectral):
     """Read IASI from NetCDF
