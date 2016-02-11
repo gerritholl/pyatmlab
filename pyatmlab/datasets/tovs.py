@@ -365,7 +365,7 @@ class HIRSKLM(HIRS):
     n_wordperframe = 24
     def seekhead(self, f):
         f.seek(0, io.SEEK_SET)
-        if f.peek(3) in {b"NSS", b"CMS", b"DSS", b"UKM"}:
+        if f.peek(3)[:3] in {b"NSS", b"CMS", b"DSS", b"UKM"}:
             f.seek(0, io.SEEK_SET)
         else: # assuming additional header
             f.seek(512, io.SEEK_SET)
@@ -539,7 +539,7 @@ class HIRS3(HIRSKLM):
         iwt_fact = (head["hrs_h_iwtcnttmp"]).reshape(5, 6)[:4, :]
         return (iwt_fact, iwt_counts)
 
-    def get_ict_info(self, head, elem):
+    def _get_ict_info(self, head, elem):
         ict_counts = elem[:, 59, self.count_start:self.count_end]
         ict_fact = head["hrs_h_ictcntmp"].reshape(4, 6)
         return (ict_fact, ict_counts)
