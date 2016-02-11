@@ -369,6 +369,7 @@ class HIRSKLM(HIRS):
             f.seek(0, io.SEEK_SET)
         else: # assuming additional header
             f.seek(512, io.SEEK_SET)
+
     def calibrate(self, cc, counts):
         """Apply the standard calibration from NOAA KLM User's Guide.
 
@@ -438,9 +439,24 @@ class HIRSKLM(HIRS):
     
     @staticmethod
     def _convert_temp(fact, counts):
-        """Helper for temperature conversions
+        """Convert counts to temperatures based on factors.
 
-        Related to IWT, ICT, filter wheel, telescope, etc.
+        Relevant to IWT, ICT, filter wheel, telescope, etc.
+
+        Conversion is based on polynomial expression
+
+        a_0 + a_1 * c_0 + a_2 * c_1^2 + ...
+
+        Source related to HIRS/2 and HIRS/2I, but should be the same for
+        HIRS/3 and HIRS/4.  Would be good to confirm this.
+
+        Source: NOAA Polar Satellite Calibration: A System Description.
+            NOAA Technical Report, NESDIS 77
+
+        TODO: Verify outcome according to Sensor Temperature Ranges
+            HIRS/3: KLM, Table 3.2.1.2.1-1.
+            HIRS/4: KLM, Table 3.2.2.2.1-1.
+
         """
 
         # FIXME: Should be able to merge those conditions into a single

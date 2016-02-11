@@ -490,13 +490,88 @@ HIRS_line_dtypes[2] = numpy.dtype([('hrs_scnlin', '>i2', 1),
       ('hrs_h_filler0', '>i1', 412),
     ])
 
+# For HIRS/3, conversion of counts to brightness temperatures for Digital
+# A Telemetry is not included in the files, but partially included in the
+# KLM User's Guide.  However, this includes only coefficients for the
+# Internal Warm Target (IWT) Platinum Resistance Thermometer (PRT) and the
+# secondary telescope.
 
+HIRS_count_to_temp = {}
 
+for sat in {"TIROSN", "NOAA15", "NOAA16", "NOAA17"}:
+    HIRS_count_to_temp[sat] = {}
+
+# Table D.1-2.
+
+HIRS_count_to_temp["NOAA15"]["IWT"] = numpy.array([
+    [301.42859, 6.5398670E-03, 8.9808960E-08, 4.7877130E-11, 1.3453590E-15],
+    [301.44106, 6.5306330E-03, 8.7115040E-08, 4.7387900E-11, 1.4460280E-15],
+    [301.43252, 6.5332780E-03, 8.2485710E-08, 4.7301670E-11, 1.6099050E-15],
+    [301.39868, 6.5244370E-03, 8.0380230E-08, 4.7093000E-11, 1.6976440E-15]])
+
+# Table D.1-16
+
+HIRS_count_to_temp["NOAA15"]["sectlsc"] = numpy.array([
+    260.29119, 1.693469E-02, -2.413170E-06, 4.019185E-10, 1.175655E-14])
+
+# Table D.2-2.
+
+HIRS_count_to_temp["NOAA16"]["IWT"] = numpy.array([
+    [301.45076, 6.530210E-03, 8.326151E-08, 4.724724E-11, 1.565263E-15],
+    [301.39565, 6.527550E-03, 8.417738E-08, 4.727738E-11, 1.460746E-15],
+    [301.40733, 6.528222E-03, 8.314237E-08, 4.721744E-11, 1.543985E-15],
+    [301.40280, 6.525508E-03, 8.269671E-08, 4.707211E-11, 1.549894E-15]])
+
+# Table D.2-5
+
+HIRS_count_to_temp["NOAA16"]["sectlsc"] = numpy.array([
+    260.42546, 1.659977E-02, -2.118035E-06, 3.040075E-10, 2.251628E-14])
+
+# Table D.3-11
+
+HIRS_count_to_temp["NOAA17"]["IWT"] = numpy.array([
+    [301.41859, 0.006539867, 8.909E-08, 4.78771E-11, 1.34536E-15],
+    [301.43106, 0.006530633, 8.7115E-08, 4.73879E-11, 1.44603E-15],
+    [301.42252, 0.006533278, 8.24857E-08, 4.73017E-11, 1.60991E-15],
+    [301.38868, 0.006524437, 8.03802E-08, 4.7093E-11, 1.69764E-15]])
+
+# Table D.3-12
+
+HIRS_count_to_temp["NOAA17"]["sectlsc"] = numpy.array([
+    260.29119, 0.01693469, -2.41317E-06, 4.01919E-10, 1.17566E-14])
+
+# For HIRS/2, the POD guide does not appear to include any coefficients.
+
+# Source: Levin Gary, J Nelson, Frank W Porto, Data Extraction and
+# calibration of TIROS-N/NOAA radiometers, NOAA Technical Memorandum NESS
+# 107, Appendix B http://docs.lib.noaa.gov/rescue/TIROS/QC8795U4no107.pdf
+#
+# "This document contains Appendix B for TIROS-N, NOAA-9 and NOAA-10.
+# Appendix B for other spacecraft will be issued separately."
+
+# PDF page 77
+HIRS_count_to_temp["TIROSN"]["IWT"] = "FIXME"
+
+# PDF page 92, NOAA F/9
+HIRS_count_to_temp["NOAA9"]["IWT"] = "FIXME"
+
+# PDF page 104, NOAA G/10
+HIRS_count_to_temp["NOAA10"]["IWT"] = "FIXME"
+
+# NOAA H/11
+# http://noaasis.noaa.gov/NOAASIS/pubs/CAL/cal11.asc
+HIRS_count_to_temp["NOAA11"]["IWT"] = "FIXME"
+
+# http://noaasis.noaa.gov/NOAASIS/pubs/CAL/cal12.asc
+
+# http://www.sat.dundee.ac.uk/noaa14.html
 
 # For HIRS/2, central wavenumbers and coefficients for BT conversion are
 # not included in the headers.  Include them here.  Taken from Nick
 # Bearsons HIRStoHDF code at
 # https://svn.ssec.wisc.edu/repos/HIRStoHDF/trunk/src/HTH_HIRS2_inc.py
+#
+# FIXME: verify agreement with NOAA POD Guide
 
 HIRS_coeffs = {
     2: {
@@ -703,3 +778,18 @@ HIRS_ids = {
         3: 14
     }
 }
+
+
+# http://noaasis.noaa.gov/NOAASIS/pubs/CAL/cal11.asc
+
+# http://noaasis.noaa.gov/NOAASIS/pubs/CAL/cal12.asc
+
+# http://www.sat.dundee.ac.uk/noaa14.html
+
+# NOAA POLAR SATELLITE CALIBRATION: A SYSTEM DESCRIPTION,
+#   NOAA Technical Report NESDIS 77
+# http://docs.lib.noaa.gov/rescue/TIROS/QC8795U47no77.pdf
+
+# DATA EXTRACTION AND CALIBRATION OF TIROS-N/NOAA RADIOMETER
+#   NOAA Technical Memorandum NESS 107
+# http://docs.lib.noaa.gov/rescue/TIROS/QC8795U4no107.pdf
