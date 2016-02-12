@@ -498,7 +498,7 @@ HIRS_line_dtypes[2] = numpy.dtype([('hrs_scnlin', '>i2', 1),
 
 HIRS_count_to_temp = {}
 
-for sat in {"TIROSN", "NOAA15", "NOAA16", "NOAA17"}:
+for sat in {"TIROSN", "NOAA9", "NOAA10", "NOAA11", "NOAA15", "NOAA16", "NOAA17"}:
     HIRS_count_to_temp[sat] = {}
 
 # Table D.1-2.

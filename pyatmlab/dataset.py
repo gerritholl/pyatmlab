@@ -214,6 +214,7 @@ class Dataset(metaclass=tools.AbstractDocStringInheritor):
         """
         if isinstance(f, pathlib.PurePath):
             f = str(f)
+        logging.debug("Reading {:s}".format(f))
         M = self._read(f, **kwargs) if f is not None else self._read(**kwargs)
         return M
 
@@ -547,6 +548,9 @@ class MultiFileDataset(Dataset):
         sensors occurring on multiple platforms, like HIRS.  To see what
         keyword arguments are accepted or possibly needed for a particular
         dataset, call self.get_path_format_variables()
+
+        If keyword argument `return_time` is present and True, yield
+        tuples of (start_time, path) rather than just `path`.
         """
 
         if dt_start is None:
@@ -554,6 +558,8 @@ class MultiFileDataset(Dataset):
 
         if dt_end is None:
             dt_end = self.end_date
+
+        return_time = extra.pop("return_time", False)
 
         d_start = (dt_start.date()
                 if isinstance(dt_start, datetime.datetime) 
@@ -579,7 +585,10 @@ class MultiFileDataset(Dataset):
                                     child, e.args[0]))
                             continue
                         if g_end >= dt_start and g_start <= dt_end:
-                            yield child
+                            if return_time:
+                                yield (g_start, child)
+                            else:
+                                yield child
             
     def find_granules_sorted(self, dt_start=None, dt_end=None):
         """Yield all granules, sorted by times

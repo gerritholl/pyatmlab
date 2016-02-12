@@ -857,13 +857,13 @@ def specrad_frequency_to_planck_bt(L, f):
 
     # f needs to be double to prevent overflow
     f = numpy.asarray(f).astype(numpy.float64)
-    if L.size > 25000:
-        logging.debug("Doing actual BT conversion: {:,} profiles * {:,} "
+    if L.size > 1500000:
+        logging.debug("Doing actual BT conversion: {:,} spectra * {:,} "
                       "frequencies = {:,} radiances".format(
                             L.size//L.shape[-1], f.size, L.size))
     #BT = (h * f) / (k * numpy.log((2*h*f**3)/(L * c**2) + 1))
     BT = numexpr.evaluate("(h * f) / (k * log((2*h*f**3)/(L * c**2) + 1))")
-    if L.size > 25000:
+    if L.size > 1500000:
         logging.debug("(done)")
     return BT
 
