@@ -187,6 +187,29 @@ class HIRS(dataset.MultiFileDataset, Radiometer):
 
         return T_corr
 
+    def id2no(self, satid):
+        """Translate satellite id to satellite number.
+
+        Sources:
+        - POD guide, Table 2.0.4-3.
+        - KLM User's Guide, Table 8.3.1.5.2.1-1.
+        - KLM User's Guide, Table 8.3.1.5.2.2-1.
+
+        WARNING: Does not support NOAA-13 or TIROS-N!
+        """
+
+        return _tovs_defs.HIRS_ids[self.version][satid]
+
+    def id2name(self, satid):
+        """Translate satellite id to satellite name.
+
+        See also id2no.
+
+        WARNING: Does not support NOAA-13 or TIROS-N!
+        """
+        
+        return _tovs_defs.HIRS_ids[self.version][satid]
+
     # translation from HIRS.l1b format documentation to dtypes
     _trans_tovs2dtype = {"C": "|S",
                          "I1": ">i1",
@@ -282,16 +305,6 @@ class HIRSPOD(HIRS):
     n_wordperframe = 22
     counts_offset = 0
 
-    def id2no(self, satid):
-        """Translate satellite id to satelline number.
-
-        Follows POD guide, Table 2.0.4-3.
-
-        WARNING: Does not support NOAA-6 or TIROS-N!
-        """
-
-        return _tovs_defs.HIRS_ids[self.version][satid]
-
     def seekhead(self, f):
         f.seek(0, io.SEEK_SET)
 
@@ -360,6 +373,9 @@ class HIRS2(HIRSPOD):
     line_dtype = _tovs_defs.HIRS_line_dtypes[2]
     channel_order = numpy.asarray(_tovs_defs.HIRS_channel_order[2])
     
+class HIRS2I(HIRS2):
+    pass # identical?
+
 class HIRSKLM(HIRS):
     counts_offset = 4096
     n_wordperframe = 24
@@ -482,6 +498,7 @@ class HIRSKLM(HIRS):
         """Get temperature of internal warm target
         """
         (iwt_fact, iwt_counts) = self._get_iwt_info(header, elem)
+        iwt_fact = _tovs_defs.HIRS_count_to_temp[self.id2name(header["hrs_h_satid"])
         return self._convert_temp(iwt_fact, iwt_counts)
 
     def _get_temp_common(self, header, elem):
@@ -551,8 +568,8 @@ class HIRS3(HIRSKLM):
 
     def _get_iwt_info(self, head, elem):
         iwt_counts = elem[:, 58, self.count_start:self.count_end].reshape(
-            (elem.shape[0], 5, 4))
-        iwt_fact = (head["hrs_h_iwtcnttmp"]).reshape(5, 6)[:4, :]
+            (elem.shape[0], 4, 5))
+        #iwt_fact = (head["hrs_h_iwtcnttmp"]).reshape(5, 6)[:4, :]
         return (iwt_fact, iwt_counts)
 
     def _get_ict_info(self, head, elem):

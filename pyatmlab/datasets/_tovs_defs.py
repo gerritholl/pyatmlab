@@ -772,11 +772,44 @@ HIRS_ids = {
         6: 8,
         7: 9,
         8: 10,
-        1: 11,
+        1: 11, # Warning: identical to TIROS-N
         5: 12,
-        2: 13,
+        2: 6, # Warning: identical to NOAA-13
         3: 14
-    }
+    },
+    3: {
+        2: 16,
+        4: 15,
+        6: 17},
+    4: {
+        7: 18,
+        8: 19,
+        11: "A", # MetOp-A
+        12: "B", # MetOp-B
+        13: "C"}
+}
+
+HIRS_names = {
+    2: {
+        4: "NOAA7",
+        6: "NOAA8",
+        7: "NOAA9",
+        8: "NOAA10",
+        1: "NOAA11",
+        5: "NOAA12",
+        2: "NOAA13",
+        3: "NOAA14"
+    },
+    3: {
+        2: "NOAA16",
+        4: "NOAA15",
+        6: "NOAA17"},
+    4: {
+        7: "NOAA18",
+        8: "NOAA19",
+        11: "METOPA", # MetOp-A
+        12: "METOPB", # MetOp-B
+        13: "METOPC"}
 }
 
 
