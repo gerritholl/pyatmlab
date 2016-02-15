@@ -277,6 +277,54 @@ class HIRS(dataset.MultiFileDataset, Radiometer):
                     targ[f] = src[f]
         return (new_head, new_line)
 
+    def get_iwt(self, header, elem):
+        """Get temperature of internal warm target
+        """
+        (iwt_fact, iwt_counts) = self._get_iwt_info(header, elem)
+        return self._convert_temp(iwt_fact, iwt_counts)
+    
+    @staticmethod
+    def _convert_temp(fact, counts):
+        """Convert counts to temperatures based on factors.
+
+        Relevant to IWT, ICT, filter wheel, telescope, etc.
+
+        Conversion is based on polynomial expression
+
+        a_0 + a_1 * c_0 + a_2 * c_1^2 + ...
+
+        Source related to HIRS/2 and HIRS/2I, but should be the same for
+        HIRS/3 and HIRS/4.  Would be good to confirm this.
+
+        Source: NOAA Polar Satellite Calibration: A System Description.
+            NOAA Technical Report, NESDIS 77
+
+        TODO: Verify outcome according to Sensor Temperature Ranges
+            HIRS/3: KLM, Table 3.2.1.2.1-1.
+            HIRS/4: KLM, Table 3.2.2.2.1-1.
+
+        """
+
+        # FIXME: Should be able to merge those conditions into a single
+        # expression with some clever use of Ellipsis
+        N = fact.shape[-1]
+        if counts.ndim == 3:
+            tmp = (counts[:, :, :, numpy.newaxis] **
+                    numpy.arange(1, N)[numpy.newaxis, numpy.newaxis, numpy.newaxis, :])
+            return (fact[:, 0:1] +
+                        (fact[:, numpy.newaxis, 1:] * tmp).sum(3))
+        elif counts.ndim == 2:
+            tmp = (counts[..., numpy.newaxis] **
+                   numpy.arange(1, N).reshape((1,)*counts.ndim + (N-1,))) 
+            return fact[0:1] + (fact[numpy.newaxis, numpy.newaxis, 1:] * tmp).sum(-1)
+        elif counts.ndim == 1:
+            fact = fact.squeeze()
+            return (fact[0] + 
+                    (fact[numpy.newaxis, 1:] * (counts[:, numpy.newaxis]
+                        ** numpy.arange(1, N)[numpy.newaxis, :])).sum(1))
+        else:
+            raise NotImplementedError("ndim = {:d}".format(counts.ndim))
+
     @abc.abstractmethod
     def get_wn_c1_c2(self, header):
         ...
@@ -296,11 +344,11 @@ class HIRS(dataset.MultiFileDataset, Radiometer):
     @abc.abstractmethod
     def get_cc(self, scanlines):
         ...
-
-    @abc.abstractmethod
-    def get_iwt(self, header, elem):
-        ...
  
+    @abc.abstractmethod
+    def get_temp(self, header, elem):
+        ...
+
 class HIRSPOD(HIRS):
     n_wordperframe = 22
     counts_offset = 0
@@ -329,6 +377,11 @@ class HIRSPOD(HIRS):
 
         if not (cc[:, :, 0, :]==0).all():
             raise ValueError("Found non-zero values for manual coefficient!")
+
+        # This is apparently calibrated in units of mW/m2-sr-cm-1.
+        # Convert to SI units.
+        rad *= constants.milli
+        rad *= constants.centi # * not /, because it's 1/(cm^{-1}) = cm^1
 
         return rad
 
@@ -360,6 +413,8 @@ class HIRSPOD(HIRS):
         cc = numpy.swapaxes(cc, 2, 1)
         return cc
         
+    def get_temp(self, header, elem):
+        raise NotImplementedError("¡Not implemented yet!")
 
 class HIRS2(HIRSPOD):
     #satellites = {"tirosn", "noaa06", "noaa07", "noaa08", "noaa09", "noaa10",
@@ -452,54 +507,6 @@ class HIRSKLM(HIRS):
                 self.line_dtype["hrs_calcof"].shape[0]//self.n_channels)
         return cc
 
-    
-    @staticmethod
-    def _convert_temp(fact, counts):
-        """Convert counts to temperatures based on factors.
-
-        Relevant to IWT, ICT, filter wheel, telescope, etc.
-
-        Conversion is based on polynomial expression
-
-        a_0 + a_1 * c_0 + a_2 * c_1^2 + ...
-
-        Source related to HIRS/2 and HIRS/2I, but should be the same for
-        HIRS/3 and HIRS/4.  Would be good to confirm this.
-
-        Source: NOAA Polar Satellite Calibration: A System Description.
-            NOAA Technical Report, NESDIS 77
-
-        TODO: Verify outcome according to Sensor Temperature Ranges
-            HIRS/3: KLM, Table 3.2.1.2.1-1.
-            HIRS/4: KLM, Table 3.2.2.2.1-1.
-
-        """
-
-        # FIXME: Should be able to merge those conditions into a single
-        # expression with some clever use of Ellipsis
-        N = fact.shape[-1]
-        if counts.ndim == 3:
-            tmp = (counts[:, :, :, numpy.newaxis] **
-                    numpy.arange(1, N)[numpy.newaxis, numpy.newaxis, numpy.newaxis, :])
-            return (fact[:, 0:1] +
-                        (fact[:, numpy.newaxis, 1:] * tmp).sum(3))
-        elif counts.ndim == 2:
-            tmp = (counts[..., numpy.newaxis] **
-                   numpy.arange(1, N).reshape((1,)*counts.ndim + (N-1,))) 
-            return fact[0:1] + (fact[numpy.newaxis, numpy.newaxis, 1:] * tmp).sum(-1)
-        elif counts.ndim == 1:
-            fact = fact.squeeze()
-            return (fact[0] + 
-                    (fact[numpy.newaxis, 1:] * (counts[:, numpy.newaxis]
-                        ** numpy.arange(1, N)[numpy.newaxis, :])).sum(1))
-        else:
-            raise NotImplementedError("ndim = {:d}".format(counts.ndim))
-
-    def get_iwt(self, header, elem):
-        """Get temperature of internal warm target
-        """
-        (iwt_fact, iwt_counts) = self._get_iwt_info(header, elem)
-        return self._convert_temp(iwt_fact, iwt_counts)
 
     def _get_temp_common(self, header, elem):
         N = elem.shape[0]

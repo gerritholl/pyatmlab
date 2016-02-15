@@ -457,7 +457,7 @@ HIRS_channel_order[4] = HIRS_channel_order[3].copy()
 
 # obtained manually from POD User's Guide
 
-# Source: 
+# Source: POD User's Guide, Table 2.0.4-1.
 HIRS_header_dtypes[2] = numpy.dtype([
       ("hrs_h_satid", ">i1", 1),
       ('hrs_h_datatyp', '>i1', 1),
@@ -475,8 +475,8 @@ HIRS_header_dtypes[2] = numpy.dtype([
       ('hrs_h_filler0', '>i1', 1),
       ('hrs_h_startdatayr', '>i2', 1),
       ('hrs_h_dataname', '|S42', 1), # EBCDIC!
-      ('hrs_h_filler1', '>i2', 1),
-      ('hrs_h_filler8', '>i4', 1043)])
+      ('hrs_h_filler7', '>i1', 3), # Not sure why
+      ('hrs_h_filler8', '>i4', 1042)])
 
 # Source: POD User's Guide, Section 4-1
 HIRS_line_dtypes[2] = numpy.dtype([('hrs_scnlin', '>i2', 1),
@@ -488,7 +488,7 @@ HIRS_line_dtypes[2] = numpy.dtype([('hrs_scnlin', '>i2', 1),
       ('hrs_pos', '>i2', 112),
       ('hrs_elem', '>i2', 1408),
       ('hrs_mnfrqual', '>i1', 64),
-      ('hrs_h_filler0', '>i1', 412),
+      ('hrs_h_filler0', '>i1', 409),
     ])
 
 # For HIRS/3, conversion of counts to brightness temperatures for Digital
