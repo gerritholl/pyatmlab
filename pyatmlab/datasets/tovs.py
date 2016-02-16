@@ -104,7 +104,7 @@ class HIRS(dataset.MultiFileDataset, Radiometer):
             wn /= constants.centi
             bt = self.rad2bt(rad_wn[:, :, :self.n_calibchannels], wn, c1, c2)
             # extract more info from TIP
-            temp = self.get_temp(header, elem, lines["hrs_anwrd"])
+            temp = self.get_temp(header, elem, scanlines["hrs_anwrd"])
             # Copy over all fields... should be able to use
             # numpy.lib.recfunctions.append_fields but incredibly slow!
             scanlines_new = numpy.empty(shape=scanlines.shape,
@@ -551,26 +551,26 @@ class HIRSKLM(HIRS):
                     elem[:, 62, 10]),
             an_rd = self._convert_temp_analog(
                     header[0]["hrs_h_rdtemp"],
-                    anwrd[:, 0]),
+                    anwrd[:, 0]), # ok
             an_baseplate = self._convert_temp_analog(
                     header[0]["hrs_h_bptemp"],
-                    anwrd[:, 1]),
+                    anwrd[:, 1]), # bad
             an_el = self._convert_temp_analog(
                     header[0]["hrs_h_eltemp"],
-                    anwrd[:, 2]),
+                    anwrd[:, 2]), # OK
             an_pch = self._convert_temp_analog(
                     header[0]["hrs_h_pchtemp"],
-                    anwrd[:, 3]),
+                    anwrd[:, 3]), # OK
             an_scnm = self._convert_temp_analog(
                     header[0]["hrs_h_scnmtemp"],
-                    anwrd[:, 5]),
+                    anwrd[:, 5]), # bad
             an_fwm = self._convert_temp_analog(
                     header[0]["hrs_h_fwmtemp"],
-                    anwrd[:, 6]))
+                    anwrd[:, 6])) # bad
 
     def _convert_temp_analog(self, F, C):
         V = C.astype("float64")*0.02
-        return (F * V[:, numpy.newaxis]**arange(F.shape[0])[numpy.newaxis, :]).sum(1)
+        return (F * V[:, numpy.newaxis]**numpy.arange(F.shape[0])[numpy.newaxis, :]).sum(1)
 
     def _reshape_fact(self, name, fact, robust=False):
         if name in self._fact_shapes:
