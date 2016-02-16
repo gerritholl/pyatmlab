@@ -104,7 +104,7 @@ class HIRS(dataset.MultiFileDataset, Radiometer):
             wn /= constants.centi
             bt = self.rad2bt(rad_wn[:, :, :self.n_calibchannels], wn, c1, c2)
             # extract more info from TIP
-            temp = self.get_temp(header, elem)
+            temp = self.get_temp(header, elem, lines["hrs_anwrd"])
             # Copy over all fields... should be able to use
             # numpy.lib.recfunctions.append_fields but incredibly slow!
             scanlines_new = numpy.empty(shape=scanlines.shape,
@@ -508,7 +508,7 @@ class HIRSKLM(HIRS):
         return cc
 
 
-    def _get_temp_common(self, header, elem):
+    def _get_temp_common(self, header, elem, anwrd):
         N = elem.shape[0]
         return dict(
             iwt = self._convert_temp(*self._get_iwt_info(header, elem)),
@@ -548,7 +548,29 @@ class HIRSKLM(HIRS):
                     elem[:, 62, 9]),
             ch = self._convert_temp(
                     self._get_temp_factor(header, "hrs_h_chsgcnttmp"),
-                    elem[:, 62, 10]))
+                    elem[:, 62, 10]),
+            an_rd = self._convert_temp_analog(
+                    header[0]["hrs_h_rdtemp"],
+                    anwrd[:, 0]),
+            an_baseplate = self._convert_temp_analog(
+                    header[0]["hrs_h_bptemp"],
+                    anwrd[:, 1]),
+            an_el = self._convert_temp_analog(
+                    header[0]["hrs_h_eltemp"],
+                    anwrd[:, 2]),
+            an_pch = self._convert_temp_analog(
+                    header[0]["hrs_h_pchtemp"],
+                    anwrd[:, 3]),
+            an_scnm = self._convert_temp_analog(
+                    header[0]["hrs_h_scnmtemp"],
+                    anwrd[:, 5]),
+            an_fwm = self._convert_temp_analog(
+                    header[0]["hrs_h_fwmtemp"],
+                    anwrd[:, 6]))
+
+    def _convert_temp_analog(self, F, C):
+        V = C.astype("float64")*0.02
+        return (F * V[:, numpy.newaxis]**arange(F.shape[0])[numpy.newaxis, :]).sum(1)
 
     def _reshape_fact(self, name, fact, robust=False):
         if name in self._fact_shapes:
@@ -563,7 +585,7 @@ class HIRSKLM(HIRS):
             return fact
 
     @abc.abstractmethod
-    def get_temp(self, header, elem):
+    def get_temp(self, header, elem, anwrd):
         ...
 
     @abc.abstractmethod
@@ -608,8 +630,8 @@ class HIRS3(HIRSKLM):
         fact = _tovs_defs.HIRS_count_to_temp[satname][name[6:]]
         return self._reshape_fact(name, fact, robust=True)
 
-    def get_temp(self, header, elem):
-        return self._get_temp_common(header, elem)
+    def get_temp(self, header, elem, anwrd):
+        return self._get_temp_common(header, elem, anwrd)
 
 class HIRS4(HIRSKLM):
     satellites = {"noaa18", "noaa19", "metopa", "metopb"}
@@ -617,34 +639,34 @@ class HIRS4(HIRSKLM):
     version = 4
 
     header_dtype = _tovs_defs.HIRS_header_dtypes[4]
-    kline_dtype = _tovs_defs.HIRS_line_dtypes[4]
+    line_dtype = _tovs_defs.HIRS_line_dtypes[4]
     
     channel_order = numpy.asarray(_tovs_defs.HIRS_channel_order[4])
     
     _fact_shapes = {
-        "hrs_h_ictcnttmp": {4, 6},
+        "hrs_h_ictcnttmp": (4, 6),
         "hrs_h_fwcnttmp": (4, 6)}
 
     def _get_iwt_info(self, head, elem):
         iwt_counts = numpy.concatenate(
             (elem[:, 58, self.count_start:self.count_end],
              elem[:, 59, 12:17]), 1).reshape((elem.shape[0], 5, 5))
-        iwt_fact = self._get_temp_factor(head, elem).reshape(5, 6)
+        iwt_fact = self._get_temp_factor(head, "hrs_h_iwtcnttmp").reshape(5, 6)
         iwt_counts = iwt_counts.astype("int64")
         return (iwt_fact, iwt_counts)
 
     def _get_ict_info(self, head, elem):
         ict_counts = elem[:, 59, 2:7]
-        ict_fact = head["hrs_h_ictcnttmp"][0, :6]
+        ict_fact = self._get_temp_factor(head, "hrs_h_ictcnttmp")[0, :6]
         return (ict_fact, ict_counts)
 
     def _get_temp_factor(self, head, name):
         return self._reshape_fact(name, head[name])
 
-    def get_temp(self, header, elem):
+    def get_temp(self, header, elem, anwrd):
         """Extract temperatures
         """
-        D = self._get_temp_common(header, elem)
+        D = self._get_temp_common(header, elem, anwrd)
         # new in HIRS/4
         D["terttlscp"] = self._convert_temp(
             header["hrs_h_tttcnttmp"],

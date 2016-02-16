@@ -445,7 +445,8 @@ HIRS_line_dtypes[4] = numpy.dtype([('hrs_scnlin', '>i2', 1),
       ('hrs_digitbupdatefg', '>i2', 1),
       ('hrs_digitbwrd', '>i2', 1),
       ('hrs_analogupdatefg', '>i4', 1),
-      ('hrs_anwrd', '|S1', 16),
+      # CORRECTION: |S1 does not make sense, read as >i1 instead
+      ('hrs_anwrd', '>i1', 16),
       ('hrs_filler5', '>i4', 11)])
 
 HIRS_channel_order = {}
