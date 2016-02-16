@@ -2421,10 +2421,13 @@ class ProfileCollocationDescriber(CollocationDescriber):
 ##         matplotlib.pyplot.close(f)
 
     def visualise_pc_comparison(self, collapsed=False,
-            mode="mean"):
+            mode="mean", dmp_plot=None):
         """Visualise comparison for partial columns
 
         Also writes data for external plotting
+
+        If dmp_plot is set, it should be set to `(fieldname, value, unit)'
+        then pcs will be plotted as a function of dmp values at that level.
         """
         # Use different ways of using T and p for calculating partial
         # columns in order to estimate how this propagates in the partial
@@ -2564,6 +2567,35 @@ class ProfileCollocationDescriber(CollocationDescriber):
                  iv_l,
                  iv_u)).T*N},
             fn=self.figname_compare_pc[:-1].format(**vars()) + "_{}")
+
+        if ("dmp" in self.cd.primary.related and
+            "dmp" in self.cd.secondary.related and
+            dmp_plot is not None):
+            # Show parcol differences as a
+            # function of sPV, to show a lack of statistical
+            # influence/correlation
+            dmp1 = self.cd.primary.combine(self.p_col, self.cd.primary.related["dmp"])
+            dmp2 = self.cd.secondary.combine(self.s_col, self.cd.secondary.related["dmp"])
+            # need to choose some level
+            (field, value, unit) = dmp_plot
+            (iy1, iy2) = [abs(x[numpy.isfinite(x[field]).all(1)][field] - value).argmin(1).mean().round().astype(int)
+                    for x in (dmp1, dmp2)]
+            ddmp = dmp2[field][:, iy2] - dmp1[field][:, iy1]
+            ok = numpy.isfinite(ddmp)
+            #plot(ddmp, d_parcol)
+            (fd, ad) = matplotlib.figure.subplots()
+            ad.errorbar(ddmp, d_parcol, 
+                       xerr=0, # No uncertainty reported for DMPs
+                       yerr=numpy.sqrt(S_dpc + S_dpc_pT_m**2), fmt=".")
+            ad.set_ylim(*a.get_ylim())
+            ad.set_xlabel("{:s} [{:s}]".format(field, unit))
+            ad.set_ylabel(a.get_ylabel())
+            ad.set_title(a.get_title())
+            graphics.print_or_show(fd, None, 
+                self.figname_compare_pc[:-1].format(**vars()) + "_{:s}.".format(field),
+                    data=numpy.vstack((ddmp, d_parcol, numpy.sqrt(S_dpc +
+                        S_dpc_pT_m**2))).T)
+
 
         # also print some stats
         d_frac = d_parcol/p_parcol
