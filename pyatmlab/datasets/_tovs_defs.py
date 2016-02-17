@@ -489,7 +489,7 @@ HIRS_line_dtypes[2] = numpy.dtype([('hrs_scnlin', '>i2', 1),
       ('hrs_pos', '>i2', 112),
       ('hrs_elem', '>i2', 1408),
       ('hrs_mnfrqual', '>i1', 64),
-      ('hrs_h_filler0', '>i1', 409),
+      ('hrs_filler0', '>i1', 409),
     ])
 
 # For HIRS/3, conversion of counts to brightness temperatures for Digital
@@ -569,6 +569,7 @@ HIRS_count_to_temp["NOAA17"]["sttcnttmp"] = numpy.array([
 # http://www.sat.dundee.ac.uk/noaa14.html
 
 # Fill what's missing with dummies
+dummy = numpy.ma.array([numpy.ma.masked])
 for sat in {"NOAA6", "NOAA7", "NOAA8", "NOAA9", "NOAA10", "NOAA11",
             "NOAA12", "NOAA14", "NOAA15", "NOAA16", "NOAA17"}:
     for field in {"fwcnttmp", "patchexpcnttmp", "fsradcnttmp",
@@ -578,11 +579,11 @@ for sat in {"NOAA6", "NOAA7", "NOAA8", "NOAA9", "NOAA10", "NOAA11",
         if not field in HIRS_count_to_temp[sat]:
             # When it's (n, 6) for HIRS/4, it's (n, 5) for HIRS/3 and
             # HIRS/2
-            HIRS_count_to_temp[sat][field] = numpy.tile(numpy.nan,
+            HIRS_count_to_temp[sat][field] = numpy.tile(dummy,
                     (HIRS_header_dtypes[4]["hrs_h_"+field].shape[0]//6, 5))
     if not "ictcnttmp" in HIRS_count_to_temp[sat]:
         # but this one is (4, 5) on HIRS/2 and HIRS/3
-        HIRS_count_to_temp[sat]["ictcnttmp"] = numpy.tile(numpy.nan, (4, 5))
+        HIRS_count_to_temp[sat]["ictcnttmp"] = numpy.tile(dummy, (4, 5))
 
 # For HIRS/2, central wavenumbers and coefficients for BT conversion are
 # not included in the headers.  Include them here.  Taken from Nick

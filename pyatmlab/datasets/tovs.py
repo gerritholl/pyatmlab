@@ -48,6 +48,8 @@ class HIRS(dataset.MultiFileDataset, Radiometer):
     - What is the correct way to use the odd bit parity?  Information in
       NOAA KLM User's Guide pages 3-31 and 8-154, but I'm not sure how to
       apply it.
+    - If datasets like MHS or AVHRR are added that could probably move to
+      some class between HIRS and MultiFileDataset.
     """
 
     name = "hirs"
@@ -104,10 +106,13 @@ class HIRS(dataset.MultiFileDataset, Radiometer):
             wn /= constants.centi
             bt = self.rad2bt(rad_wn[:, :, :self.n_calibchannels], wn, c1, c2)
             # extract more info from TIP
-            temp = self.get_temp(header, elem, scanlines["hrs_anwrd"])
+            temp = self.get_temp(header, elem,
+                scanlines["hrs_anwrd"]
+                    if "hrs_anwrd" in scanlines.dtype.names
+                    else None)
             # Copy over all fields... should be able to use
             # numpy.lib.recfunctions.append_fields but incredibly slow!
-            scanlines_new = numpy.empty(shape=scanlines.shape,
+            scanlines_new = numpy.ma.empty(shape=scanlines.shape,
                 dtype=(scanlines.dtype.descr +
                     [("radiance", "f4", (self.n_perline, self.n_channels,)),
                      ("counts", "i2", (self.n_perline, self.n_channels,)),
@@ -127,8 +132,7 @@ class HIRS(dataset.MultiFileDataset, Radiometer):
             scanlines_new["lon"] = lon
             scanlines = scanlines_new
             if apply_flags:
-                # initially, nothing is masked
-                scanlines = numpy.ma.masked_array(scanlines)
+                #scanlines = numpy.ma.masked_array(scanlines)
                 scanlines = self.get_mask_from_flags(scanlines)
         elif apply_flags:
             raise ValueError("I refuse to apply flags when not calibrating ☹")
@@ -346,7 +350,7 @@ class HIRS(dataset.MultiFileDataset, Radiometer):
         ...
  
     @abc.abstractmethod
-    def get_temp(self, header, elem):
+    def get_temp(self, header, elem, anwrd):
         ...
 
 class HIRSPOD(HIRS):
@@ -413,7 +417,7 @@ class HIRSPOD(HIRS):
         cc = numpy.swapaxes(cc, 2, 1)
         return cc
         
-    def get_temp(self, header, elem):
+    def get_temp(self, header, elem, anwrd):
         raise NotImplementedError("¡Not implemented yet!")
 
 class HIRS2(HIRSPOD):
