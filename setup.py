@@ -37,7 +37,10 @@ setup(
     install_requires=["numpy>=1.10", "scipy>=0.16", "pyproj>=1.9",
                       "statsmodels>=0.6", "pytz>=2015.4",
                       "progressbar2>=3.3",
-                      "matplotlib>=1.4", "pint>=0.6"],
+                      "matplotlib>=1.4", "pint>=0.6",
+                      "numexpr>=2.4",
+                      "h5py>=2.5",
+                      "netCDF4>=1.1"],
     long_description=read('README'),
     classifiers=[
         "Development Status :: 3 - Alpha",
