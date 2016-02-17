@@ -2037,8 +2037,9 @@ class ProfileCollocationDescriber(CollocationDescriber):
         #W_12 = numpy.linalg.pinv(W_1).dot(W_2)
         W_12 = numpy.linalg.pinv(W_1) @ W_2
         w2ok = numpy.isfinite(W_2).all(1)
-        W_12[w2ok, :] = (numpy.linalg.pinv(W_1[w2ok, :][:, w2ok]) @
-                         W_2[w2ok, :])
+        if w2ok.any(): # Why are there cases where it isn't?
+            W_12[w2ok, :] = (numpy.linalg.pinv(W_1[w2ok, :][:, w2ok]) @
+                             W_2[w2ok, :])
         W_12[~w2ok, :] = 0 # I'm worried about this one (GH 2016-02-17)
         # End of edit 2016-02-17
         OK = numpy.isfinite(numpy.diag(A_1))
@@ -2052,11 +2053,7 @@ class ProfileCollocationDescriber(CollocationDescriber):
         #logging.info("no. {:d}...".format(self._deb_i))
         # NB: In the case of TANSO, sensitivity is so low that the error
         # contributes only a small part to the total error...
-        S_2 = A_1[OKix].dot(
-                     W_12[OK,:]).dot(
-                     S_2).dot(
-                     W_12[OK,:].T).dot(
-                     A_1[OKix].T)
+        S_2 = A_1[OKix] @ W_12[OK, :] @ S_2 @ W_12[OK, :].T @ A_1[OKix].T
         S_1conv = numpy.atleast_2d(fact_S_1[OK]).T * S_1[OKix]
         S_2conv = numpy.atleast_2d(fact_S_2[OK]).T * S_2
         S_12[OKix] = S_1conv + S_2conv
