@@ -2597,7 +2597,7 @@ class ProfileCollocationDescriber(CollocationDescriber):
             ddmp = dmp2[field][:, iy2] - dmp1[field][:, iy1]
             ok = numpy.isfinite(ddmp)
             #plot(ddmp, d_parcol)
-            (fd, ad) = matplotlib.figure.subplots()
+            (fd, ad) = matplotlib.pyplot.subplots()
             ad.errorbar(ddmp, d_parcol, 
                        xerr=0, # No uncertainty reported for DMPs
                        yerr=numpy.sqrt(S_dpc + S_dpc_pT_m**2), fmt=".")
