@@ -2039,6 +2039,7 @@ class ProfileCollocationDescriber(CollocationDescriber):
         w2ok = numpy.isfinite(W_2).all(1)
         W_12[w2ok, :] = (numpy.linalg.pinv(W_1[w2ok, :][:, w2ok]) @
                          W_2[w2ok, :])
+        W_12[~w2ok, :] = 0 # I'm worried about this one (GH 2016-02-17)
         # End of edit 2016-02-17
         OK = numpy.isfinite(numpy.diag(A_1))
         OKix = numpy.ix_(OK,OK)
