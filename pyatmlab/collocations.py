@@ -816,7 +816,6 @@ class CollocationDescriber:
         self._target = self._target_vals.index(value)
 
     def __init__(self, cd, p_col, s_col, memory=None, **kwargs):
-        tools.setmem(self, memory)
         self.cd = cd
         self.p_col = p_col
         self.s_col = s_col
@@ -1095,6 +1094,21 @@ class CollocationDescriber:
 
         print(("Distance, direction between mean positions: "
                "{:.2f} km, {:.0f}°").format(mean_dist, mean_dir))
+
+    def __getstate__(self):
+        state = self.__dict__.copy()
+        # ndarrays with datetime64 can't be pickles and therefore can't be
+        # memoised either
+        state["p_tp"] = state["p_col"].dtype
+        state["p_col"] = state["p_col"].view("i1")
+        state["s_tp"] = state["s_col"].dtype
+        state["s_col"] = state["s_col"].view("i1")
+        return state
+
+    def __setstate__(self, state):
+        state["p_col"] = state["p_col"].view(state.pop("p_tp"))
+        state["s_col"] = state["s_col"].view(state.pop("s_tp"))
+        self.__dict__.update(state)
 
 class ProfileCollocationDescriber(CollocationDescriber):
     """Routines specific for collocations between profile quantities
