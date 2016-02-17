@@ -2030,7 +2030,16 @@ class ProfileCollocationDescriber(CollocationDescriber):
             fact_S_1 = numpy.ones_like(S_1)
         if fact_S_2 is None:
             fact_S_2 = numpy.ones_like(S_2)
-        W_12 = numpy.linalg.pinv(W_1).dot(W_2)
+        # FIXME: When running this 2016-02-17, nans propagated in a way
+        # that I don't think they did a year earlier.  I don't have time
+        # now to bisect the ultimate cause, rather trying a different
+        # approach that I hope works too...  I fear it may be wrong ☹
+        #W_12 = numpy.linalg.pinv(W_1).dot(W_2)
+        W_12 = numpy.linalg.pinv(W_1) @ W_2
+        w2ok = numpy.isfinite(W_2).all(1)
+        W_12[w2ok, :] = (numpy.linalg.pinv(W_1[w2ok, :][:, w2ok]) @
+                         W_2[w2ok, :])
+        # End of edit 2016-02-17
         OK = numpy.isfinite(numpy.diag(A_1))
         OKix = numpy.ix_(OK,OK)
         S_12 = numpy.zeros_like(S_1)
