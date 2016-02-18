@@ -2569,7 +2569,7 @@ class ProfileCollocationDescriber(CollocationDescriber):
                    +max(abs(ymn), abs(ymx)))
         a.set_xlabel("CH4 {:s} [molec./m^2]".format(self.cd.primary.name))
         a.set_ylabel("CH4 {:s} - {:s} [molec./m^2]".format(
-            self.cd.secondary.name, self.cd.primary.name))
+            self.cd.secondary.name, self.cd.primary.name.replace("₄", r"$_4$")))
         a.set_title(("Partial columns {:.1f}--{:.1f}, "
                      "difference {:s} - {:s}").format(
                         valid_range[0]/1e3, valid_range[1]/1e3,
@@ -2598,10 +2598,10 @@ class ProfileCollocationDescriber(CollocationDescriber):
             dmp1 = self.cd.primary.combine(self.p_col, self.cd.primary.related["dmp"])
             dmp2 = self.cd.secondary.combine(self.s_col, self.cd.secondary.related["dmp"])
             # need to choose some level
-            (field, value, unit) = dmp_plot
-            (iy1, iy2) = [abs(x[numpy.isfinite(x[field]).all(1)][field] - value).argmin(1).mean().round().astype(int)
+            (elev_coor, elev_name, elev_value, elev_unit) = dmp_plot
+            (iy1, iy2) = [abs(x[numpy.isfinite(x[elev_coor]).all(1)][elev_coor] - value).argmin(1).mean().round().astype(int)
                     for x in (dmp1, dmp2)]
-            ddmp = dmp2[field][:, iy2] - dmp1[field][:, iy1]
+            ddmp = dmp2["sPV"][:, iy2] - dmp1["sPV"][:, iy1]
             ok = numpy.isfinite(ddmp)
             #plot(ddmp, d_parcol)
             (fd, ad) = matplotlib.pyplot.subplots()
@@ -2609,11 +2609,17 @@ class ProfileCollocationDescriber(CollocationDescriber):
                        xerr=0, # No uncertainty reported for DMPs
                        yerr=numpy.sqrt(S_dpc + S_dpc_pT_m**2), fmt=".")
             ad.set_ylim(*a.get_ylim())
-            ad.set_xlabel("{:s} [{:s}]".format(field, unit))
+            ad.set_xlabel(r"$\Delta$ Potential vorticity "
+                "({:s}={:d} {:s}) [s$^{-4}$]".format(
+                    elev_name, elev_value, elev_unit, "s$^{-4}$"))
             ad.set_ylabel(a.get_ylabel())
-            ad.set_title(a.get_title())
+            ad.set_title(r"$\Delta$ PC ({:.1}--{:.1} km) {:s}-{:s}".format(
+                            valid_range[0]/1e3,
+                            valid_range[1]/1e3,
+                            self.cd.primary.name.replace("₄","$_4$"),
+                            self.cd.secondary.name))
             graphics.print_or_show(fd, None, 
-                self.figname_compare_pc[:-1].format(**vars()) + "_{:s}.".format(field),
+                self.figname_compare_pc[:-1].format(**vars()) + "_{:s}{:d}.".format(elev_coor, elev_value),
                     data=numpy.vstack((ddmp, d_parcol, numpy.sqrt(S_dpc +
                         S_dpc_pT_m**2))).T)
 
