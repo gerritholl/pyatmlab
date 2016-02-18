@@ -2593,9 +2593,12 @@ class ProfileCollocationDescriber(CollocationDescriber):
                  iv_u)).T*N},
             fn=self.figname_compare_pc[:-1].format(**vars()) + "_{}")
 
-        if ("dmp" in self.cd.primary.related and
-            "dmp" in self.cd.secondary.related and
+        if dmp_plot is not None and collapsed:
+            logging.error("Not implemented: collapsed DMP plotting")
+        elif ("dmp" in self.cd.primary.related and
+              "dmp" in self.cd.secondary.related and
             dmp_plot is not None):
+
             # Show parcol differences as a
             # function of sPV, to show a lack of statistical
             # influence/correlation
