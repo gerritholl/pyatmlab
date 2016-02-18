@@ -2599,7 +2599,8 @@ class ProfileCollocationDescriber(CollocationDescriber):
             dmp2 = self.cd.secondary.combine(self.s_col, self.cd.secondary.related["dmp"])
             # need to choose some level
             (elev_coor, elev_name, elev_value, elev_unit) = dmp_plot
-            (iy1, iy2) = [abs(x[numpy.isfinite(x[elev_coor]).all(1)][elev_coor] - value).argmin(1).mean().round().astype(int)
+            (iy1, iy2) = [abs(x[numpy.isfinite(x[elev_coor]).all(1)][elev_coor]
+                                - elev_value).argmin(1).mean().round().astype(int)
                     for x in (dmp1, dmp2)]
             ddmp = dmp2["sPV"][:, iy2] - dmp1["sPV"][:, iy1]
             ok = numpy.isfinite(ddmp)
