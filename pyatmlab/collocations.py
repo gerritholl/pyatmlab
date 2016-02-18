@@ -2495,9 +2495,9 @@ class ProfileCollocationDescriber(CollocationDescriber):
             (p, s) = collapse(
                 numpy.lib.recfunctions.merge_arrays(
                     (p_parcol.view(dtype=[("p_parcol", p_parcol.dtype)])[valid],
-                     self.p_col[["time"]][valid]), flatten=True),
+                     self.p_col[["time", "lat", "lon"]][valid]), flatten=True),
                 numpy.lib.recfunctions.merge_arrays(
-                    [self.s_col[["time"]][valid]] +
+                    [self.s_col[["time", "lat", "lon"]][valid]] +
                     [L[x].view(dtype=[(x, L[x].dtype)])[valid]
                         for x in fields_secondary],
                         flatten=True),
