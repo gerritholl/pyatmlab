@@ -327,8 +327,8 @@ class Dataset(metaclass=tools.AbstractDocStringInheritor):
 
         return numpy.lib.recfunctions.append_fields(M,
             names=["dof"],
-            data=[physics.AKStats(M["ch4_ak"],
-                    name="DUMMY").dofs()],
+            data=[numpy.atleast_1d(physics.AKStats(M["ch4_ak"],
+                    name="DUMMY").dofs())],
             dtypes=["f4"])
 
     def flag(self, arr):

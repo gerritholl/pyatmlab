@@ -863,6 +863,9 @@ class SmallLookupTable(LookupTable):
     def __getitem__(self, tup):
         return self.db[tup]
 
+    def __setitem__(self, tup, val):
+        self.db[tup] = val
+
     def keys(self):
         yield from self.db.keys()
  

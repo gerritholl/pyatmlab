@@ -22,7 +22,7 @@ import numexpr
 import pyproj
 
 
-from .constants import (h, k, R_d, R_v, c, M_d, M_w, micro)
+from .constants import (h, k, R_d, R_v, c, M_d, M_w, micro, R)
 #from . import constants as c
 from . import math as pamath
 from . import time as pytime
