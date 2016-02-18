@@ -1641,14 +1641,18 @@ class ProfileCollocationDescriber(CollocationDescriber):
         # Construct newz in a way that append_fields likes
         newz = numpy.tile(z, (p.shape[0], 1)).view([("z", "f8", z.shape[0])])
         p = numpy.lib.recfunctions.append_fields(p,
-            names=[field_parcol, field_z_proc, "time"],
-            data=[p_parcol, newz, self.p_col["time"]],
-            dtypes=["f8", newz.dtype, self.p_col["time"].dtype],
+            names=[field_parcol, field_z_proc, "time", "lat", "lon"],
+            data=[p_parcol, newz, self.p_col["time"], self.p_col["lat"],
+                  self.p_col["lon"]],
+            dtypes=["f8", newz.dtype, self.p_col["time"].dtype,
+                    self.p_col["lat"].dtype, self.p_col["lon"].dtype],
             usemask=False)
         s = numpy.lib.recfunctions.append_fields(s,
-            names=[field_parcol, field_z_proc, "time"],
-            data=[s_parcol, newz, self.s_col["time"]],
-            dtypes=["f8", newz.dtype, self.s_col["time"].dtype],
+            names=[field_parcol, field_z_proc, "time", "lat", "lon"],
+            data=[s_parcol, newz, self.s_col["time"], self.s_col["lat"],
+                  self.s_col["lon"]],
+            dtypes=["f8", newz.dtype, self.s_col["time"].dtype,
+                    self.s_col["lat"].dtype, self.s_col["lon"].dtype],
             usemask=False)
 
         if collapsed:
@@ -2611,8 +2615,8 @@ class ProfileCollocationDescriber(CollocationDescriber):
                        yerr=numpy.sqrt(S_dpc + S_dpc_pT_m**2), fmt=".")
             ad.set_ylim(*a.get_ylim())
             ad.set_xlabel(r"$\Delta$ Potential vorticity "
-                "({:s}={:d} {:s}) [s$^{-4}$]".format(
-                    elev_name, elev_value, elev_unit, "s$^{-4}$"))
+                "({:s}={:d} {:s}) [s$^{{-4}}$]".format(
+                    elev_name, elev_value, elev_unit))
             ad.set_ylabel(a.get_ylabel())
             ad.set_title(r"$\Delta$ PC ({:.1}--{:.1} km) {:s}-{:s}".format(
                             valid_range[0]/1e3,
