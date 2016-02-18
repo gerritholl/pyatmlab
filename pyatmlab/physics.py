@@ -119,7 +119,12 @@ class AKStats:
 
         # Circumvent https://github.com/numpy/numpy/issues/5560
         #return self.aks.trace(axis1=1, axis2=2)
-        return numpy.trace(self.aks, axis1=1, axis2=2)
+        # Is actually not effectively circumvented (anymore?)
+        #return numpy.trace(self.aks, axis1=1, axis2=2)
+        if isinstance(self.aks, numpy.ma.MaskedArray):
+            return self.aks.data.trace(axis1=1, axis2=2)
+        else:
+            return self.aks.trace(axis1=1, axis2=2)
 
     def sensitivities(self):
         """Calculate sensitivities.
