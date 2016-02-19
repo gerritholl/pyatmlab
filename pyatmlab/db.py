@@ -618,8 +618,9 @@ class LookupTable(abc.ABC):
             return t
         else:
             fields = list(self.axdata.keys())
-            return tuple(stats.bin_nd_sparse([dat[ax]
-                    for ax in fields], self.bins).squeeze().tolist())
+            return tuple(stats.bin_nd_sparse(
+                    numpy.atleast_2d([dat[ax]
+                    for ax in fields]), self.bins).squeeze().tolist())
 
     def get_index_tuples(self, data):
         """Yield tuples of indices for use in the lookup table
