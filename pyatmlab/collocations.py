@@ -2540,6 +2540,8 @@ class ProfileCollocationDescriber(CollocationDescriber):
         # seems I need to normalise?
         N = numpy.nanmax(p_parcol)
         N = numpy.float64(10**round(math.log10(N)))
+        # Should not happen but…
+        S_dpc[S_dpc==0] = S_dpc[S_dpc!=0].mean()
         weights = 1/(S_dpc/(N**2))
         mod = statsmodels.api.WLS(d_parcol/N, 
             statsmodels.api.add_constant(p_parcol/N),
