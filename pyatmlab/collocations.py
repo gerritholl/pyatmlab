@@ -2740,7 +2740,7 @@ def collapse(p, s, fields_primary=[], fields_secondary=[],
                 M_prim[funcname][field][n, ...] = func(primary[field][secmask])
             for field in fields_secondary:
                 M_sec[funcname][field][n, ...] = func(secondary[field][secmask])
-            M_prim["no"] = (l, r)
+            M_prim["no"][n, :] = (l, r)
 
     # FIXME BUG!  Because of the smoothing I apply to the primary, even
     # though a set of collocations has the same primary and different
