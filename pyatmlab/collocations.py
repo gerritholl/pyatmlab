@@ -1217,6 +1217,10 @@ class ProfileCollocationDescriber(CollocationDescriber):
         p["obj"] = self.cd.primary
         s["obj"] = self.cd.secondary
 
+        bar = progressbar.ProgressBar(maxval=val_ind.size,
+            widgets=[progressbar.Bar("=", "[", "]"), " ",
+                     progressbar.Percentage()])
+        bar.start()
         for i in val_ind: # loops over input array
             p["z_i"] = self.cd.primary.get_z(self.p_col[i])
             s["z_i"] = self.cd.secondary.get_z(self.s_col[i])
@@ -1283,6 +1287,8 @@ class ProfileCollocationDescriber(CollocationDescriber):
                     # http://stackoverflow.com/q/28352320/974555
                     #arr["W"][f][i, :, :][:, val] = W
                     arr["int"]["W"][f][i, :, :][:, val] = W
+            bar.update(i)
+        bar.finish()
 
 
         return (p["int"], s["int"])#, p["W"], s["W"])
