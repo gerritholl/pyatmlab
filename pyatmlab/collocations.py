@@ -1137,7 +1137,8 @@ class ProfileCollocationDescriber(CollocationDescriber):
         "_{self.cd.primary.__class__.__name__}"
         "_{self.cd.secondary.__class__.__name__}"
         "_targ{self.target}"
-        "_clps{collapsed}.")
+        "_clps{collapsed}"
+        "_outl{outl_fact}.")
 
     figname_dof_pc = ("dof_partial_columns_ch4_{dataset:s}_{other:s}_{note:s}")
 
@@ -2527,22 +2528,10 @@ class ProfileCollocationDescriber(CollocationDescriber):
             S_dpc_pT_up = S_dpc_pT_up[valid]
             S_dpc_pT_down = S_dpc_pT_dn[valid]
 
-        (f, a) = matplotlib.pyplot.subplots()
-        a.errorbar(p_parcol, d_parcol, 
-                   xerr=numpy.sqrt(S_ppc), 
-                   yerr=numpy.sqrt(S_dpc + S_dpc_pT_m**2), fmt=".")
-        # draw again with different colour errorbars to show different
-        # error source
-        #a.errorbar(p_parcol, d_parcol, 
-        #           yerr=[S_dpc_pT_dn, S_dpc_pT_up], fmt=".",
-        #           ecolor="red")
-
         xmx = max(p_parcol.max(), s_parcol.max())
         xmn = min(p_parcol.min(), s_parcol.min())
         ymn = min(d_parcol-numpy.sqrt(S_dpc))
         ymx = max(d_parcol+numpy.sqrt(S_dpc))
-        #a.plot([0, 2*mx], [0, 2*mx], linewidth=2, color="black")
-        a.plot([0, 2*xmx], [0, 0], linewidth=2, color="black")
 
         # FIXME: consider using Orthogonal Distance Regression (ODR) which
         # takes into account both xerr and yerr
@@ -2553,57 +2542,78 @@ class ProfileCollocationDescriber(CollocationDescriber):
         # Should not happen but…
         S_dpc[S_dpc==0] = S_dpc[S_dpc!=0].mean()
         weights = 1/(S_dpc/(N**2))
-        mod = statsmodels.api.WLS(d_parcol/N, 
-            statsmodels.api.add_constant(p_parcol/N),
-                        #weights=1/(S_d/(N**2)),
-                        missing="drop")
-        modfit = mod.fit()
-        with numpy.errstate(all="warn"):
-            print(modfit.summary())
-            print("N: {:g}".format(N))
-            print("Params", modfit.params*N)
-            print("Conf-int", modfit.params*N)
-        xx = numpy.linspace(.5*xmn/N, 1.5*xmx/N, 5)
-        a.plot(xx*N, (modfit.params[0] + modfit.params[1]*xx)*N,
-            color="red", linewidth=1)
-        # Take sqrt(5) to get a confidence interval of what is really
-        # 77.6%, so that, assuming a circular distribution, I'm at 5% at
-        # the edges
-        alpha = numpy.sqrt(0.05)
-        conf = modfit.conf_int(alpha=alpha)
-        a.plot(xx*N, (conf[0:1, :] 
-                 + conf[1:2, :] * xx[:, numpy.newaxis])*N,
-            color="red", linewidth=0.3)
-        # Now do this the correct way
-        (_, iv_l, iv_u) = statsmodels.sandbox.regression.predstd.wls_prediction_std(
-            modfit, statsmodels.api.add_constant(xx))
-        a.plot(xx*N, iv_l*N, color="blue", linewidth=0.3)
-        a.plot(xx*N, iv_u*N, color="blue", linewidth=0.3)
+        # reviewer request: how does it change if outliers are removed?
+        for outl_fact in (3, 10, 100):
+            logging.info("Removing when primary ({:s}) more than ({:d})"
+                         " MADs from median".format(self.cd.primary.name, outl_fact))
+            sigma = numpy.median(abs(p_parcol - numpy.median(p_parcol)))
+            inlier = ((p_parcol < numpy.median(p_parcol) + outl_fact*sigma) &
+                      (p_parcol > numpy.median(p_parcol) - outl_fact*sigma))
+            mod = statsmodels.api.WLS(d_parcol[inlier]/N, 
+                statsmodels.api.add_constant(p_parcol[inlier]/N),
+                            #weights=1/(S_d/(N**2)),
+                            missing="drop")
+            modfit = mod.fit()
+            with numpy.errstate(all="warn"):
+                print(modfit.summary())
+                print("N: {:g}".format(N))
+                print("Params", modfit.params*N)
+                print("Conf-int", modfit.params*N)
+            xx = numpy.linspace(.5*xmn/N, 1.5*xmx/N, 5)
 
-        a.set_xlim(0.98*xmn, 1.02*xmx)
-        a.set_ylim(-max(abs(ymn), abs(ymx)), 
-                   +max(abs(ymn), abs(ymx)))
-        a.set_xlabel("CH4 {:s} [molec./m^2]".format(self.cd.primary.name))
-        a.set_ylabel("CH4 {:s} - {:s} [molec./m^2]".format(
-            self.cd.secondary.name, self.cd.primary.name.replace("₄", r"$_4$")))
-        a.set_title(("Partial columns {:.1f}--{:.1f}, "
-                     "difference {:s} - {:s}").format(
-                        valid_range[0]/1e3, valid_range[1]/1e3,
-                        self.cd.primary.name, self.cd.secondary.name))
-        graphics.print_or_show(f, None, self.figname_compare_pc.format(**vars()),
-            data=numpy.vstack((p_parcol,
-                d_parcol,
-                numpy.sqrt(S_ppc).T,
-                numpy.sqrt(S_dpc + S_dpc_pT_m**2))).T)
-        io.write_data_to_files(data={"model": numpy.vstack(
-                (xx,
-                 modfit.params[0] + modfit.params[1]*xx,
-                 (conf[0:1, :]
-                    + conf[1:2, :]
-                    * xx[:, numpy.newaxis]).T,
-                 iv_l,
-                 iv_u)).T*N},
-            fn=self.figname_compare_pc[:-1].format(**vars()) + "_{}")
+            (f, a) = matplotlib.pyplot.subplots()
+            a.errorbar(p_parcol, d_parcol, 
+                       xerr=numpy.sqrt(S_ppc), 
+                       yerr=numpy.sqrt(S_dpc + S_dpc_pT_m**2), fmt=".")
+            # draw again with different colour errorbars to show different
+            # error source
+            #a.errorbar(p_parcol, d_parcol, 
+            #           yerr=[S_dpc_pT_dn, S_dpc_pT_up], fmt=".",
+            #           ecolor="red")
+            #a.plot([0, 2*mx], [0, 2*mx], linewidth=2, color="black")
+            a.plot([0, 2*xmx], [0, 0], linewidth=2, color="black")
+
+
+            a.plot(xx*N, (modfit.params[0] + modfit.params[1]*xx)*N,
+                color="red", linewidth=1)
+            # Take sqrt(5) to get a confidence interval of what is really
+            # 77.6%, so that, assuming a circular distribution, I'm at 5% at
+            # the edges
+            alpha = numpy.sqrt(0.05)
+            conf = modfit.conf_int(alpha=alpha)
+            a.plot(xx*N, (conf[0:1, :] 
+                     + conf[1:2, :] * xx[:, numpy.newaxis])*N,
+                color="red", linewidth=0.3)
+            # Now do this the correct way
+            (_, iv_l, iv_u) = statsmodels.sandbox.regression.predstd.wls_prediction_std(
+                modfit, statsmodels.api.add_constant(xx))
+            a.plot(xx*N, iv_l*N, color="blue", linewidth=0.3)
+            a.plot(xx*N, iv_u*N, color="blue", linewidth=0.3)
+
+            a.set_xlim(0.98*xmn, 1.02*xmx)
+            a.set_ylim(-max(abs(ymn), abs(ymx)), 
+                       +max(abs(ymn), abs(ymx)))
+            a.set_xlabel("CH4 {:s} [molec./m^2]".format(self.cd.primary.name))
+            a.set_ylabel("CH4 {:s} - {:s} [molec./m^2]".format(
+                self.cd.secondary.name, self.cd.primary.name.replace("₄", r"$_4$")))
+            a.set_title(("Partial columns {:.1f}--{:.1f}, "
+                         "difference {:s} - {:s}").format(
+                            valid_range[0]/1e3, valid_range[1]/1e3,
+                            self.cd.primary.name, self.cd.secondary.name))
+            graphics.print_or_show(f, None, self.figname_compare_pc.format(**vars()),
+                data=numpy.vstack((p_parcol,
+                    d_parcol,
+                    numpy.sqrt(S_ppc).T,
+                    numpy.sqrt(S_dpc + S_dpc_pT_m**2))).T)
+            io.write_data_to_files(data={"model": numpy.vstack(
+                    (xx,
+                     modfit.params[0] + modfit.params[1]*xx,
+                     (conf[0:1, :]
+                        + conf[1:2, :]
+                        * xx[:, numpy.newaxis]).T,
+                     iv_l,
+                     iv_u)).T*N},
+                fn=self.figname_compare_pc[:-1].format(**vars()) + "_{}")
 
         if dmp_plot is not None and collapsed:
             logging.error("Not implemented: collapsed DMP plotting")
