@@ -633,7 +633,7 @@ class LookupTable(abc.ABC):
     def lookup_all(self, data):
         # FIXME: can be faster when dat is large
         logging.info("Looking up {:d} radiances".format(data.size))
-        bar = progressbar.ProgressBar(maval=data.size,
+        bar = progressbar.ProgressBar(maxval=data.size,
             widgets=[progressbar.Bar("=", "[", "]"), " ",
                      progressbar.Percentage()])
         bar.start()
