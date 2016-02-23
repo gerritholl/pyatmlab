@@ -2036,7 +2036,7 @@ class ProfileCollocationDescriber(CollocationDescriber):
 
         # ERROR!  pinv hangs if W_1 contains nans in an unfortunate way.
         if numpy.isnan(W_1).any():
-            logging.warning("Found nans in W_1, treating as 0")
+            #logging.warning("Found nans in W_1, treating as 0")
             W_1 = W_1.copy()
             W_1[numpy.isnan(W_1)] = 0
         if fact_S_1 is None:

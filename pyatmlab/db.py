@@ -633,6 +633,10 @@ class LookupTable(abc.ABC):
     def lookup_all(self, data):
         # FIXME: can be faster when dat is large
         logging.info("Looking up {:d} radiances".format(data.size))
+        bar = progressbar.ProgressBar(maval=data.size,
+            widgets=[progressbar.Bar("=", "[", "]"), " ",
+                     progressbar.Percentage()])
+        bar.start()
         for (i, dat) in enumerate(data):
             try:
                 yield self.lookup(dat)
@@ -642,6 +646,8 @@ class LookupTable(abc.ABC):
                 continue
                 #yield None
         #yield from (self.lookup(dat) for dat in data)
+            bar.update(i)
+        bar.finish()
 
     def lookaround(self, dat):
         """Yield all neighbouring datapoints
