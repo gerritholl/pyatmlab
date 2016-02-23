@@ -16,6 +16,7 @@ import scipy
 import scipy.stats
 import scipy.interpolate
 
+import progressbar
 import matplotlib.pyplot
 import matplotlib.backends.backend_agg
 import matplotlib.figure
@@ -1550,7 +1551,9 @@ class ProfileCollocationDescriber(CollocationDescriber):
 #                    self.z_range,
 #                    self._S_dpc)
         # FIXME: consider filtering here!
-        logging.info("Calculating partial columns")
+        logging.info("Calculating partial columns: "
+            "{self.cd.primary.name:s} / {self.cd.secondary.name:s}, "
+            "mode {use_T_p:s}".format(**locals()))
 
         shared_range = (max(self.cd.primary.range[0],
                             self.cd.secondary.range[0]),
