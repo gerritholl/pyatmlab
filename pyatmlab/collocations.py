@@ -1798,6 +1798,7 @@ class ProfileCollocationDescriber(CollocationDescriber):
 
     ## Helper methods for calculation methods
 
+    # Need to process because https://github.com/numpy/numpy/issues/4983
     @tools.mark_for_disk_cache(
         process=dict(
             targ=lambda x: x.view(dtype="i1")))
@@ -2720,7 +2721,7 @@ def collapse(p, s, fields_primary=[], fields_secondary=[],
             dtype=[(funcname, [(x[0], funcs[funcname][1],
                             numpy.shape(funcs[funcname][0](p[0:1][x[0]])))
                                for x in p.dtype.descr if x[0] in fields_primary])
-                   for funcname in funcs.keys()],
+                   for funcname in funcs.keys()] + [("no", "i8", (2,))],
             shape=newp.size-1)
     M_sec = numpy.zeros(
             dtype=[(funcname, [(x[0], funcs[funcname][1],
@@ -2736,9 +2737,10 @@ def collapse(p, s, fields_primary=[], fields_secondary=[],
             secmask = secmask & validator(secondary)
         for (funcname, (func, dtp)) in funcs.items():
             for field in fields_primary:
-                M_prim[funcname][field][n, ...] = func(primary[field])
+                M_prim[funcname][field][n, ...] = func(primary[field][secmask])
             for field in fields_secondary:
-                M_sec[funcname][field][n, ...] = func(secondary[field])
+                M_sec[funcname][field][n, ...] = func(secondary[field][secmask])
+            M_prim["no"] = (l, r)
 
     # FIXME BUG!  Because of the smoothing I apply to the primary, even
     # though a set of collocations has the same primary and different
