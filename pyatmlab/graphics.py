@@ -9,6 +9,7 @@ import os.path
 import datetime
 now = datetime.datetime.now
 import logging
+import subprocess
 
 import numpy
 import matplotlib
@@ -75,7 +76,8 @@ def print_or_show(fig, show, outfile, in_plotdir=True, tikz=None,
                 os.makedirs(os.path.dirname(outf))
             fig.canvas.print_figure(outf)
         if store_meta is None:
-            info = "pyatmlab-{:s}".format(meta.get_full_version())
+            pr = subprocess.run(["pip", "freeze"], stdout=subprocess.PIPE) 
+            info = pr.stdout
         else:
             info = store_meta
 
