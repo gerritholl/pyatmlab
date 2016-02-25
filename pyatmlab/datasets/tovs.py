@@ -588,6 +588,56 @@ class HIRSKLM(HIRS):
         else:
             return fact
 
+    def read_cpids(self, path):
+        """Read calibration parameters input data sets (CPIDS)
+
+        Should contain a CPIDS file for HIRS, such as NK.cpids.HIRS.
+        """
+
+        D = {}
+        with path.open(mode="rt", encoding="ascii") as fp:
+            fp.readline()
+            analogcc = numpy.genfromtxt(fp, max_rows=16, dtype="f4")
+            fp.readline()
+            fp.readline()
+            digatcc = numpy.genfromtxt(fp, max_rows=11, dtype="f4")
+            fp.readline()
+            fp.readline()
+            digalc1 = numpy.genfromtxt(fp, max_rows=1, dtype="f4")
+            digalc2 = numpy.genfromtxt(fp, max_rows=1, dtype="f4")
+            fp.readline()
+            fp.readline()
+            D["fwprtcc"] = numpy.genfromtxt(fp, max_rows=4, dtype="f4")
+            fp.readline()
+            fp.readline()
+            D["ictprtcc"] = numpy.genfromtxt(fp, max_rows=4, dtype="f4")
+            fp.readline()
+            fp.readline()
+            D["iwtprtcc"] = numpy.genfromtxt(fp, max_rows=5, dtype="f4")
+            fp.readline()
+            fp.readline()
+            D["secmircc"] = numpy.genfromtxt(fp, max_rows=1, dtype="f4")
+
+
+        D.update(zip(
+            "an_rdtemp an_bptemp an_eltemp an_pchtemp an_fhcc "
+            "an_scnmtemp an_fwmtemp an_p5v an_p10v an_p75v an_m75v "
+            "an_p15v an_m15v an_fwmcur an_scmcur "
+            "an_pchcpow".split()), analogcc)
+
+        D.update(zip(
+             "tttcnttmp patchexpcnttmp fsradcnttmp scmircnttmp "
+             "pttcnttmp bpcnttmp electcnttmp patchfcnttmp scmotcnttmp "
+             "fwmcnttmp".split()), digatcc)
+
+        D.update(zip(
+            "fwthc ecdac pcp smccc fmccc p15vdccc m15vdccc p7.5vdccc "
+            "m7.5vdccc p10vdccc".split()), digalc1)
+
+        D["p5vdccc"] = digalc2.squeeze()
+
+        return D
+
     @abc.abstractmethod
     def get_temp(self, header, elem, anwrd):
         ...
