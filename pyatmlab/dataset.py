@@ -97,7 +97,7 @@ class SingleFileDataset(Dataset, typhon.datasets.dataset.SingleFileDataset):
 class MultiFileDataset(Dataset, typhon.datasets.dataset.MultiFileDataset):
     pass
 
-class SingleMeasurementPerFileDataset(MultiFileDataset, typhon.datasets.dataset.SingleMeasurementPerfileDataset):
+class SingleMeasurementPerFileDataset(MultiFileDataset, typhon.datasets.dataset.SingleMeasurementPerFileDataset):
 
     _head_dtype = dict(CH4_total="<f4")
     def _read(self, p, fields="all"):
