@@ -17,6 +17,11 @@ import abc
 
 import numpy
 
+from typhon.utils.metaclass import (DocStringInheritor,
+    AbstractDocStringInheritor)
+
+from typhon.utils.cache import mutable_cache
+
 class switch(object):
     """Simulate a switch-case statement.
 
@@ -41,37 +46,6 @@ class switch(object):
             return True
         else:
             return False
-
-# Use a metaclass to inherit docstrings
-#
-# http://stackoverflow.com/a/8101118/974555
-class DocStringInheritor(type):
-    '''A variation on
-    http://groups.google.com/group/comp.lang.python/msg/26f7b4fcb4d66c95
-    by Paul McGuire
-    '''
-    def __new__(meta, name, bases, clsdict):
-        if not('__doc__' in clsdict and clsdict['__doc__']):
-            for mro_cls in (mro_cls for base in bases for mro_cls in base.mro()):
-                doc=mro_cls.__doc__
-                if doc:
-                    clsdict['__doc__']=doc
-                    break
-        for attr, attribute in clsdict.items():
-            if not attribute.__doc__:
-                for mro_cls in (mro_cls for base in bases for mro_cls in base.mro()
-                                if hasattr(mro_cls, attr)):
-                    doc=getattr(getattr(mro_cls,attr),'__doc__')
-                    if doc:
-                        attribute.__doc__=doc
-                        # added by Gerrit
-                        attribute.__doc__ += "\n\nDocstring inherited from parent"
-                        break
-        # GH: replaced `type` by super() to not break multiple inheritance
-        return super().__new__(meta, name, bases, clsdict)
-
-class AbstractDocStringInheritor(DocStringInheritor, abc.ABCMeta):
-    pass
 
 # Following inspired by http://stackoverflow.com/a/7811344/974555
 def validate(func, locals):
@@ -193,49 +167,6 @@ def disk_lru_cache(path):
             logging.debug("Storing result in cache")
             cache[key] = result
             cache.sync()
-            return result
-
-        return functools.update_wrapper(wrapper, user_function)
-
-    return decorating_function
-
-
-def mutable_cache(maxsize=10):
-
-    sentinel = object()
-    make_key = functools._make_key
-    def decorating_function(user_function):
-        cache = {}
-        cache_get = cache.get
-        keylist = [] # don't make it too long
-
-        def wrapper(*args, **kwds):
-            # Problem with pickle: dataset objects (commonly passed as
-            # 'self') contain a cache which is a shelve object which
-            # cannot be pickled.  Would need to create a proper pickle
-            # protocol for dataset objects... maybe later
-            #key = pickle.dumps(args, 1) + pickle.dumps(kwds, 1)
-            key = str(args) + str(kwds)
-            result = cache_get(key, sentinel)
-            if result is not sentinel:
-                logging.debug(("Getting result from cache "
-                    " (key {!s}").format(key))
-                return result
-            if kwds.get("CLEAR_CACHE"):
-                del kwds["CLEAR_CACHE"]
-                cache.clear()
-                keylist.clear()
-#            logging.debug("No result in cache")
-            result = user_function(*args, **kwds)
-#            logging.debug("Storing result in cache")
-            cache[key] = result
-            keylist.append(key)
-            if len(keylist) > maxsize:
-                try:
-                    del cache[keylist[0]]
-                    del keylist[0]
-                except KeyError:
-                    pass
             return result
 
         return functools.update_wrapper(wrapper, user_function)
