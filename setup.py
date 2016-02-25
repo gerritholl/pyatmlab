@@ -40,7 +40,8 @@ setup(
                       "matplotlib>=1.4", "pint>=0.6",
                       "numexpr>=2.4",
                       "h5py>=2.5",
-                      "netCDF4>=1.1"],
+                      "netCDF4>=1.1",
+                      "typhon>=0.2.7"],
     long_description=read('README'),
     classifiers=[
         "Development Status :: 3 - Alpha",
