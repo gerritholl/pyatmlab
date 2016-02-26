@@ -11,6 +11,7 @@ import scipy
 
 from . import tools
 from .meta import expanddoc
+from . import ureg
 
 inputs = """:param z: Height
     :type z: ndarray
@@ -251,3 +252,57 @@ def get_transformation_matrix(f, n):
 
     I = numpy.eye(n)
     return numpy.hstack([f(I[:, i:(i+1)]) for i in range(n)])
+
+
+
+def estimate_srf_shift(bt1, bt2, srf, y_spectra, f_spectra,
+        **solver_args):
+    """Estimate shift in SRF from pairs of brightness temperatures
+
+    From pairs of brightness temperatures, estimate what SRF shifts
+    minimises observed BT differences.
+
+    Arguments:
+        
+        bt1 (ndarray): Radiances for reference satellite
+        bt2 (ndarray): Radiances for other satellite
+        srf (`:func:pyatmlab.physics.SRF`): SRF for reference satellite
+        y_spectra (ndarray N×p): Database of spectra (such as from IASI) to use
+        f_spectra (ndarray N): spectrum describing frequencies
+            corresponding to `y_spectra`.
+        **solver_args: Remaining arguments passed on to
+            :func:`scipy.optimize.minimize_scalar`.  In particular, `args`
+            must be a 1-tuple with the pint Unit object corresponding to
+            the unit for the shift, for example, (ureg.um,).
+    Returns:
+
+        float: shift in SRF
+    """
+
+    # Use spectral database to derive regression bt1p = a + b * bt1, where
+    # btp1 corresponds to a shift of x
+
+    # then find x that minimises differences
+
+    L_ref = srf.integrate_radiances(f_spectra, y_spectra)
+    def calc_rmse_for_srf_shift(x, unit=ureg.um):
+        """
+
+        Arguments:
+            
+            x (float): shift in SRF.
+            unit (Unit): unit from pint unit registry 
+        """
+        L_other = (srf.shift(x*unit)).integrate_radiances(f_spectra, y_spectra)
+
+        (slope, intercept, r_value, p_value, stderr) = scipy.stats.linregress(
+                L_ref, L_other)
+        
+        bt1p = intercept + slope*bt1
+        rmse = numpy.sqrt(((bt2 - bt1p)**2).mean())
+        return rmse
+
+    res = scipy.optimize.minimize_scalar(
+            fun=calc_rmse_for_srf_shift,
+            **solver_args)
+    return res
