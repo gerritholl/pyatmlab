@@ -880,4 +880,6 @@ class IASIEPS(dataset.MultiFileDataset, dataset.HyperSpectral):
 
 class IASISub(dataset.HomemadeDataset, dataset.HyperSpectral):
     name = "iasisub"
-    pass
+    subdir = "{month}"
+    stored_name = "IASI_1C_selection_{year}_{month}_{day}.npz"
+    re = r"IASI_1C_selection_(?P<year>\d{4})_(?P<month>\d{1,2})_(?P<day>\d{1,2}).npz"
