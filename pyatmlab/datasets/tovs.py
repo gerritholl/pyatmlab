@@ -857,6 +857,16 @@ class IASIEPS(dataset.MultiFileDataset, dataset.HyperSpectral):
                 shape=(n_scanlines, 30))
             M["time"][has_mdr] = numpy.datetime64(start, "ms") + numpy.array(dlt*1e3, "m8[ms]").T
             specall = self.__obtain_from_mdr(c, "GS1cSpect")
+            # apply scale factors
+            first = c.MDR[0].MDR.IDefNsfirst1b
+            last = c.MDR[0].MDR.IDefNslast1b
+            for (slc_st, slc_fi, fact) in zip(
+                    filter(None, c.GIADR_ScaleFactors.IDefScaleSondNsfirst),
+                    c.GIADR_ScaleFactors.IDefScaleSondNslast,
+                    c.GIADR_ScaleFactors.IDefScaleSondScaleFactor):
+                # Documented intervals are closed [a, b]; Python uses
+                # half-open [a, b).
+                specall[..., (slc_st-first):(slc_st-last+1)] *= pow(10, -fact)
             M["spectral_radiance"][has_mdr] = specall
             locall = self.__obtain_from_mdr(c, "GGeoSondLoc")
             M["lon"][has_mdr] = locall[:, :, :, 0]
