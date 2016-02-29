@@ -866,7 +866,7 @@ class IASIEPS(dataset.MultiFileDataset, dataset.HyperSpectral):
                     c.GIADR_ScaleFactors.IDefScaleSondScaleFactor):
                 # Documented intervals are closed [a, b]; Python uses
                 # half-open [a, b).
-                specall[..., (slc_st-first):(slc_st-last+1)] *= pow(10, -fact)
+                specall[..., (slc_st-first):(slc_fi-first+1)] *= pow(10, -fact)
             M["spectral_radiance"][has_mdr] = specall
             locall = self.__obtain_from_mdr(c, "GGeoSondLoc")
             M["lon"][has_mdr] = locall[:, :, :, 0]
