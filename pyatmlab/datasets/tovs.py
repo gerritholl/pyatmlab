@@ -856,7 +856,7 @@ class IASIEPS(dataset.MultiFileDataset, dataset.HyperSpectral):
                 dtype=self._dtype,
                 shape=(n_scanlines, 30))
             M["time"][has_mdr] = numpy.datetime64(start, "ms") + numpy.array(dlt*1e3, "m8[ms]").T
-            specall = self.__obtain_from_mdr(c, "GS1cSpect")
+            specall = self.__obtain_from_mdr(c, "GS1cSpect").astype("f8")
             # apply scale factors
             first = c.MDR[0].MDR.IDefNsfirst1b
             last = c.MDR[0].MDR.IDefNslast1b
