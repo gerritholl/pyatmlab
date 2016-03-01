@@ -5,10 +5,13 @@
 
 """
 
+import logging
+
 import numpy
 import numpy.linalg
 import scipy
 import scipy.optimize
+import scipy.stats
 
 from . import tools
 from .meta import expanddoc
@@ -255,6 +258,44 @@ def get_transformation_matrix(f, n):
     return numpy.hstack([f(I[:, i:(i+1)]) for i in range(n)])
 
 
+def calc_rmse_for_srf_shift(x, bt1, bt2, srf, y_spectra, f_spectra,
+                            L_ref, unit=ureg.um):
+    """Calculate RMSE estimating bt2 from bt1 assuming srf shifts by x
+
+    Try to estimate bt2 from bt1, assuming that bt1 is described by
+    spectral response function SRF.  For the estimate, use a database
+    described by y_spectra and f_spectra.
+
+    This function is designed to be called repeatedly within an
+    optimisation framework (see `:func:estimate_srf_shift`).  Therefore,
+    as much as possible is precalculated before calling this.  Hence, you
+    also need to pass L_ref, which equals integrated radiances for the
+    reference satellite, corresponding to f_spectra and y_spectra.
+
+    Arguments:
+        
+        x (float): shift in SRF.
+        bt1 (ndarray): Radiances for reference satellite, in brightness
+            temperatures [K].
+        bt2 (ndarray): Radiances for other satellite, in brightness
+            temperatures [K].
+        srf (`:func:pyatmlab.physics.SRF`): SRF for reference satellite
+        y_spectra (ndarray N×p): Database of spectra (such as from IASI)
+            to use.  Should be in spectral radiance per frequency units [W
+            / (m^2 sr Hz)]
+        f_spectra (ndarray N): frequencies corresponding to y_spectra [Hz]
+        L_ref: Radiances corresponding to y_spectra and f_spectra [K]
+        unit (Unit): unit from pint unit registry.  Defaults to ureg.um.
+    """
+    L_other = srf.channel_radiance2bt(
+            srf.shift(x*unit).integrate_radiances(f_spectra, y_spectra))
+
+    (slope, intercept, r_value, p_value, stderr) = scipy.stats.linregress(
+            L_ref, L_other)
+    
+    bt1p = intercept + slope*bt1
+    rmse = numpy.sqrt(((bt2 - bt1p)**2).mean())
+    return rmse
 
 def estimate_srf_shift(bt1, bt2, srf, y_spectra, f_spectra,
         **solver_args):
@@ -286,25 +327,21 @@ def estimate_srf_shift(bt1, bt2, srf, y_spectra, f_spectra,
 
     # then find x that minimises differences
 
-    L_ref = srf.integrate_radiances(f_spectra, y_spectra)
-    def calc_rmse_for_srf_shift(x, unit=ureg.um):
-        """
+    L_ref = srf.channel_radiance2bt(integrate_radiances(f_spectra, y_spectra))
 
-        Arguments:
-            
-            x (float): shift in SRF.
-            unit (Unit): unit from pint unit registry 
-        """
-        L_other = (srf.shift(x*unit)).integrate_radiances(f_spectra, y_spectra)
-
-        (slope, intercept, r_value, p_value, stderr) = scipy.stats.linregress(
-                L_ref, L_other)
-        
-        bt1p = intercept + slope*bt1
-        rmse = numpy.sqrt(((bt2 - bt1p)**2).mean())
+    def fun(x, unit=ureg.um):
+        rmse = calc_rmse_for_srf_shift(x,
+            bt1=bt1, bt2=bt2, srf=srf, y_spectra=y_spectra, f_spectra=f_spectra,
+            L_ref=L_ref, unit=unit)
+        logging.debug("Shifting {:9.4~}: rmse {:6.3f} K".format(
+            x*unit, rmse))
         return rmse
 
     res = scipy.optimize.minimize_scalar(
             fun=calc_rmse_for_srf_shift,
             **solver_args)
+#            bracket=[-0.1, 0.1],
+#            bounds=[-1, 1],
+#            method="brent",
+#            args=(ureg.um,))
     return res
