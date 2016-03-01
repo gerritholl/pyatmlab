@@ -77,7 +77,7 @@ def print_or_show(fig, show, outfile, in_plotdir=True, tikz=None,
             fig.canvas.print_figure(outf)
         if store_meta is None:
             pr = subprocess.run(["pip", "freeze"], stdout=subprocess.PIPE) 
-            info = pr.stdout
+            info = pr.stdout.decode("utf-8")
         else:
             info = store_meta
 

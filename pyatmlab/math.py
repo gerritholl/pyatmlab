@@ -287,14 +287,18 @@ def calc_rmse_for_srf_shift(x, bt1, bt2, srf, y_spectra, f_spectra,
         L_ref: Radiances corresponding to y_spectra and f_spectra [K]
         unit (Unit): unit from pint unit registry.  Defaults to ureg.um.
     """
-    srf_sh = srf.shift(x*unit)
+    try:
+        x = x.to(unit)
+    except AttributeError:
+        x = x * unit
+    srf_sh = srf.shift(x)
     L_other = srf_sh.channel_radiance2bt(
             srf_sh.integrate_radiances(f_spectra, y_spectra))
 
     (slope, intercept, r_value, p_value, stderr) = scipy.stats.linregress(
             L_ref, L_other)
     
-    bt1p = intercept + slope*bt1
+    bt1p = intercept*L_ref.u + slope*bt1
     rmse = numpy.sqrt(((bt2 - bt1p)**2).mean())
     return rmse
 
