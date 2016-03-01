@@ -531,7 +531,7 @@ class SRF(FwmuMixin):
     """Respresents a spectral response function
     """
 
-    T_lookup_table = numpy.arange(100, 370.01, 0.05)
+    T_lookup_table = numpy.arange(100, 370.01, 0.05) * ureg.K
     lookup_table = None
     L_to_T = None
 
@@ -657,11 +657,14 @@ class SRF(FwmuMixin):
         """
         return self.__class__(self.frequency.to(amount.u, "sp") + amount, self.W)
                     
+_specrad_freq = ureg.W / (ureg.m**2 * ureg.sr * ureg.Hz)
 def planck_f(f, T):
-    """Planck law expressed in frequency
+    """Planck law expressed in frequency.
 
-    :param f: Frequency [Hz]
-    :param T: Temperature [K]
+    If more than 10⁵ resulting radiances, uses numexpr.
+
+    :param f: Frequency.  Quantity in [Hz]
+    :param T: Temperature.  Quantity in [K]
     """
     try:
         f = f.astype(numpy.float64)
@@ -669,9 +672,10 @@ def planck_f(f, T):
         pass
     if (f.size * T.size) > 1e5:
         return numexpr.evaluate("(2 * h * f**3) / (c**2) * "
-                                "1 / (exp((h*f)/(k*T)) - 1)")
-    return ((2 * h * f**3) / (c ** 2) *
-            1 / (numpy.exp((h*f)/(k*T)) - 1))
+                                "1 / (exp((h*f)/(k*T)) - 1)") * (
+                                    _specrad_freq)
+    return ((2 * ureg.h * f**3) / (ureg.c ** 2) *
+            1 / (numpy.exp((ureg.h*f)/(ureg.k*T)) - 1))
         
 def mixingratio2density(mixingratio, p, T):
     """Converts mixing ratio (e.g. kg/kg) to density (kg/m^3) for dry air.
