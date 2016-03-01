@@ -618,12 +618,12 @@ class SRF(FwmuMixin):
         # function is more smooth so less harmed by interpolation, so I
         # interpolate the SRF.
         fnc = scipy.interpolate.interp1d(self.frequency, self.W, bounds_error=False, fill_value=0.0)
-        w_on_L_grid = fnc(f)
+        w_on_L_grid = fnc(f) * (1/ureg.Hz)
         #ch_BT = (w_on_L_grid * L_f).sum(-1) / (w_on_L_grid.sum())
         # due to numexpr limitation, do sum seperately
         ch_rad_tot = numexpr.evaluate("sum(w_on_L_grid * L, {:d})".format(
                                     L.ndim-1))
-        ch_rad = ch_rad_tot / w_on_L_grid.sum()
+        ch_rad = (ch_rad_tot * L.u) / w_on_L_grid.sum()
 #        if (ch_rad<0).any():
 #            logging.error("Found negative integrated radiances for {:.3f} µm "
 #                           "channel at positions {!s}".format(
