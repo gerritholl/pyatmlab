@@ -896,7 +896,7 @@ class IASISub(dataset.HomemadeDataset, dataset.HyperSpectral):
 
     
     def _read(self, *args, **kwargs):
-        if self.freq is None:
+        if self.frequency is None:
             self.frequency = numpy.loadtxt(self.freqfile)
         return super()._read(*args, **kwargs)
 
