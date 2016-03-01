@@ -174,3 +174,4 @@ class StationaryDataset(Dataset):
 class HyperSpectral(Dataset, physics.FwmuMixin):
     """Superclass for any hyperspectral instrument
     """
+    freqfile = None

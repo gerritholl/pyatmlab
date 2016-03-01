@@ -20,6 +20,7 @@ import matplotlib.dates
 
 import numexpr
 import pyproj
+import pint
 
 
 from .constants import (h, k, R_d, R_v, c, M_d, M_w, micro, R)
@@ -842,7 +843,13 @@ def specrad_wavenumber2frequency(specrad_wavenum):
          [W·sr^{-1}·m^{-2}·{m^{-1}}^{-1}]
     :returns: Spectral radiance per frequency [W⋅sr−1⋅m−2⋅Hz−1]
     """
-    return specrad_wavenum / c
+
+    if not isinstance(specrad_wavenum, pint.quantity._Quantity):
+        specrad_wavenum = specrad_wavenum * ureg.W / (
+                            ureg.m**2 * ureg.sr * (1/ureg.m))
+                            
+    return (specrad_wavenum / ureg.c).to(ureg.W / (
+                            ureg.m**2 * ureg.sr * ureg.Hz))
 
 def specrad_frequency_to_planck_bt(L, f):
     """Convert spectral radiance per frequency to brightness temperature
