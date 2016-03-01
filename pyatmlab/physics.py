@@ -901,7 +901,7 @@ def spectral_to_channel(f_L, L_f, f_srf, w_srf):
     # Interpolate onto common frequency grid.  The spectral response
     # function is more smooth so less harmed by interpolation, so I
     # interpolate the SRF.
-    f = scipy.interpolate.interp1d(f_srf, w_srf, bounds_error=False, fill_value=0.0)
+    f = scipy.interpolate.interp1d(f_srf, w_srf, bounds_error=False, fill_value=numpy.nan)
     w_on_L_grid = f(f_L)
     #ch_BT = (w_on_L_grid * L_f).sum(-1) / (w_on_L_grid.sum())
     # due to numexpr limitation, do sum seperately
