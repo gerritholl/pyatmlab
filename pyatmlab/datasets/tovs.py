@@ -894,6 +894,12 @@ class IASISub(dataset.HomemadeDataset, dataset.HyperSpectral):
     stored_name = "IASI_1C_selection_{year}_{month}_{day}.npz"
     re = r"IASI_1C_selection_(?P<year>\d{4})_(?P<month>\d{1,2})_(?P<day>\d{1,2}).npz"
 
+    
+    def _read(self, *args, **kwargs):
+        if self.freq is None:
+            self.frequency = numpy.loadtxt(self.freqfile)
+        return super()._read(*args, **kwargs)
+
     def get_times_for_granule(self, p, **kwargs):
         gd = self.get_info_for_granule(p)
         (year, month, day) = (int(gd[m]) for m in "year month day".split())

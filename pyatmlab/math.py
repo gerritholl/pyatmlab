@@ -339,7 +339,7 @@ def estimate_srf_shift(bt1, bt2, srf, y_spectra, f_spectra,
         return rmse
 
     res = scipy.optimize.minimize_scalar(
-            fun=calc_rmse_for_srf_shift,
+            fun=fun,
             **solver_args)
 #            bracket=[-0.1, 0.1],
 #            bounds=[-1, 1],
