@@ -641,10 +641,7 @@ class SRF(FwmuMixin):
         """
         if self.lookup_table is None:
             self.make_lookup_table()
-#        L_BT = numpy.zeros_like(L)
-#        L_BT[L==0] = 0
-#        L_BT[L!=0] = self.L_to_T(L[L!=0])
-        return self.L_to_T(L)
+        return self.L_to_T(L.to(ureg.W/(ureg.m**2*ureg.sr))) * K
 
     # Methods returning new SRFs with some changes
     def shift(self, amount):
