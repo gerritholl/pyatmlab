@@ -8,6 +8,7 @@
 import numpy
 import numpy.linalg
 import scipy
+import scipy.optimize
 
 from . import tools
 from .meta import expanddoc
@@ -267,9 +268,10 @@ def estimate_srf_shift(bt1, bt2, srf, y_spectra, f_spectra,
         bt1 (ndarray): Radiances for reference satellite
         bt2 (ndarray): Radiances for other satellite
         srf (`:func:pyatmlab.physics.SRF`): SRF for reference satellite
-        y_spectra (ndarray N×p): Database of spectra (such as from IASI) to use
+        y_spectra (ndarray N×p): Database of spectra (such as from IASI)
+            to use.  Should be in spectral radiance per frequency units.
         f_spectra (ndarray N): spectrum describing frequencies
-            corresponding to `y_spectra`.
+            corresponding to `y_spectra`.  In Hz.
         **solver_args: Remaining arguments passed on to
             :func:`scipy.optimize.minimize_scalar`.  In particular, `args`
             must be a 1-tuple with the pint Unit object corresponding to
