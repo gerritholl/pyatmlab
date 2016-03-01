@@ -2612,7 +2612,10 @@ class ProfileCollocationDescriber(CollocationDescriber):
                         + conf[1:2, :]
                         * xx[:, numpy.newaxis]).T,
                      iv_l,
-                     iv_u)).T*N},
+                     iv_u)).T*N,
+                        "outliers": numpy.vstack(
+                            (p_parcol[~inlier],
+                             d_parcol[~inlier])).T},
                 fn=self.figname_compare_pc[:-1].format(**vars()) + "_{}")
 
         if dmp_plot is not None and collapsed:
