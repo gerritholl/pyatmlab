@@ -893,6 +893,8 @@ class IASISub(dataset.HomemadeDataset, dataset.HyperSpectral):
     subdir = "{month}"
     stored_name = "IASI_1C_selection_{year}_{month}_{day}.npz"
     re = r"IASI_1C_selection_(?P<year>\d{4})_(?P<month>\d{1,2})_(?P<day>\d{1,2}).npz"
+    start_date = datetime.datetime(2011, 1, 1, 0, 0, 0)
+    end_date = datetime.datetime(2011, 12, 31, 23, 59, 59)
 
     
     def _read(self, *args, **kwargs):
