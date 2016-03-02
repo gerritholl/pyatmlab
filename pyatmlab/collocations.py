@@ -2543,7 +2543,7 @@ class ProfileCollocationDescriber(CollocationDescriber):
         S_dpc[S_dpc==0] = S_dpc[S_dpc!=0].mean()
         weights = 1/(S_dpc/(N**2))
         # reviewer request: how does it change if outliers are removed?
-        for outl_fact in (3, 10, 100):
+        for outl_fact in (3, 5, 10, 100):
             logging.info("Removing when primary ({:s}) more than ({:d})"
                          " MADs from median".format(self.cd.primary.name, outl_fact))
             sigma = numpy.median(abs(p_parcol - numpy.median(p_parcol)))
