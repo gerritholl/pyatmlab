@@ -272,6 +272,9 @@ def calc_rmse_for_srf_shift(x, bt1, bt2, srf, y_spectra, f_spectra,
     also need to pass L_ref, which equals integrated radiances for the
     reference satellite, corresponding to f_spectra and y_spectra.
 
+    This estimate considers one channel at a time.  It may be more optimal
+    to estimate multiple channels at a time.  This is to be done.
+
     Arguments:
         
         x (float): shift in SRF.
