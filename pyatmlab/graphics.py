@@ -26,7 +26,7 @@ def plotdir():
     return datetime.date.today().strftime(config.get_config('plotdir'))
 
 def print_or_show(fig, show, outfile, in_plotdir=True, tikz=None,
-                  data=None, store_meta=None):
+                  data=None, store_meta=None, close=True):
     """Either print or save figure, or both, depending on arguments.
 
     Taking a figure, show and/or save figure in the default directory,
@@ -55,6 +55,8 @@ def print_or_show(fig, show, outfile, in_plotdir=True, tikz=None,
         this only works if outfile is a string and not a list thereof.
         To write nothing, pass an empty string.
     :type store_meta: str.
+    :param close: If true, close figure.  Defaults to true.
+    :type close: bool.
     """
 
     if outfile is not None:
@@ -75,6 +77,8 @@ def print_or_show(fig, show, outfile, in_plotdir=True, tikz=None,
             if not os.path.exists(os.path.dirname(outf)):
                 os.makedirs(os.path.dirname(outf))
             fig.canvas.print_figure(outf)
+        if close:
+            matplotlib.pyplot.close(fig)
         if store_meta is None:
             pr = subprocess.run(["pip", "freeze"], stdout=subprocess.PIPE) 
             info = pr.stdout.decode("utf-8")
