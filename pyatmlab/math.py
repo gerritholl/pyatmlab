@@ -257,52 +257,125 @@ def get_transformation_matrix(f, n):
     I = numpy.eye(n)
     return numpy.hstack([f(I[:, i:(i+1)]) for i in range(n)])
 
+def calc_bts_for_srf_shift(x, bt_master, srf_master,
+                            y_spectral_db, f_spectra, L_spectral_db,
+                            unit=ureg.um):
+    """Calculate BTs estimating bt_target from bt_master assuming srf_master shifts by x
 
-def calc_rmse_for_srf_shift(x, bt1, bt2, srf, y_spectra, f_spectra,
-                            L_ref, unit=ureg.um):
-    """Calculate RMSE estimating bt2 from bt1 assuming srf shifts by x
+    Try to estimate bt_target from bt_master, assuming that bt_master are
+    radiances corresponding to spectral response function srf_master.
+    For the estimate, use a database described by y_spectral_db and
+    f_spectra.  This database will be used to train a regression from
+    the original bt (bt_master, due to srf_master) to a shifted bt (due to
+    srf_master shited by x).  The regression is trained using the spectral
+    database (y_spectral_db, f_spectra, L_spectral_db).  This function
+    then applies the regression to bt_master.
 
-    Try to estimate bt2 from bt1, assuming that bt1 is described by
-    spectral response function SRF.  For the estimate, use a database
-    described by y_spectra and f_spectra.
-
-    This function is designed to be called repeatedly within an
-    optimisation framework (see `:func:estimate_srf_shift`).  Therefore,
-    as much as possible is precalculated before calling this.  Hence, you
-    also need to pass L_ref, which equals integrated radiances for the
-    reference satellite, corresponding to f_spectra and y_spectra.
+    This function is designed to be called by
+    `:func:calc_rmse_for_srf_shift`, which in turn is designed
+    to be called repeatedly within an optimisation framework (see
+    `:func:estimate_srf_shift`).  Therefore, as much as possible is
+    precalculated before calling this.  Hence, you also need to pass
+    L_ref, which equals integrated radiances for the reference satellite,
+    corresponding to f_spectra and y_spectra.
 
     This estimate considers one channel at a time.  It may be more optimal
     to estimate multiple channels at a time.  This is to be done.
 
     Arguments:
         
-        x (float): shift in SRF.
-        bt1 (ndarray): Radiances for reference satellite, in brightness
+        x (Quantity or float): shift in SRF.  Will be converted to the
+            unit (typically µm or nm) from the pint user registry (see
+            later argument).
+        bt_master (ndarray): Radiances for reference satellite, in brightness
             temperatures [K].
-        bt2 (ndarray): Radiances for other satellite, in brightness
-            temperatures [K].
-        srf (`:func:pyatmlab.physics.SRF`): SRF for reference satellite
-        y_spectra (ndarray N×p): Database of spectra (such as from IASI)
+        srf_master (`:func:pyatmlab.physics.SRF`): SRF for reference satellite
+        y_spectral_db (ndarray N×p): Database of spectra (such as from IASI)
             to use.  Should be in spectral radiance per frequency units [W
             / (m^2 sr Hz)]
-        f_spectra (ndarray N): frequencies corresponding to y_spectra [Hz]
-        L_ref: Radiances corresponding to y_spectra and f_spectra [K]
+        f_spectra (ndarray N): frequencies corresponding to y_spectral_db [Hz]
+        L_spectral_db (ndarray N×p: For the database of spectra, radiances
+            (brightness temperatures) corresponding to srf_master.  This
+            is equal to:
+
+                srf_master.channel_radiance2bt(
+                    srf_master.integrate_radiances(f_spectra, y_spectral_db))
+
+            but should be pre-calculated because it is an expensive
+            calculation and this function needs to be called many times.
         unit (Unit): unit from pint unit registry.  Defaults to ureg.um.
+
+
+    Returns:
+
+        ndarray with estimates for shifted bt1 values
     """
     try:
         x = x.to(unit)
     except AttributeError:
         x = x * unit
-    srf_sh = srf.shift(x)
-    L_other = srf_sh.channel_radiance2bt(
-            srf_sh.integrate_radiances(f_spectra, y_spectra))
+    srf_sh = srf_master.shift(x)
+    L_target = srf_sh.channel_radiance2bt(
+            srf_sh.integrate_radiances(f_spectra, y_spectral_db))
 
     (slope, intercept, r_value, p_value, stderr) = scipy.stats.linregress(
-            L_ref, L_other)
+            L_spectral_db, L_other)
     
-    bt1p = intercept*L_ref.u + slope*bt1
-    rmse = numpy.sqrt(((bt2 - bt1p)**2).mean())
+    return intercept*L_ref.u + slope*bt_master
+
+def calc_rmse_for_srf_shift(x, bt_master, bt_target, srf_master,
+                            y_spectral_db, f_spectra, L_spectral_db,
+                            unit=ureg.um):
+    """Calculate RMSE estimating bt_target from bt_master assuming srf_master shifts by x
+
+    Try to estimate how well we can estimate bt_target from bt_master,
+    assuming that bt_master are radiances
+    corresponding to spectral response function srf_master.  For the estimate,
+    use a database described by y_spectral_db and f_spectra.
+
+    This function is designed to be called repeatedly within an
+    optimisation framework (see `:func:estimate_srf_shift`).  Therefore,
+    as much as possible is precalculated before calling this.  Hence, you
+    also need to pass L_spectral_db, which equals integrated radiances for the
+    reference satellite, corresponding to f_spectra and y_spectral_db.
+
+    This estimate considers one channel at a time.  It may be more optimal
+    to estimate multiple channels at a time.  This is to be done.
+
+    For example, bt_master could be radiances corresponding to channel 1
+    on MetOp-A, srf_master the SRF for channel 1 on MetOp-A.  bt_target
+    could be radiances for NOAA-19, suspected to be approximated by
+    shifting srf_master by an unknown amount.  x would be a shift amount
+    to attempt, such as +30 nm.  We could then continue tring different
+    values for x until we minimise the RMSE.
+
+    FIXME: We should be shifting from an a priori NOAA-19 SRF, not from an
+    a priori MetOp-A SRF.
+
+    Arguments:
+        
+        x (Quantity): shift in SRF.
+        bt_master (ndarray): Radiances for reference satellite, in brightness
+            temperatures [K].
+        bt_target (ndarray): Radiances for other satellite, in brightness
+            temperatures [K].
+        srf_master (`:func:pyatmlab.physics.SRF`): SRF for reference satellite
+        y_spectral_db (ndarray N×p): Database of spectra (such as from IASI)
+            to use.  Should be in spectral radiance per frequency units [W
+            / (m^2 sr Hz)]
+        f_spectra (ndarray N): frequencies corresponding to y_spectral_db [Hz]
+        L_spectral_db: Radiances corresponding to y_spectral_db and f_spectra [K]
+        unit (Unit): unit from pint unit registry.  Defaults to ureg.um.
+
+    Returns:
+        
+        rmse (float): Root mean square error between brightness
+            temperatures estimated by taking bt_master (which should correspond
+            to srf_master) shifted by x, minus bt_target.
+    """
+    bt_estimate = calc_bts_for_srf_shift(x, bt_master, srf_master,
+            y_spectral_db, f_spectra, L_spectral_db, unit)
+    rmse = numpy.sqrt(((bt_target - bt_estimate)**2).mean())
     return rmse
 
 def estimate_srf_shift(bt1, bt2, srf, y_spectra, f_spectra,
