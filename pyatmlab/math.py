@@ -319,7 +319,7 @@ def calc_bts_for_srf_shift(x, bt_master, srf_master,
             srf_sh.integrate_radiances(f_spectra, y_spectral_db))
 
     (slope, intercept, r_value, p_value, stderr) = scipy.stats.linregress(
-            L_spectral_db, L_other)
+            L_spectral_db, L_target)
     
     return intercept*L_ref.u + slope*bt_master
 
