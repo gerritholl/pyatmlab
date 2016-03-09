@@ -276,7 +276,7 @@ def calc_bts_for_srf_shift(x, bt_master, srf_master,
     to be called repeatedly within an optimisation framework (see
     `:func:estimate_srf_shift`).  Therefore, as much as possible is
     precalculated before calling this.  Hence, you also need to pass
-    L_ref, which equals integrated radiances for the reference satellite,
+    L_spectral_db, which equals integrated radiances for the reference satellite,
     corresponding to f_spectra and y_spectra.
 
     This estimate considers one channel at a time.  It may be more optimal
@@ -321,7 +321,7 @@ def calc_bts_for_srf_shift(x, bt_master, srf_master,
     (slope, intercept, r_value, p_value, stderr) = scipy.stats.linregress(
             L_spectral_db, L_target)
     
-    return intercept*L_ref.u + slope*bt_master
+    return intercept*L_spectral_db.u + slope*bt_master
 
 def calc_rmse_for_srf_shift(x, bt_master, bt_target, srf_master,
                             y_spectral_db, f_spectra, L_spectral_db,
