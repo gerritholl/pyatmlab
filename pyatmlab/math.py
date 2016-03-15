@@ -261,7 +261,9 @@ def get_transformation_matrix(f, n):
 
 def calc_bts_for_srf_shift(x, bt_master, srf_master,
                             y_spectral_db, f_spectra, L_spectral_db,
-                            unit=ureg.um):
+                            unit=ureg.um,
+                            regression_type=sklearn.linear_model.LinearRegression,
+                            regression_args={"fit_intercept": True}):
     """Calculate BTs estimating bt_target from bt_master assuming srf_master shifts by x
 
     Try to estimate bt_target from bt_master, assuming that bt_master are
@@ -309,6 +311,17 @@ def calc_bts_for_srf_shift(x, bt_master, srf_master,
             but should still be pre-calculated because it is an expensive
             calculation and this function needs to be called many times.
         unit (Unit): unit from pint unit registry.  Defaults to ureg.um.
+        regression_type (scikit-learn regressor): Type of regression.
+            Defaults to sklearn.linear_model.LinearRegression.  Other good
+            option would be sklearn.cross_decomposition.PLSRegression.
+            As long as regression_type(**regression_args) behaves like
+            those two (with .fit and .predict), it should be OK.
+        regression_args (dict): Keyword arguments to pass on to regressor.
+            For example, for sklearn.linear_model.LinearRegression you
+            would want to at least pass `{"fit_intercept": True}`.  For
+            sklearn.cross_decomposition.PLSRegression you might use
+            `{"n_components": 9, "scale": False}`.  Please refer to
+            scikit-learn documentation.
 
 
     Returns:
@@ -333,7 +346,8 @@ def calc_bts_for_srf_shift(x, bt_master, srf_master,
     if L_spectral_db.ndim == 1:
         L_spectral_db = L_spectral_db[:, numpy.newaxis]
 
-    clf = sklearn.linear_model.LinearRegression(fit_intercept=True)
+    #clf = sklearn.linear_model.LinearRegression(fit_intercept=True)
+    clf = regression_type(**regression_args)
     clf.fit(L_spectral_db.m, L_target.m)
     return clf.predict(bt_master.m) * bt_master.u
 #    (slope, intercept, r_value, p_value, stderr) = scipy.stats.linregress(
