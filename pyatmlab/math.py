@@ -13,6 +13,8 @@ import scipy
 import scipy.optimize
 import scipy.stats
 
+import sklearn.linear_model
+
 from . import tools
 from .meta import expanddoc
 from . import ureg
@@ -286,22 +288,25 @@ def calc_bts_for_srf_shift(x, bt_master, srf_master,
         
         x (Quantity or float): shift in SRF.  Will be converted to the
             unit (typically µm or nm) from the pint user registry (see
-            later argument).
-        bt_master (ndarray): Radiances for reference satellite, in brightness
-            temperatures [K].
-        srf_master (`:func:pyatmlab.physics.SRF`): SRF for reference satellite
-        y_spectral_db (ndarray N×p): Database of spectra (such as from IASI)
+            later argument).  Scalar.
+        bt_master (Quantity ndarray, N×k): Radiances for reference satellite, in brightness
+            temperatures [K].  N samples, k channels.
+        srf_master (`:func:pyatmlab.physics.SRF`): Reference SRF from
+            where shift is calculated.
+        y_spectral_db (ndarray M×l): Database of spectra (such as from IASI)
             to use.  Should be in spectral radiance per frequency units [W
-            / (m^2 sr Hz)]
-        f_spectra (ndarray N): frequencies corresponding to y_spectral_db [Hz]
-        L_spectral_db (ndarray N×p: For the database of spectra, radiances
-            (brightness temperatures) corresponding to srf_master.  This
-            is equal to:
+            / (m^2 sr Hz)].  M spectra with l radiances each.
+        f_spectra (Quantity ndarray l): frequencies corresponding to
+            y_spectral_db [Hz].  1-D with length l.
+        L_spectral_db (Quantity ndarray M×k): For the database of spectra, radiances
+            (brightness temperatures) corresponding to srf_master.  M
+            spectra, k channels.  For the case where a single channel is
+            used for the prediction (k==1), this should be equal to:
 
                 srf_master.channel_radiance2bt(
                     srf_master.integrate_radiances(f_spectra, y_spectral_db))
 
-            but should be pre-calculated because it is an expensive
+            but should still be pre-calculated because it is an expensive
             calculation and this function needs to be called many times.
         unit (Unit): unit from pint unit registry.  Defaults to ureg.um.
 
@@ -318,10 +323,23 @@ def calc_bts_for_srf_shift(x, bt_master, srf_master,
     L_target = srf_sh.channel_radiance2bt(
             srf_sh.integrate_radiances(f_spectra, y_spectral_db))
 
-    (slope, intercept, r_value, p_value, stderr) = scipy.stats.linregress(
-            L_spectral_db, L_target)
-    
-    return intercept*L_spectral_db.u + slope*bt_master
+    # sklearn wants 2-D inputs even when there is only a single predictand
+    # atleast_2d makes it (1, N), I need (N, 1), but transposing the
+    # result of atleast_2d would be wrong if the array was already 2D to
+    # begin with
+    if bt_master.ndim == 1:
+        bt_master = bt_master[:, numpy.newaxis]
+
+    if L_spectral_db.ndim == 1:
+        L_spectral_db = L_spectral_db[:, numpy.newaxis]
+
+    clf = sklearn.linear_model.LinearRegression(fit_intercept=True)
+    clf.fit(L_spectral_db.m, L_target.m)
+    return clf.predict(bt_master.m) * bt_master.u
+#    (slope, intercept, r_value, p_value, stderr) = scipy.stats.linregress(
+#            L_spectral_db, L_target)
+#    
+#    return intercept*L_spectral_db.u + slope*bt_master
 
 def calc_rmse_for_srf_shift(x, bt_master, bt_target, srf_master,
                             y_spectral_db, f_spectra, L_spectral_db,
