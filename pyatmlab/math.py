@@ -357,7 +357,9 @@ def calc_bts_for_srf_shift(x, bt_master, srf_master,
 
 def calc_rmse_for_srf_shift(x, bt_master, bt_target, srf_master,
                             y_spectral_db, f_spectra, L_spectral_db,
-                            unit=ureg.um):
+                            unit=ureg.um,
+                            regression_type=sklearn.linear_model.LinearRegression,
+                            regression_args={"fit_intercept": True}):
     """Calculate RMSE estimating bt_target from bt_master assuming srf_master shifts by x
 
     Try to estimate how well we can estimate bt_target from bt_master,
@@ -398,6 +400,18 @@ def calc_rmse_for_srf_shift(x, bt_master, bt_target, srf_master,
         f_spectra (ndarray N): frequencies corresponding to y_spectral_db [Hz]
         L_spectral_db: Radiances corresponding to y_spectral_db and f_spectra [K]
         unit (Unit): unit from pint unit registry.  Defaults to ureg.um.
+        regression_type (scikit-learn regressor): Type of regression.
+            Defaults to sklearn.linear_model.LinearRegression.  Other good
+            option would be sklearn.cross_decomposition.PLSRegression.
+            As long as regression_type(**regression_args) behaves like
+            those two (with .fit and .predict), it should be OK.
+        regression_args (dict): Keyword arguments to pass on to regressor.
+            For example, for sklearn.linear_model.LinearRegression you
+            would want to at least pass `{"fit_intercept": True}`.  For
+            sklearn.cross_decomposition.PLSRegression you might use
+            `{"n_components": 9, "scale": False}`.  Please refer to
+            scikit-learn documentation.
+
 
     Returns:
         
@@ -406,7 +420,9 @@ def calc_rmse_for_srf_shift(x, bt_master, bt_target, srf_master,
             to srf_master) shifted by x, minus bt_target.
     """
     bt_estimate = calc_bts_for_srf_shift(x, bt_master, srf_master,
-            y_spectral_db, f_spectra, L_spectral_db, unit)
+            y_spectral_db, f_spectra, L_spectral_db, unit,
+            regression_type=regression_type,
+            regression_args=regression_args)
     rmse = numpy.sqrt(((bt_target - bt_estimate)**2).mean())
     return rmse
 
