@@ -349,7 +349,7 @@ def calc_bts_for_srf_shift(x, bt_master, srf_master,
     #clf = sklearn.linear_model.LinearRegression(fit_intercept=True)
     clf = regression_type(**regression_args)
     clf.fit(L_spectral_db.m, L_target.m)
-    return clf.predict(bt_master.m) * bt_master.u
+    return clf.predict(bt_master.m).squeeze() * bt_master.u
 #    (slope, intercept, r_value, p_value, stderr) = scipy.stats.linregress(
 #            L_spectral_db, L_target)
 #    

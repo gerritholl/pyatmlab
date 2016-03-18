@@ -14,6 +14,10 @@ import copy
 import ast
 import operator
 import abc
+import inspect
+import io
+import pprint
+import traceback
 
 import numpy
 
@@ -348,3 +352,28 @@ def _safe_eval_node(node):
         return operators[type(node.op)](_safe_eval_node(node.operand))
     else:
         raise TypeError(node)
+
+def get_verbose_stack_description(first=2, last=-1, include_source=True,
+                                    include_locals=True, include_globals=False):
+    f = io.StringIO()
+    f.write("".join(traceback.format_stack()))
+    for fminfo in inspect.stack()[first:last]:
+        frame = fminfo.frame
+        try:
+            f.write("-" * 60 + "\n")
+            if include_source:
+                try:
+                    f.write(inspect.getsource(frame) + "\n")
+                except OSError:
+                    f.write(str(inspect.getframeinfo(frame)) + 
+                         "\n(no source code)\n")
+            if include_locals:
+                f.write(pprint.pformat(frame.f_locals) + "\n")
+            if include_globals:
+                f.write(pprint.pformat(frame.f_globals) + "\n")
+        finally:
+            try:
+                frame.clear()
+            except RuntimeError:
+                pass
+    return f.getvalue()

@@ -10,6 +10,7 @@ import datetime
 now = datetime.datetime.now
 import logging
 import subprocess
+import sys
 
 import numpy
 import matplotlib
@@ -17,6 +18,7 @@ import matplotlib.pyplot
 from . import config
 from . import io
 from . import meta
+from . import tools
 
 def plotdir():
     """Returns todays plotdir.
@@ -26,7 +28,7 @@ def plotdir():
     return datetime.date.today().strftime(config.get_config('plotdir'))
 
 def print_or_show(fig, show, outfile, in_plotdir=True, tikz=None,
-                  data=None, store_meta=None, close=True):
+                  data=None, store_meta="", close=True):
     """Either print or save figure, or both, depending on arguments.
 
     Taking a figure, show and/or save figure in the default directory,
@@ -79,12 +81,9 @@ def print_or_show(fig, show, outfile, in_plotdir=True, tikz=None,
             fig.canvas.print_figure(outf)
         if close:
             matplotlib.pyplot.close(fig)
-        if store_meta is None:
-            pr = subprocess.run(["pip", "freeze"], stdout=subprocess.PIPE) 
-            info = pr.stdout.decode("utf-8")
-        else:
-            info = store_meta
-
+        pr = subprocess.run(["pip", "freeze"], stdout=subprocess.PIPE) 
+        info = " ".join(sys.argv) + "\n" + pr.stdout.decode("utf-8") + "\n"
+        info += tools.get_verbose_stack_description()
         if infofile is not None and info:
             if in_plotdir and not "/" in infofile:
                 infofile = os.path.join(plotdir(), infofile)
