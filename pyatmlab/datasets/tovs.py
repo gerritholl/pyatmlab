@@ -20,6 +20,7 @@ try:
 except ImportError:
     logging.warn("Unable to import coda, won't read IASI EPS L1C")
     
+import typhon.datasets.dataset
 
 from .. import dataset
 from .. import tools
@@ -36,7 +37,8 @@ class Radiometer:
     srf_backend_response = ""
     srf_backend_f = ""
 
-class HIRS(dataset.MultiFileDataset, Radiometer):
+class HIRS(typhon.datasets.dataset.MultiSatelliteDataset, Radiometer,
+           typhon.datasets.dataset.MultiFileDataset):
     """High-resolution Infra-Red Sounder.
 
     This class can read HIRS l1b as published in the NOAA CLASS archive.
