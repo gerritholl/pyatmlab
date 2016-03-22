@@ -11,6 +11,7 @@ now = datetime.datetime.now
 import logging
 import subprocess
 import sys
+import pickle
 
 import numpy
 import matplotlib
@@ -67,10 +68,27 @@ def print_or_show(fig, show, outfile, in_plotdir=True, tikz=None,
             if outfile.endswith("."):
                 outfiles = [outfile+ext for ext in ("png", "pdf")]
                 infofile = outfile + "info"
+                figfile = outfile + "pkl"
             else:
                 outfiles = [outfile]
                 infofile = None
+                figfile = None
 
+        pr = subprocess.run(["pip", "freeze"], stdout=subprocess.PIPE) 
+        info = " ".join(sys.argv) + "\n" + pr.stdout.decode("utf-8") + "\n"
+        info += tools.get_verbose_stack_description()
+        if infofile is not None and info:
+            if in_plotdir and not "/" in infofile:
+                infofile = os.path.join(plotdir(), infofile)
+            logging.info("Writing info to {:s}".format(infofile))
+            with open(infofile, "w", encoding="utf-8") as fp:
+                fp.write(info)
+        if figfile is not None:
+            if in_plotdir and not "/" in figfile:
+                figfile = os.path.join(plotdir(), figfile)
+            logging.info("Writing figure object to {:s}".format(figfile))
+            with open(figfile, "wb") as fp:
+                pickle.dump(fig, fp, protocol=4)
         # interpret as sequence
         for outf in outfiles:
             if in_plotdir and not '/' in outf:
@@ -79,18 +97,11 @@ def print_or_show(fig, show, outfile, in_plotdir=True, tikz=None,
             if not os.path.exists(os.path.dirname(outf)):
                 os.makedirs(os.path.dirname(outf))
             fig.canvas.print_figure(outf)
-        if close:
-            matplotlib.pyplot.close(fig)
-        pr = subprocess.run(["pip", "freeze"], stdout=subprocess.PIPE) 
-        info = " ".join(sys.argv) + "\n" + pr.stdout.decode("utf-8") + "\n"
-        info += tools.get_verbose_stack_description()
-        if infofile is not None and info:
-            if in_plotdir and not "/" in infofile:
-                infofile = os.path.join(plotdir(), infofile)
-            with open(infofile, "w", encoding="utf-8") as fp:
-                fp.write(info)
     if show:
         matplotlib.pyplot.show()
+
+    if close:
+        matplotlib.pyplot.close(fig)
 
     if tikz is not None:
         import matplotlib2tikz
