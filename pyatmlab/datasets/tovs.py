@@ -462,7 +462,7 @@ class HIRSKLM(HIRS):
         """
         rad = (cc[:, numpy.newaxis, :, 2]
              + cc[:, numpy.newaxis, :, 1] * counts 
-             + cc[:, numpy.newaxis, :, 0]**2 * counts)
+             + cc[:, numpy.newaxis, :, 0] * counts**2)
         # This is apparently calibrated in units of mW/m2-sr-cm-1.
         # Convert to SI units.
         rad *= constants.milli
