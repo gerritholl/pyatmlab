@@ -281,7 +281,7 @@ def calc_bts_for_srf_shift(x, bt_master, srf_master,
     `:func:estimate_srf_shift`).  Therefore, as much as possible is
     precalculated before calling this.  Hence, you also need to pass
     L_spectral_db, which equals integrated radiances for the reference satellite,
-    corresponding to f_spectra and y_spectra.
+    corresponding to f_spectra and y_spectral_db.
 
     This estimate considers one channel at a time.  It may be more optimal
     to estimate multiple channels at a time.  This is to be done.
@@ -326,7 +326,7 @@ def calc_bts_for_srf_shift(x, bt_master, srf_master,
 
     Returns:
 
-        ndarray with estimates for shifted bt1 values
+        ndarray with estimates for shifted bt_master values
     """
     try:
         x = x.to(unit)
@@ -426,7 +426,10 @@ def calc_rmse_for_srf_shift(x, bt_master, bt_target, srf_master,
     rmse = numpy.sqrt(((bt_target - bt_estimate)**2).mean())
     return rmse
 
-def estimate_srf_shift(bt1, bt2, srf, y_spectra, f_spectra,
+def estimate_srf_shift(bt_master, bt_target, srf_master, y_spectral_db, f_spectra,
+        L_spectral_db,
+        regression_type, regression_args,
+        optimiser_func, optimiser_args,
         **solver_args):
     """Estimate shift in SRF from pairs of brightness temperatures
 
@@ -435,40 +438,60 @@ def estimate_srf_shift(bt1, bt2, srf, y_spectra, f_spectra,
 
     Arguments:
         
-        bt1 (ndarray): Radiances for reference satellite
-        bt2 (ndarray): Radiances for other satellite
-        srf (`:func:pyatmlab.physics.SRF`): SRF for reference satellite
-        y_spectra (ndarray N×p): Database of spectra (such as from IASI)
+        bt_master (ndarray): Radiances for reference satellite
+        bt_target (ndarray): Radiances for other satellite
+        srf_master (`:func:pyatmlab.physics.SRF`): SRF for reference satellite
+        y_spectral_db (ndarray N×p): Database of spectra (such as from IASI)
             to use.  Should be in spectral radiance per frequency units.
         f_spectra (ndarray N): spectrum describing frequencies
-            corresponding to `y_spectra`.  In Hz.
-        **solver_args: Remaining arguments passed on to
-            :func:`scipy.optimize.minimize_scalar`.  In particular, `args`
-            must be a 1-tuple with the pint Unit object corresponding to
-            the unit for the shift, for example, (ureg.um,).
+            corresponding to `y_spectral_db`.  In Hz.
+        regression_type (scikit-learn regressor): As for
+            `:func:calc_rmse_for_srf_shift`.
+        regression_args (scikit-learn regressor): As for
+            `:func:calc_rmse_for_srf_shift`.
+        optimiser_func (function): Function implementing optimising.
+            Should take as a first argument a function to be optimised,
+            remaining arguments taken from optimiser_args.
+            Should return an instance of
+            `:func:scipy.optimize.optimize.OptimizeResult`.  You probably
+            want to select a function from `:module:scipy.optimize`, such
+            as `:func:scipy.optimize.basinhopping` when there may be
+            multiple minima, or `:func:scipy.optimize,minimize_scalar`
+            when you expect only one.
+        optimiser_args (dict): Keyword arguments to pass on to
+            `optimiser_func`.
     Returns:
 
         float: shift in SRF
     """
 
-    # Use spectral database to derive regression bt1p = a + b * bt1, where
+    # Use spectral database to derive regression bt1p = a + b * bt_master, where
     # btp1 corresponds to a shift of x
 
     # then find x that minimises differences
 
-    L_ref = srf.channel_radiance2bt(srf.integrate_radiances(f_spectra, y_spectra))
+    #L_spectral_db = srf_master.channel_radiance2bt(srf_master.integrate_radiances(f_spectra, y_spectral_db))
 
     def fun(x, unit=ureg.um):
+        if isinstance(x, numpy.ndarray) and x.ndim > 0:
+            if x.size != 1:
+                raise ValueError("x must be scalar.  Found "
+                    "x.size=={:d}".format(x.size))
+            x = x.ravel()[0]
         rmse = calc_rmse_for_srf_shift(x,
-            bt1=bt1, bt2=bt2, srf=srf, y_spectra=y_spectra, f_spectra=f_spectra,
-            L_ref=L_ref, unit=unit)
-        logging.debug("Shifting {:9.4~}: rmse {:6.3f} K".format(
+            bt_master=bt_master, bt_target=bt_target, srf_master=srf_master, y_spectral_db=y_spectral_db,
+            f_spectra=f_spectra, L_spectral_db=L_spectral_db, unit=unit,
+            regression_type=regression_type,
+            regression_args=regression_args)
+        logging.debug("Shifting {:0<13.7~}: rmse {:0<12.8~}".format(
             x*unit, rmse))
-        return rmse
+        return rmse.to(ureg.K).m
 
-    res = scipy.optimize.minimize_scalar(
-            fun=fun,
-            **solver_args)
+    res = optimiser_func(fun, **optimiser_args)
+
+#    res = scipy.optimize.minimize_scalar(
+#            fun=fun,
+#            **solver_args)
 #            bracket=[-0.1, 0.1],
 #            bounds=[-1, 1],
 #            method="brent",
