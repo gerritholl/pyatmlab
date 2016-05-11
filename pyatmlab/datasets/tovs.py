@@ -52,6 +52,8 @@ class HIRS(typhon.datasets.dataset.MultiSatelliteDataset, Radiometer,
       apply it.
     - If datasets like MHS or AVHRR are added that could probably move to
       some class between HIRS and MultiFileDataset.
+    - Optionally allow radiances to switch between SI units [W/m²·sr·Hz]
+      and “conventional” units [mW/m²·sr·cm^{-1}]
     """
 
     name = "hirs"
@@ -78,8 +80,6 @@ class HIRS(typhon.datasets.dataset.MultiSatelliteDataset, Radiometer,
             scanlines_bytes = f.read()
             scanlines = numpy.frombuffer(scanlines_bytes, self.line_dtype)
         n_lines = header["hrs_h_scnlin"][0]
-        if fields != "all":
-            scanlines = scanlines[fields]
         if apply_scale_factors:
             (header, scanlines) = self._apply_scale_factors(header, scanlines)
         if calibrate:
@@ -119,6 +119,7 @@ class HIRS(typhon.datasets.dataset.MultiSatelliteDataset, Radiometer,
                     [("radiance", "f4", (self.n_perline, self.n_channels,)),
                      ("counts", "i2", (self.n_perline, self.n_channels,)),
                      ("bt", "f4", (self.n_perline, self.n_calibchannels,)),
+                     ("time", "M8[ms]"),
                      ("lat", "f8", (self.n_perline,)),
                      ("lon", "f8", (self.n_perline,))] +
                     [("temp_"+k, "f4", temp[k].squeeze().shape[1:])
@@ -132,12 +133,18 @@ class HIRS(typhon.datasets.dataset.MultiSatelliteDataset, Radiometer,
             scanlines_new["bt"] = bt
             scanlines_new["lat"] = lat
             scanlines_new["lon"] = lon
+            scanlines_new["time"] = (
+                    scanlines["hrs_scnlinyr"].astype("M8[Y]") - 1970 +
+                    (scanlines["hrs_scnlindy"]-1).astype("m8[D]") +
+                     scanlines["hrs_scnlintime"].astype("m8[ms]"))
             scanlines = scanlines_new
             if apply_flags:
                 #scanlines = numpy.ma.masked_array(scanlines)
                 scanlines = self.get_mask_from_flags(scanlines)
         elif apply_flags:
             raise ValueError("I refuse to apply flags when not calibrating ☹")
+        if fields != "all":
+            scanlines = scanlines[fields]
 
         # TODO:
         # - Add temperatures
