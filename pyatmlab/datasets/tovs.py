@@ -147,9 +147,7 @@ class HIRS(typhon.datasets.dataset.MultiSatelliteDataset, Radiometer,
             scanlines = scanlines[fields]
 
         # TODO:
-        # - Add temperatures
         # - Add other meta-information from TIP
-        # - Interpret Analog Housekeeping Telemetry data
         return (header, scanlines) if return_header else scanlines
        
     def check_parity(self, counts):
