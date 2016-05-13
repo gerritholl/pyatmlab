@@ -120,8 +120,9 @@ class HIRS(typhon.datasets.dataset.MultiSatelliteDataset, Radiometer,
             #(wn, c1, c2) = header["hrs_h_tempradcnv"].reshape(self.n_calibchannels, 3).T
             (wn, c1, c2) = self.get_wn_c1_c2(header)
             # convert wn to SI units
-            wn /= constants.centi
-            bt = self.rad2bt(rad_wn[:, :, :self.n_calibchannels], wn, c1, c2)
+            wn = wn * (1 / ureg.cm)
+            wn = wn.to(1 / ureg.m)
+            bt = self.rad2bt(rad_wn[:, :, :self.n_calibchannels], wn.m, c1, c2)
             # extract more info from TIP
             temp = self.get_temp(header, elem,
                 scanlines["hrs_anwrd"]
@@ -147,7 +148,10 @@ class HIRS(typhon.datasets.dataset.MultiSatelliteDataset, Radiometer,
             if radiance_units == "si":
                 scanlines_new["radiance"] = physics.specrad_wavenumber2frequency(rad_wn)
             elif radiance_units == "classic":
-                raise NotImplementedError("To be implemented")
+                # earlier, I converted to base units: W / (m^2 sr m^-1).
+                scanlines_new["radiance"] = (rad_wn *
+                    ureg.W  / (ureg.sr * ureg.m**2 * (1/ureg.m) )).to(
+                    ureg.mW / (ureg.sr * ureg.m**2 * (1/ureg.cm))).m
             else:
                 raise ValueError("Invalid value for radiance_units. "
                     "Expected 'si' or 'classic'.  Got "
@@ -213,6 +217,11 @@ class HIRS(typhon.datasets.dataset.MultiSatelliteDataset, Radiometer,
         :param c2: c2 as contained in hrs_h_tempradcnv
         """
 
+        # ensure it's in base
+        try:
+            rad_wn = rad_wn.to(ureg. W / (ureg.m^2 * ureg.sr * (1/ureg.m))).m
+        except AttributeError:
+            pass
         rad_f = physics.specrad_wavenumber2frequency(rad_wn)
         # standard inverse Planck function
         T_uncorr = physics.specrad_frequency_to_planck_bt(rad_f,
@@ -414,9 +423,11 @@ class HIRSPOD(HIRS):
             raise ValueError("Found non-zero values for manual coefficient!")
 
         # This is apparently calibrated in units of mW/m2-sr-cm-1.
-        # Convert to SI units.
-        rad *= constants.milli
-        rad *= constants.centi # * not /, because it's 1/(cm^{-1}) = cm^1
+        rad = rad * ureg.mW / (ureg.m*2 * ureg.sr * (1/ureg.cm))
+        # Convert to SI base units.
+        rad = rad.to(ureg. W / (ureg.m^2 * ureg.sr * (1/ureg.m)))
+        #rad *= constants.milli
+        #rad *= constants.centi # * not /, because it's 1/(cm^{-1}) = cm^1
 
         return rad
 
