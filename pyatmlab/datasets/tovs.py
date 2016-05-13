@@ -137,7 +137,7 @@ class HIRS(typhon.datasets.dataset.MultiSatelliteDataset, Radiometer,
                      ("time", "M8[ms]"),
                      ("lat", "f8", (self.n_perline,)),
                      ("lon", "f8", (self.n_perline,)),
-                     ("calcof_sorted", "f8", (self.n_perline, self.n_calibchannels, 3)] +
+                     ("calcof_sorted", "f8", (self.n_channels, 3))] +
                     [("temp_"+k, "f4", temp[k].squeeze().shape[1:])
                         for k in temp.keys()]))
             for f in scanlines.dtype.names:
@@ -160,7 +160,7 @@ class HIRS(typhon.datasets.dataset.MultiSatelliteDataset, Radiometer,
                     scanlines["hrs_scnlinyr"].astype("M8[Y]") - 1970 +
                     (scanlines["hrs_scnlindy"]-1).astype("m8[D]") +
                      scanlines["hrs_scnlintime"].astype("m8[ms]"))
-            scanlines["calcof_sorted"] = cc
+            scanlines_new["calcof_sorted"] = cc
             scanlines = scanlines_new
             if apply_flags:
                 #scanlines = numpy.ma.masked_array(scanlines)
