@@ -43,6 +43,19 @@ class HIRS(typhon.datasets.dataset.MultiSatelliteDataset, Radiometer,
 
     This class can read HIRS l1b as published in the NOAA CLASS archive.
 
+    Reading routines as for any datasets (see documentation for Dataset,
+    MultiFileDataset, and others).
+
+    Specifically for HIRS: when reading a single file (i.e. h.read(path)),
+    takes keyword arguments:
+
+        return_header.  If true, returns tuple (header, lines).
+        Otherwise, only return the lines.  The latter is default
+        behaviour, in particular when reading many
+
+        radiance_units.  Defaults to "si", by which I annoyingly mean
+        W/(m²·sr·Hz).  Set to "classic" if you want mW/(m²·sr·cm^{-1}).
+
     Work in progress.
 
     TODO/FIXME:
@@ -54,6 +67,7 @@ class HIRS(typhon.datasets.dataset.MultiSatelliteDataset, Radiometer,
       some class between HIRS and MultiFileDataset.
     - Optionally allow radiances to switch between SI units [W/m²·sr·Hz]
       and “conventional” units [mW/m²·sr·cm^{-1}]
+    - Remove duplicates between subsequent granules.
     """
 
     name = "hirs"
@@ -68,7 +82,8 @@ class HIRS(typhon.datasets.dataset.MultiSatelliteDataset, Radiometer,
 
     def _read(self, path, fields="all", return_header=False,
                     apply_scale_factors=True, calibrate=True,
-                    apply_flags=True):
+                    apply_flags=True,
+                    radiance_units="si"):
         if path.endswith(".gz"):
             opener = gzip.open
         else:
@@ -121,14 +136,22 @@ class HIRS(typhon.datasets.dataset.MultiSatelliteDataset, Radiometer,
                      ("bt", "f4", (self.n_perline, self.n_calibchannels,)),
                      ("time", "M8[ms]"),
                      ("lat", "f8", (self.n_perline,)),
-                     ("lon", "f8", (self.n_perline,))] +
+                     ("lon", "f8", (self.n_perline,)),
+                     ("calcof_sorted", "f8", (self.n_perline, self.n_calibchannels, 3)] +
                     [("temp_"+k, "f4", temp[k].squeeze().shape[1:])
                         for k in temp.keys()]))
             for f in scanlines.dtype.names:
                 scanlines_new[f] = scanlines[f]
             for f in temp.keys():
                 scanlines_new["temp_" + f] = temp[f].squeeze()
-            scanlines_new["radiance"] = physics.specrad_wavenumber2frequency(rad_wn)
+            if radiance_units == "si":
+                scanlines_new["radiance"] = physics.specrad_wavenumber2frequency(rad_wn)
+            elif radiance_units == "classic":
+                raise NotImplementedError("To be implemented")
+            else:
+                raise ValueError("Invalid value for radiance_units. "
+                    "Expected 'si' or 'classic'.  Got "
+                    "{:s}".format(radiance_units))
             scanlines_new["counts"] = counts
             scanlines_new["bt"] = bt
             scanlines_new["lat"] = lat
@@ -137,6 +160,7 @@ class HIRS(typhon.datasets.dataset.MultiSatelliteDataset, Radiometer,
                     scanlines["hrs_scnlinyr"].astype("M8[Y]") - 1970 +
                     (scanlines["hrs_scnlindy"]-1).astype("m8[D]") +
                      scanlines["hrs_scnlintime"].astype("m8[ms]"))
+            scanlines["calcof_sorted"] = cc
             scanlines = scanlines_new
             if apply_flags:
                 #scanlines = numpy.ma.masked_array(scanlines)
