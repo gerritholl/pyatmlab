@@ -630,14 +630,19 @@ class HIRSKLM(HIRS):
         else:
             return fact
 
-    def read_cpids(self, path):
+    @staticmethod
+    def read_cpids(path):
         """Read calibration parameters input data sets (CPIDS)
 
         Should contain a CPIDS file for HIRS, such as NK.cpids.HIRS.
+        Read telemetry conversiot data from a Calibration Parameters Input
+        Data Sets (CPIDS) source file, such as available at NOAA.  Some
+        were sent by Dejiang Han <dejiang.han@noaa.gov> to Gerrit Holl
+        <g.holl@reading.ac.uk> on 2016-02-17.
         """
 
         D = {}
-        with path.open(mode="rt", encoding="ascii") as fp:
+        with path.open(mode="rb") as fp:
             fp.readline()
             analogcc = numpy.genfromtxt(fp, max_rows=16, dtype="f4")
             fp.readline()
@@ -665,16 +670,16 @@ class HIRSKLM(HIRS):
             "an_rdtemp an_bptemp an_eltemp an_pchtemp an_fhcc "
             "an_scnmtemp an_fwmtemp an_p5v an_p10v an_p75v an_m75v "
             "an_p15v an_m15v an_fwmcur an_scmcur "
-            "an_pchcpow".split()), analogcc)
+            "an_pchcpow".split(), analogcc))
 
         D.update(zip(
              "tttcnttmp patchexpcnttmp fsradcnttmp scmircnttmp "
              "pttcnttmp bpcnttmp electcnttmp patchfcnttmp scmotcnttmp "
-             "fwmcnttmp".split()), digatcc)
+             "fwmcnttmp".split(), digatcc))
 
         D.update(zip(
             "fwthc ecdac pcp smccc fmccc p15vdccc m15vdccc p7.5vdccc "
-            "m7.5vdccc p10vdccc".split()), digalc1)
+            "m7.5vdccc p10vdccc".split(), digalc1))
 
         D["p5vdccc"] = digalc2.squeeze()
 

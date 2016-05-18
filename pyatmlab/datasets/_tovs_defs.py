@@ -542,7 +542,15 @@ HIRS_count_to_temp["NOAA17"]["iwtcnttmp"] = numpy.array([
 HIRS_count_to_temp["NOAA17"]["sttcnttmp"] = numpy.array([
     260.29119, 0.01693469, -2.41317E-06, 4.01919E-10, 1.17566E-14])
 
+# Remaining information for NOAA-15 onward is based on CPIDS information
+# sent by Dejiang Han <dejiang.han@noaa.gov> to Gerrit Holl
+# <g.holl@reading.ac.uk> on 2016-02-17.
+
+
+
+
 # For HIRS/2, the POD guide does not appear to include any coefficients.
+# Information is scarce.
 
 # Source: Levin Gary, J Nelson, Frank W Porto, Data Extraction and
 # calibration of TIROS-N/NOAA radiometers, NOAA Technical Memorandum NESS

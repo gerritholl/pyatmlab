@@ -10,3 +10,14 @@ __doc__ = """This is pyatmlab
 from pint import UnitRegistry
 ureg = UnitRegistry()
 ureg.define("micro- = 1e-6 = µ-")
+
+sp2 = ureg.add_context("sp2")
+sp2.add_transformation(
+    "[length] * [mass] / [time] ** 3",
+    "[mass] / [time] ** 2",
+    lambda ureg, x: x / ureg.speed_of_light)
+sp2.add_transformation(
+    "[mass] / [time] ** 2",
+    "[length] * [mass] / [time] ** 3",
+    lambda ureg, x: x * ureg.speed_of_light)
+ureg.add_context(sp2)
