@@ -11,7 +11,8 @@ from pint import UnitRegistry
 ureg = UnitRegistry()
 ureg.define("micro- = 1e-6 = µ-")
 
-sp2 = ureg.add_context("sp2")
+# aid conversion between different radiance units
+sp2 = ureg.add_context("radiance")
 sp2.add_transformation(
     "[length] * [mass] / [time] ** 3",
     "[mass] / [time] ** 2",
