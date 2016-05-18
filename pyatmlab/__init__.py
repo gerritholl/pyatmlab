@@ -7,12 +7,12 @@ __version__ = "0.1.0+"
 __doc__ = """This is pyatmlab
 """
 
-from pint import UnitRegistry
+from pint import (UnitRegistry, Context)
 ureg = UnitRegistry()
 ureg.define("micro- = 1e-6 = µ-")
 
 # aid conversion between different radiance units
-sp2 = pint.Contxt("radiance")
+sp2 = Context("radiance")
 sp2.add_transformation(
     "[length] * [mass] / [time] ** 3",
     "[mass] / [time] ** 2",
