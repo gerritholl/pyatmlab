@@ -612,7 +612,7 @@ class SRF(FwmuMixin):
             Can be in radiance units of various kinds.  Make sure this is
             consistent with the spectral response function.
             Innermost dimension must correspond to frequencies.
-        :returns: Channel radiance [W m^-2 sr^-1]
+        :returns: Channel radiance [W m^-2 sr^-1 Hz^-1]
         """
         # Interpolate onto common frequency grid.  The spectral response
         # function is more smooth so less harmed by interpolation, so I
@@ -623,7 +623,8 @@ class SRF(FwmuMixin):
         # due to numexpr limitation, do sum seperately
         ch_rad_tot = numexpr.evaluate("sum(w_on_L_grid * L, {:d})".format(
                                     L.ndim-1))
-        ch_rad = (ch_rad_tot * L.u) / w_on_L_grid.sum()
+        ch_rad_tot = ch_rad_tot * w_on_L_grid.u * L.u
+        ch_rad = ch_rad_tot / w_on_L_grid.sum()
 #        if (ch_rad<0).any():
 #            logging.error("Found negative integrated radiances for {:.3f} µm "
 #                           "channel at positions {!s}".format(
