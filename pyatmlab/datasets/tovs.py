@@ -9,6 +9,8 @@ import logging
 import gzip
 import shutil
 import abc
+import pathlib
+import dbm
 
 import numpy
 
@@ -27,7 +29,7 @@ from .. import tools
 from .. import constants
 from .. import physics
 from .. import math as pamath
-from .. import ureg
+from ..units import ureg
 from .. import config
 
 from . import _tovs_defs
@@ -78,12 +80,28 @@ class HIRS(typhon.datasets.dataset.MultiSatelliteDataset, Radiometer,
     n_perline = 56
     count_start = 2
     count_end = 22
+    granules_firstline_file = pathlib.Path("")
+
+    # For convenience, define scan type codes.  Stores in hrs_scntyp.
+    typ_Earth = 0
+    typ_space = 1
+    typ_ict = 2 # internal cold target; not used on recent HIRS
+    typ_iwt = 3 # internal warm target
     
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.granules_firstline_file = pathlib.Path(self.granules_firstline_file)
+        if not self.granules_firstline_file.is_absolute():
+            self.granules_firstline_file = self.basedir.joinpath(
+                self.granules_firstline_file)
+#        self.granules_firstline_db = dbm.open(
+#            str(self.granules_firstline_file), "c")
 
     def _read(self, path, fields="all", return_header=False,
                     apply_scale_factors=True, calibrate=True,
                     apply_flags=True,
-                    radiance_units="si"):
+                    radiance_units="si",
+                    filter_firstline=True):
         if path.endswith(".gz"):
             opener = gzip.open
         else:
@@ -174,10 +192,59 @@ class HIRS(typhon.datasets.dataset.MultiSatelliteDataset, Radiometer,
         if fields != "all":
             scanlines = scanlines[fields]
 
+        if filter_firstline:
+            scanlines = self.filter_firstline(header, scanlines)
         # TODO:
         # - Add other meta-information from TIP
         return (header, scanlines) if return_header else scanlines
        
+    def filter_firstline(self, header, scanlines):
+        """Filter out any scanlines that existed in the previous granule.
+        """
+        dataname = header["hrs_h_dataname"][0].decode("ascii")
+        with dbm.open(str(self.granules_firstline_file), "r") as gfd:
+            firstline = int(gfd[dataname])
+        if firstline > scanlines.shape[0]:
+            logging.warning("Full granule {:s} appears contained in previous one. "
+                "Refusing to return any lines.".format(dataname))
+            return scanlines[0:0]
+        return scanlines[scanlines["hrs_scnlin"] > firstline]
+
+    def update_firstline_db(self, satname, start_date=None, end_date=None,
+            overwrite=False):
+        """Create / update the firstline database
+
+        Create or update the database describing for each granule what the
+        first scanline is that doesn't occur in the preceding granule.
+
+        If a granule is entirely contained within the previous one,
+        firstline is set to L+1 where L is the number of lines.
+        """
+        prev_head = prev_line = None
+        with dbm.open(str(self.granules_firstline_file), "c") as gfd:
+            for gran in self.find_granules_sorted(start_date, end_date,
+                                                  satname=satname):
+                (cur_head, cur_line) = self.read(gran, return_header=True, filter_firstline=False)
+                lab = cur_head["hrs_h_dataname"][0].decode("ascii")
+                if lab in gfd:
+                    logging.debug("Already present: {:s}".format(lab))
+                elif prev_line is not None:
+                    # what if prev_line is None?  We don't want to define any
+                    # value for the very first granule we process, as we might
+                    # be starting to process in the middle...
+                    if cur_line["time"][-1] > prev_line["time"][-1]:
+                        first = (cur_line["time"] > prev_line["time"][-1]).nonzero()[0][0]
+                        logging.debug("{:s}: {:d}".format(lab, first))
+                    else:
+                        first = cur_line.shape[0]+1
+                        logging.info("{:s}: Fully contained in {:s}!".format(
+                            lab, prev_head["hrs_h_dataname"][0].decode("ascii")))
+                    gfd[lab] = str(first)
+                prev_line = cur_line.copy()
+                prev_head = cur_head.copy()
+
+
+
     def check_parity(self, counts):
         """Verify parity for counts
         
@@ -467,15 +534,19 @@ class HIRS2(HIRSPOD):
     # NOAA-6 and TIROS-N currently not supported due to duplicate ids.  To
     # fix this, would need to improve HIRSPOD.id2no.
     satellites = {"noaa07", "noaa08", "noaa09", "noaa10",
-                  "noaa11", "noaa12", "noaa13", "noaa14"}
+                  "noaa11", "noaa12", "noaa14"}
     version = 2
 
     header_dtype = _tovs_defs.HIRS_header_dtypes[2]
     line_dtype = _tovs_defs.HIRS_line_dtypes[2]
     channel_order = numpy.asarray(_tovs_defs.HIRS_channel_order[2])
+
+    start_date = datetime.datetime(1978, 10, 29)
+    end_date = datetime.datetime(2006, 10, 10)
     
 class HIRS2I(HIRS2):
-    pass # identical?
+    # identical fileformat, I believe
+    satellites = {"noaa11", "noaa14"}
 
 class HIRSKLM(HIRS):
     counts_offset = 4096
@@ -519,8 +590,6 @@ class HIRSKLM(HIRS):
         badline = (lines["hrs_qualind"] | lines["hrs_linqualflgs"]) != 0
         badchan = lines["hrs_chqualflg"] != 0
         badmnrframe = lines["hrs_mnfrqual"] != 0
-        # Some lines are marked as space view or black body view
-        badline |= (lines["hrs_scntyp"] != 0)
         # NOAA KLM User's Guide, page 8-154: Table 8.3.1.5.3.1-1.
         # consider flag for “valid”
         elem = lines["hrs_elem"].reshape(lines.shape[0], 64, 24)
@@ -530,20 +599,26 @@ class HIRSKLM(HIRS):
         # should consider parity flag... but how?
         #return (badline, badchannel, badmnrframe)
 
-        # Where a channel is bad, mask the entire scanline
-        lines["bt"].mask |= badchan.mask[:, numpy.newaxis, :19]
+        for fld in ("counts", "bt"):
+            # Where a channel is bad, mask the entire scanline
+            # NB: BT has only 19 channels
+            lines[fld].mask |= badchan.mask[:, numpy.newaxis, :lines[fld].shape[2]]
 
-        # Where a minor frame is bad, mask all channels
-        lines["bt"].mask |= badmnrframe[:, :56, numpy.newaxis]
+            # Where a minor frame is bad, mask all channels
+            lines[fld].mask |= badmnrframe[:, :56, numpy.newaxis]
 
-        # Where an entire line is bad, mask all channels at entire
-        # scanline
-        lines["bt"].mask |= badline[:, numpy.newaxis, numpy.newaxis]
+            # Where an entire line is bad, mask all channels at entire
+            # scanline
+            lines[fld].mask |= badline[:, numpy.newaxis, numpy.newaxis]
+
+        # Some lines are marked as space view or black body view
+        lines["bt"].mask |= (lines["hrs_scntyp"] != self.typ_Earth)[:, numpy.newaxis, numpy.newaxis]
 
         # Where radiances are negative, mask individual values as masked
         lines["bt"].mask |= (lines["radiance"][:, :, :19] < 0)
 
         # Where counts==0, mask individual values
+        # WARNING: counts==0 is within the valid range for some channels!
         lines["bt"].mask |= (elem[:, :56, 2:21]==0)
 
         return lines
@@ -714,6 +789,9 @@ class HIRS3(HIRSKLM):
 
     _fact_shapes = {"hrs_h_fwcnttmp": (4, 5)}
 
+    start_date = datetime.datetime(1999, 1, 1)
+    end_date = datetime.datetime(2016, 12, 31)
+
     def _get_iwt_info(self, head, elem):
         iwt_counts = elem[:, 58, self.count_start:self.count_end].reshape(
             (elem.shape[0], 4, 5))
@@ -747,6 +825,9 @@ class HIRS4(HIRSKLM):
     _fact_shapes = {
         "hrs_h_ictcnttmp": (4, 6),
         "hrs_h_fwcnttmp": (4, 6)}
+
+    start_date = datetime.datetime(2005, 6, 5)
+    end_date = datetime.datetime(2016, 12, 31)
 
     def _get_iwt_info(self, head, elem):
         iwt_counts = numpy.concatenate(

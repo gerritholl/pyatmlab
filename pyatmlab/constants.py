@@ -28,7 +28,3 @@ KB = 10**3
 MiB = 2**20
 MB = 10**6
 atm = 101325 # Pa
-
-radiance_units = dict(
-    "si": ureg.W/(ureg.m**2*ureg.sr*ureg.Hz),
-    "ir": ureg.mW/(ureg.m**2*ureg.sr*(1/ureg.cm)))

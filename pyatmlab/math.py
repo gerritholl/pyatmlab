@@ -17,7 +17,7 @@ import sklearn.linear_model
 
 from . import tools
 from .meta import expanddoc
-from . import ureg
+from .units import ureg
 
 inputs = """:param z: Height
     :type z: ndarray

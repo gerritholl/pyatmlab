@@ -31,7 +31,7 @@ from . import tools
 from . import graphics
 from . import stats
 from . import io as pyio
-from . import ureg
+from .units import ureg
 
 class FwmuMixin:
     """Mixing for frequency/wavelength/wavenumber neutrality
