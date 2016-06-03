@@ -16,6 +16,7 @@ import numpy
 
 import netCDF4
 import dateutil
+import progressbar
 
 try:
     import coda
@@ -87,6 +88,8 @@ class HIRS(typhon.datasets.dataset.MultiSatelliteDataset, Radiometer,
     typ_space = 1
     typ_ict = 2 # internal cold target; not used on recent HIRS
     typ_iwt = 3 # internal warm target
+
+    _fact_shapes = {"hrs_h_fwcnttmp": (4, 5)}
     
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -113,6 +116,10 @@ class HIRS(typhon.datasets.dataset.MultiSatelliteDataset, Radiometer,
             scanlines_bytes = f.read()
             scanlines = numpy.frombuffer(scanlines_bytes, self.line_dtype)
         n_lines = header["hrs_h_scnlin"][0]
+        if scanlines.shape[0] != n_lines:
+            raise typhon.datasets.dataset.InvalidFileError(
+                "Problem reading {!s}.  Header promises {:d} scanlines, but I found only {:d} — "
+                "corrupted file? ".format(path, n_lines, scanlines.shape[0]))
         if apply_scale_factors:
             (header, scanlines) = self._apply_scale_factors(header, scanlines)
         if calibrate:
@@ -122,8 +129,8 @@ class HIRS(typhon.datasets.dataset.MultiSatelliteDataset, Radiometer,
             lat = scanlines["hrs_pos"][:, ::2]
             lon = scanlines["hrs_pos"][:, 1::2]
 
-            cc = scanlines["hrs_calcof"].reshape(n_lines, self.n_channels, 
-                    self.line_dtype["hrs_calcof"].shape[0]//self.n_channels)
+#            cc = scanlines["hrs_calcof"].reshape(n_lines, self.n_channels, 
+#                    self.line_dtype["hrs_calcof"].shape[0]//self.n_channels)
             cc = self.get_cc(scanlines)
             cc = cc[:, numpy.argsort(self.channel_order), ...]
             elem = scanlines["hrs_elem"].reshape(n_lines,
@@ -156,7 +163,7 @@ class HIRS(typhon.datasets.dataset.MultiSatelliteDataset, Radiometer,
                      ("time", "M8[ms]"),
                      ("lat", "f8", (self.n_perline,)),
                      ("lon", "f8", (self.n_perline,)),
-                     ("calcof_sorted", "f8", (self.n_channels, 3))] +
+                     ("calcof_sorted", "f8", cc.shape[1:])] +
                     [("temp_"+k, "f4", temp[k].squeeze().shape[1:])
                         for k in temp.keys()]))
             for f in scanlines.dtype.names:
@@ -169,7 +176,8 @@ class HIRS(typhon.datasets.dataset.MultiSatelliteDataset, Radiometer,
                 # earlier, I converted to base units: W / (m^2 sr m^-1).
                 scanlines_new["radiance"] = (rad_wn *
                     ureg.W  / (ureg.sr * ureg.m**2 * (1/ureg.m) )).to(
-                    ureg.mW / (ureg.sr * ureg.m**2 * (1/ureg.cm))).m
+                    ureg.mW / (ureg.sr * ureg.m**2 * (1/ureg.cm)),
+                        "radiance").m
             else:
                 raise ValueError("Invalid value for radiance_units. "
                     "Expected 'si' or 'classic'.  Got "
@@ -178,10 +186,7 @@ class HIRS(typhon.datasets.dataset.MultiSatelliteDataset, Radiometer,
             scanlines_new["bt"] = bt
             scanlines_new["lat"] = lat
             scanlines_new["lon"] = lon
-            scanlines_new["time"] = (
-                    scanlines["hrs_scnlinyr"].astype("M8[Y]") - 1970 +
-                    (scanlines["hrs_scnlindy"]-1).astype("m8[D]") +
-                     scanlines["hrs_scnlintime"].astype("m8[ms]"))
+            scanlines_new["time"] = self._get_time(scanlines)
             scanlines_new["calcof_sorted"] = cc
             scanlines = scanlines_new
             if apply_flags:
@@ -221,10 +226,29 @@ class HIRS(typhon.datasets.dataset.MultiSatelliteDataset, Radiometer,
         firstline is set to L+1 where L is the number of lines.
         """
         prev_head = prev_line = None
+        start_date = start_date or self.start_date
+        end_date = end_date or self.end_date
+        if end_date > datetime.datetime.now():
+            end_date = datetime.datetime.now()
+        logging.info("Updating firstline-db {:s} for "
+            "{:%Y-%m-%d}--{:%Y-%m-%d}".format(satname, start_date, end_date))
+        count_updated = count_all = 0
         with dbm.open(str(self.granules_firstline_file), "c") as gfd:
-            for gran in self.find_granules_sorted(start_date, end_date,
-                                                  satname=satname):
-                (cur_head, cur_line) = self.read(gran, return_header=True, filter_firstline=False)
+            bar = progressbar.ProgressBar(maxval=1,
+                widgets=[progressbar.Bar("=", "[", "]"), " ",
+                    progressbar.Percentage(), ' (',
+                    progressbar.AdaptiveETA(), " -> ",
+                    progressbar.AbsoluteETA(), ') '])
+            bar.start()
+            bar.update(0)
+            for (g_start, gran) in self.find_granules_sorted(start_date, end_date,
+                            return_time=True, satname=satname):
+                try:
+                    (cur_head, cur_line) = self.read(gran, return_header=True, filter_firstline=False)
+                except (typhon.datasets.dataset.InvalidFileError,
+                        typhon.datasets.dataset.InvalidDataError) as exc:
+                    logging.error("Could not read {!s}: {!s}".format(gran, exc))
+                    continue
                 lab = cur_head["hrs_h_dataname"][0].decode("ascii")
                 if lab in gfd:
                     logging.debug("Already present: {:s}".format(lab))
@@ -240,8 +264,14 @@ class HIRS(typhon.datasets.dataset.MultiSatelliteDataset, Radiometer,
                         logging.info("{:s}: Fully contained in {:s}!".format(
                             lab, prev_head["hrs_h_dataname"][0].decode("ascii")))
                     gfd[lab] = str(first)
+                    count_updated += 1
                 prev_line = cur_line.copy()
                 prev_head = cur_head.copy()
+                bar.update((g_start-start_date)/(end_date-start_date))
+                count_all += 1
+            bar.update(1)
+            bar.finish()
+            logging.info("Updated {:d}/{:d} granules".format(count_updated, count_all))
 
 
 
@@ -286,7 +316,7 @@ class HIRS(typhon.datasets.dataset.MultiSatelliteDataset, Radiometer,
 
         # ensure it's in base
         try:
-            rad_wn = rad_wn.to(ureg. W / (ureg.m^2 * ureg.sr * (1/ureg.m))).m
+            rad_wn = rad_wn.to(ureg. W / (ureg.m**2 * ureg.sr * (1/ureg.m))).m
         except AttributeError:
             pass
         rad_f = physics.specrad_wavenumber2frequency(rad_wn)
@@ -455,10 +485,53 @@ class HIRS(typhon.datasets.dataset.MultiSatelliteDataset, Radiometer,
     @abc.abstractmethod
     def get_cc(self, scanlines):
         ...
- 
-    @abc.abstractmethod
+
     def get_temp(self, header, elem, anwrd):
-        ...
+        # note: subclasses should still expand this
+        N = elem.shape[0]
+        return dict(
+            iwt = self._convert_temp(*self._get_iwt_info(header, elem)),
+            ict = self._convert_temp(*self._get_ict_info(header, elem)),
+            fwh = self._convert_temp(
+                    self._get_temp_factor(header, "hrs_h_fwcnttmp"),
+                    elem[:, 60, 2:22].reshape(N, 4, 5)),
+            patch_exp = self._convert_temp(
+                    self._get_temp_factor(header, "hrs_h_patchexpcnttmp"),
+                    elem[:, 61, 2:7].reshape(N, 1, 5)),
+            fsr = self._convert_temp(
+                    self._get_temp_factor(header, "hrs_h_fsradcnttmp"),
+                    elem[:, 61, 7:12].reshape(N, 1, 5)))
+
+    def _reshape_fact(self, name, fact, robust=False):
+        if name in self._fact_shapes:
+            try:
+                return fact.reshape(self._fact_shapes[name])
+            except ValueError:
+                if robust:
+                    return fact
+                else:
+                    raise
+        else:
+            return fact
+
+
+    def _get_temp_factor(self, head, name):
+        satname = self.id2name(head["hrs_h_satid"][0])
+        fact = _tovs_defs.HIRS_count_to_temp[satname][name[6:]]
+        return self._reshape_fact(name, fact, robust=True)
+
+    def _get_iwt_info(self, head, elem):
+        iwt_counts = elem[:, 58, self.count_start:self.count_end].reshape(
+            (elem.shape[0], 4, 5))
+        iwt_fact = self._get_temp_factor(head, "hrs_h_iwtcnttmp")
+        return (iwt_fact, iwt_counts)
+
+    def _get_ict_info(self, head, elem):
+        ict_counts = elem[:, 59, self.count_start:self.count_end]
+        ict_counts = ict_counts.reshape(elem.shape[0], 4, 5)
+        ict_fact = self._get_temp_factor(head, "hrs_h_ictcnttmp")
+        return (ict_fact, ict_counts)
+
 
 class HIRSPOD(HIRS):
     n_wordperframe = 22
@@ -490,9 +563,9 @@ class HIRSPOD(HIRS):
             raise ValueError("Found non-zero values for manual coefficient!")
 
         # This is apparently calibrated in units of mW/m2-sr-cm-1.
-        rad = rad * ureg.mW / (ureg.m*2 * ureg.sr * (1/ureg.cm))
+        rad = rad * ureg.mW / (ureg.m**2 * ureg.sr * (1/ureg.cm))
         # Convert to SI base units.
-        rad = rad.to(ureg. W / (ureg.m^2 * ureg.sr * (1/ureg.m)))
+        rad = rad.to(ureg. W / (ureg.m**2 * ureg.sr * (1/ureg.m)))
         #rad *= constants.milli
         #rad *= constants.centi # * not /, because it's 1/(cm^{-1}) = cm^1
 
@@ -527,7 +600,37 @@ class HIRSPOD(HIRS):
         return cc
         
     def get_temp(self, header, elem, anwrd):
-        raise NotImplementedError("¡Not implemented yet!")
+        D = super().get_temp(header, elem, anwrd)
+        # FIXME: need to add temperatures from minor frame 62 here.  See
+        # NOAA POD GUIDE, chapter 4, page 4-8 (PDF page 8)
+        return D
+
+    @staticmethod
+    def _get_time(scanlines):
+        # NOAA POD User's Guide, page 4-4
+        # year is "contained in first 7 bits of first 2 bytes"
+        year = ((numpy.ascontiguousarray(
+            scanlines["hrs_scnlintime"]).view("uint16").reshape(
+                -1, 3)[:, 0] & 0xfe) >> 1) + 1900
+        # doy is "right-justified in first two bytes"
+        doy = (numpy.ascontiguousarray(
+            scanlines["hrs_scnlintime"]).view("uint16").reshape(
+                -1, 3)[:, 0] >> 8)
+        # "27-bit millisecond UTC time of day is right-justified in last
+        # four bytes"
+        # Make sure we interpret those four bytes as big-endian!
+        time_ms = ((
+            numpy.ascontiguousarray(
+                numpy.ascontiguousarray(
+                    scanlines["hrs_scnlintime"]
+                ).view("uint16").reshape(-1, 3)[:, 1:]
+            ).view(">u4")) & 0xffffffe0)
+        return (year.astype("M8[Y]") - 1970 +
+                (doy-1).astype("m8[D]") +
+                 time_ms.astype("m8[ms]").squeeze())
+
+    def extract_from_qualind(scanlines):
+        scantype = (scanlines["hrs_qualind"] & 0x03000000)>>24
 
 class HIRS2(HIRSPOD):
     #satellites = {"tirosn", "noaa06", "noaa07", "noaa08", "noaa09", "noaa10",
@@ -628,21 +731,10 @@ class HIRSKLM(HIRS):
                 self.line_dtype["hrs_calcof"].shape[0]//self.n_channels)
         return cc
 
-
-    def _get_temp_common(self, header, elem, anwrd):
+    def get_temp(self, header, elem, anwrd):
         N = elem.shape[0]
-        return dict(
-            iwt = self._convert_temp(*self._get_iwt_info(header, elem)),
-            ict = self._convert_temp(*self._get_ict_info(header, elem)),
-            fwh = self._convert_temp(
-                    self._get_temp_factor(header, "hrs_h_fwcnttmp"),
-                    elem[:, 60, 2:22].reshape(N, 4, 5)),
-            patch_exp = self._convert_temp(
-                    self._get_temp_factor(header, "hrs_h_patchexpcnttmp"),
-                    elem[:, 61, 2:7].reshape(N, 1, 5)),
-            fsr = self._convert_temp(
-                    self._get_temp_factor(header, "hrs_h_fsradcnttmp"),
-                    elem[:, 61, 7:12].reshape(N, 1, 5)),
+        D = super().get_temp(header, elem, anwrd)
+        D.update(dict(
             scanmirror = self._convert_temp(
                     self._get_temp_factor(header, "hrs_h_scmircnttmp"),
                     elem[:, 62, 2]),
@@ -687,23 +779,12 @@ class HIRSKLM(HIRS):
                     anwrd[:, 5]), # bad
             an_fwm = self._convert_temp_analog(
                     header[0]["hrs_h_fwmtemp"],
-                    anwrd[:, 6])) # bad
+                    anwrd[:, 6]))) # bad
+        return D
 
     def _convert_temp_analog(self, F, C):
         V = C.astype("float64")*0.02
         return (F * V[:, numpy.newaxis]**numpy.arange(F.shape[0])[numpy.newaxis, :]).sum(1)
-
-    def _reshape_fact(self, name, fact, robust=False):
-        if name in self._fact_shapes:
-            try:
-                return fact.reshape(self._fact_shapes[name])
-            except ValueError:
-                if robust:
-                    return fact
-                else:
-                    raise
-        else:
-            return fact
 
     @staticmethod
     def read_cpids(path):
@@ -760,21 +841,12 @@ class HIRSKLM(HIRS):
 
         return D
 
-    @abc.abstractmethod
-    def get_temp(self, header, elem, anwrd):
-        ...
+    @staticmethod
+    def _get_time(scanlines):
+        return (scanlines["hrs_scnlinyr"].astype("M8[Y]") - 1970 +
+                (scanlines["hrs_scnlindy"]-1).astype("m8[D]") +
+                 scanlines["hrs_scnlintime"].astype("m8[ms]"))
 
-    @abc.abstractmethod
-    def _get_iwt_info(self, header, elem):
-        ...
-
-    @abc.abstractmethod
-    def _get_ict_info(self, header, elem):
-        ...
-
-    @abc.abstractmethod
-    def _get_temp_factor(self, header, elem):
-        ...
 
 class HIRS3(HIRSKLM):
     pdf_definition_pages = (26, 37)
@@ -787,30 +859,9 @@ class HIRS3(HIRSKLM):
 
     channel_order = numpy.asarray(_tovs_defs.HIRS_channel_order[3])
 
-    _fact_shapes = {"hrs_h_fwcnttmp": (4, 5)}
-
     start_date = datetime.datetime(1999, 1, 1)
     end_date = datetime.datetime(2016, 12, 31)
 
-    def _get_iwt_info(self, head, elem):
-        iwt_counts = elem[:, 58, self.count_start:self.count_end].reshape(
-            (elem.shape[0], 4, 5))
-        iwt_fact = self._get_temp_factor(head, "hrs_h_iwtcnttmp")
-        return (iwt_fact, iwt_counts)
-
-    def _get_ict_info(self, head, elem):
-        ict_counts = elem[:, 59, self.count_start:self.count_end]
-        ict_counts = ict_counts.reshape(elem.shape[0], 4, 5)
-        ict_fact = self._get_temp_factor(head, "hrs_h_ictcnttmp")
-        return (ict_fact, ict_counts)
-
-    def _get_temp_factor(self, head, name):
-        satname = self.id2name(head["hrs_h_satid"][0])
-        fact = _tovs_defs.HIRS_count_to_temp[satname][name[6:]]
-        return self._reshape_fact(name, fact, robust=True)
-
-    def get_temp(self, header, elem, anwrd):
-        return self._get_temp_common(header, elem, anwrd)
 
 class HIRS4(HIRSKLM):
     satellites = {"noaa18", "noaa19", "metopa", "metopb"}
@@ -848,7 +899,7 @@ class HIRS4(HIRSKLM):
     def get_temp(self, header, elem, anwrd):
         """Extract temperatures
         """
-        D = self._get_temp_common(header, elem, anwrd)
+        D = super().get_temp(header, elem, anwrd)
         # new in HIRS/4
         D["terttlscp"] = self._convert_temp(
             header["hrs_h_tttcnttmp"],

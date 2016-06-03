@@ -3,6 +3,7 @@
 
 import numpy
 import collections
+from ..constants import K
 
 # Sources:
 #
@@ -558,6 +559,9 @@ HIRS_count_to_temp["NOAA17"]["sttcnttmp"] = numpy.array([
 #
 # "This document contains Appendix B for TIROS-N, NOAA-9 and NOAA-10.
 # Appendix B for other spacecraft will be issued separately."
+#
+# AAPP also contains coefficients in
+# data/calibration/coef/hirs/calcoef.dat
 
 # PDF page 77
 #HIRS_count_to_temp["TIROSN"]["iwtcnttmp"] = "FIXME"
@@ -575,6 +579,20 @@ HIRS_count_to_temp["NOAA17"]["sttcnttmp"] = numpy.array([
 # http://noaasis.noaa.gov/NOAASIS/pubs/CAL/cal12.asc
 
 # http://www.sat.dundee.ac.uk/noaa14.html
+# or AAPP/src/calibration/libhirsc1/calcoef.dat : 1345
+# or OSO-PO/POES-0443 (FM - 3I; HIRS/2I) Table 4.1-1 "Digital A Telemetry
+# Conversion (Fourth-Order Polynomial).
+#
+# NB: Some sources have coefficients to convert to °C, others to K!
+# NOTE: OSO-PO/POES-0443 has offsets 0.01K smaller
+
+HIRS_count_to_temp["NOAA14"]["iwtcnttmp"] = numpy.array([
+    [28.23795+K, 6.52106e-03,8.27531e-08,4.65675e-11,1.45893E-15],
+    [28.22735+K, 6.53105e-03,8.36999e-08,4.66502e-11,1.44768E-15],
+    [28.24698+K, 6.52318e-03,8.26203e-08,4.65039e-11,1.51146E-15],
+    [28.21675+K, 6.52655e-03,8.36699e-08,4.67894e-11,1.41383E-15]])
+ 
+    
 
 # Fill what's missing with dummies
 dummy = numpy.ma.array([numpy.ma.masked])
@@ -827,10 +845,12 @@ HIRS_names = {
         2: "NOAA13",
         3: "NOAA14"
     },
+    # NOAA KLM User's Guide, page 8-100
     3: {
         2: "NOAA16",
         4: "NOAA15",
         6: "NOAA17"},
+    # NOAA KLM User's Guide, page 8-116
     4: {
         7: "NOAA18",
         8: "NOAA19",
