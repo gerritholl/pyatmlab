@@ -452,18 +452,18 @@ class HIRS(typhon.datasets.dataset.MultiSatelliteDataset, Radiometer,
         # expression with some clever use of Ellipsis
         N = fact.shape[-1]
         if counts.ndim == 3:
-            tmp = (counts[:, :, :, numpy.newaxis] **
+            tmp = (counts[:, :, :, numpy.newaxis].astype("double") **
                     numpy.arange(1, N)[numpy.newaxis, numpy.newaxis, numpy.newaxis, :])
             return (fact[:, 0:1] +
                         (fact[:, numpy.newaxis, 1:] * tmp).sum(3))
         elif counts.ndim == 2:
-            tmp = (counts[..., numpy.newaxis] **
+            tmp = (counts[..., numpy.newaxis].astype("double") **
                    numpy.arange(1, N).reshape((1,)*counts.ndim + (N-1,))) 
             return fact[0:1] + (fact[numpy.newaxis, numpy.newaxis, 1:] * tmp).sum(-1)
         elif counts.ndim == 1:
             fact = fact.squeeze()
             return (fact[0] + 
-                    (fact[numpy.newaxis, 1:] * (counts[:, numpy.newaxis]
+                    (fact[numpy.newaxis, 1:] * (counts[:, numpy.newaxis].astype("double")
                         ** numpy.arange(1, N)[numpy.newaxis, :])).sum(1))
         else:
             raise NotImplementedError("ndim = {:d}".format(counts.ndim))
@@ -616,12 +616,12 @@ class HIRSPOD(HIRS):
         # NOAA POD User's Guide, page 4-4
         # year is "contained in first 7 bits of first 2 bytes"
         year = ((numpy.ascontiguousarray(
-            scanlines["hrs_scnlintime"]).view("uint16").reshape(
-                -1, 3)[:, 0] & 0xfe) >> 1) + 1900
+            scanlines["hrs_scnlintime"]).view(">u2").reshape(
+                -1, 3)[:, 0] & 0xfe00) >> 9) + 1900
         # doy is "right-justified in first two bytes"
         doy = (numpy.ascontiguousarray(
-            scanlines["hrs_scnlintime"]).view("uint16").reshape(
-                -1, 3)[:, 0] >> 8)
+            scanlines["hrs_scnlintime"]).view(">u2").reshape(
+                -1, 3)[:, 0] & 0x01ff)
         # "27-bit millisecond UTC time of day is right-justified in last
         # four bytes"
         # Make sure we interpret those four bytes as big-endian!
