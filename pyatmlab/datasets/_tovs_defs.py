@@ -12,7 +12,14 @@ from ..constants import K
 # - NOAA Polar Orbiter Data User's Guide, POD Guide,
 # http://www.ncdc.noaa.gov/oa/pod-guide/ncdc/docs/podug/index.htm
 # http://www1.ncdc.noaa.gov/pub/data/satellite/publications/podguides/TIROS-N%20thru%20N-14/pdf/
-#   Chapter 2, Chapter 4, ...? 
+#
+# Header:
+#   - Before 1992-09-08: Appendix K
+#   - Between 1992-09-08 and 1994-11-15: Appendix L
+#   - After 1994-11-15: Chapter 2, Table 2.0.4-1
+#
+# Body:
+#   - Chapter 4
 #
 # For HIRS/3 and HIRS/4:
 #
@@ -458,9 +465,24 @@ HIRS_channel_order[3] = [1, 17, 2, 3, 13, 4, 18, 11, 19, 7, 8, 20, 10, 14,
 HIRS_channel_order[4] = HIRS_channel_order[3].copy()
 
 # obtained manually from POD User's Guide
+#
+# Note that for HIRS/2, the file format changes.  Three formats are
+# documented:
+#
+# - Before 1992-09-08
+# - Between 1992-09-08 and 1994-11-15
+# - Since 1994-11-15
+#
+# There are additional changes within these periods; for example, see POD
+# Guide Appendices H and L.  See also the comment on sources above.
+#
+# There is also an undocumented change between 1994-12-31 and 1995-01-01.
+# Prior to 1995-01-01, the record size was 4256.  Starting 1995-01-01, the
+# record size was 4259.  This applies to all HIRS/2.  See also AAPP source
+# code, AAPP/src/tools/bin/hirs2_class_to_aapp.F 
 
 # Source: POD User's Guide, Table 2.0.4-1.
-HIRS_header_dtypes[2] = numpy.dtype([
+HIRS_header_dtypes[2] = {x: numpy.dtype([
       ("hrs_h_satid", ">i1", 1),
       ('hrs_h_datatyp', '>i1', 1),
       ('hrs_h_startdatadatetime', '|S6', 1), # read as bytes for now
@@ -477,11 +499,11 @@ HIRS_header_dtypes[2] = numpy.dtype([
       ('hrs_h_filler0', '>i1', 1),
       ('hrs_h_startdatayr', '>i2', 1),
       ('hrs_h_dataname', '|S42', 1), # EBCDIC!
-      ('hrs_h_filler7', '>i1', 3), # Not sure why
-      ('hrs_h_filler8', '>i4', 1042)])
+      ('hrs_h_filler1', '>i1', x-82)])
+        for x in (4253, 4256)}
 
 # Source: POD User's Guide, Section 4-1
-HIRS_line_dtypes[2] = numpy.dtype([('hrs_scnlin', '>i2', 1),
+HIRS_line_dtypes[2] = {x: numpy.dtype([('hrs_scnlin', '>i2', 1),
       ('hrs_scnlintime', '|S6', 1), # read as bytes for now
       ('hrs_qualind', '>i4', 1),
       ('hrs_earthlocdelta', '>i4', 1),
@@ -490,8 +512,9 @@ HIRS_line_dtypes[2] = numpy.dtype([('hrs_scnlin', '>i2', 1),
       ('hrs_pos', '>i2', 112),
       ('hrs_elem', '>i2', 1408),
       ('hrs_mnfrqual', '>i1', 64),
-      ('hrs_filler0', '>i1', 409),
+      ('hrs_filler0', '>i1', x-3844),
     ])
+        for x in (4253, 4256)}
 
 # For HIRS/3, conversion of counts to brightness temperatures for Digital
 # A Telemetry is not included in the files, but partially included in the
@@ -501,7 +524,7 @@ HIRS_line_dtypes[2] = numpy.dtype([('hrs_scnlin', '>i2', 1),
 
 HIRS_count_to_temp = {}
 
-for sat in {"TIROSN", "NOAA6", "NOAA7", "NOAA8", "NOAA9", "NOAA10", "NOAA11", "NOAA12", "NOAA14", "NOAA15", "NOAA16", "NOAA17"}:
+for sat in {"TIROSN", "NOAA06", "NOAA07", "NOAA08", "NOAA09", "NOAA10", "NOAA11", "NOAA12", "NOAA14", "NOAA15", "NOAA16", "NOAA17"}:
     HIRS_count_to_temp[sat] = {}
 
 # Table D.1-2.
@@ -566,25 +589,71 @@ HIRS_count_to_temp["NOAA17"]["sttcnttmp"] = numpy.array([
 # PDF page 77
 #HIRS_count_to_temp["TIROSN"]["iwtcnttmp"] = "FIXME"
 
-# PDF page 92, NOAA F/9
-#HIRS_count_to_temp["NOAA9"]["iwtcnttmp"] = "FIXME"
+# NOAA F/9
+# AAPP/src/calibration/libhirsc1/calcoef.dat : 913
+# or OSO-EM/POES-0270
+# or NESS 107, PDF page 92
+HIRS_count_to_temp["NOAA09"]["iwtcnttmp"] = numpy.array([
+ [28.2238,6.52238e-03,8.62819e-08,4.81437e-11,1.16950e-15,0.0],
+ [28.2066,6.51928e-03,8.59682e-08,4.81011e-11,1.17422e-15,0.0],
+ [28.2159,6.52446e-03,8.61933e-08,4.81459e-11,1.17357e-15,0.0],
+ [28.2138,6.51965e-03,8.58931e-08,4.81048e-11,1.18056e-15,0.0]])
 
-# PDF page 104, NOAA G/10
-#HIRS_count_to_temp["NOAA10"]["iwtcnttmp"] = "FIXME"
+# Warning: Did not find any source for NOAA8, NOAA7, NOAA6, TIROS-N.
+for sat in "NOAA08 NOAA07 NOAA06 TIROSN".split():
+    HIRS_count_to_temp[sat]["iwtcnttmp"] = (
+        HIRS_count_to_temp["NOAA09"]["iwtcnttmp"].copy())
+
+# NOAA G/10
+# AAPP/src/calibration/libhirsc1/calcoef.dat : 1021
+# or OSO-EM/POES-0263
+# or NESS 107, PDF page 104
+#
+# NB: OSO-EM/POES-0263 has more detail than the other sources
+
+HIRS_count_to_temp["NOAA10"]["iwtcnttmp"] = numpy.array([
+ [28.2235+K,6.52161e-03,8.63442e-08,4.81141e-11,1.16671e-15],
+ [28.2189+K,6.51610e-03,8.59659e-08,4.80415e-11,1.16682e-15],
+ [28.2152+K,6.52074e-03,8.61310e-08,4.80831e-11,1.16844e-15],
+ [28.2215+K,6.51970e-03,8.61605e-08,4.80733e-11,1.16825e-15]])
 
 # NOAA H/11
 # http://noaasis.noaa.gov/NOAASIS/pubs/CAL/cal11.asc
-#HIRS_count_to_temp["NOAA11"]["iwtcnttmp"] = "FIXME"
+# or AAPP/src/calibration/libhirsc1/calcoef.dat : 1129
+# or OSO-PO/POES-0342
+#
+# NB: Some sources have coefficients to convert to °C, others to K!
+# NOTE: OSO-PO/POES-0443 has offsets 0.01K smaller
+
+HIRS_count_to_temp["NOAA11"]["iwtcnttmp"] = numpy.array([
+ [28.2221+K,6.52057e-03,9.05197e-08,4.73741e-11,8.29062e-16],
+ [28.2256+K,6.52283e-03,9.13565e-08,4.73871e-11,7.86019e-16],
+ [28.2625+K,6.51819e-03,9.18444e-08,4.75139e-11,7.30508e-16],
+ [28.2242+K,6.51875e-03,9.04524e-08,4.72894e-11,8.06020e-16]])
 
 # http://noaasis.noaa.gov/NOAASIS/pubs/CAL/cal12.asc
+# or AAPP/src/calibration/libhirsc1/calcoef.dat : 1237
+# or OSO-PO/POES-0271
+#
+# NB: Some sources have coefficients to convert to °C, others to K!
+# NOTE: OSO-PO/POES-0443 has offsets 0.01K smaller
+
+HIRS_count_to_temp["NOAA12"]["iwtcnttmp"] = numpy.array([
+    [28.2330+K, 6.52454e-03,8.63834e-08,4.81705e-11,1.17918e-15],
+    [28.2349+K, 6.51937e-03,8.61601e-08,4.81257e-11,1.17221e-15],
+    [28.2492+K, 6.51150e-03,8.58417e-08,4.80590e-11,1.17105e-15],
+    [28.2377+K, 6.52702e-03,8.63606e-08,4.81834e-11,1.17766e-15]])
+    
 
 # http://www.sat.dundee.ac.uk/noaa14.html
 # or AAPP/src/calibration/libhirsc1/calcoef.dat : 1345
 # or OSO-PO/POES-0443 (FM - 3I; HIRS/2I) Table 4.1-1 "Digital A Telemetry
-# Conversion (Fourth-Order Polynomial).
+# Conversion (Fourth-Order Polynomial), contained in
+# “Pre-K_Telemetry_Parameters.pdf”
 #
 # NB: Some sources have coefficients to convert to °C, others to K!
 # NOTE: OSO-PO/POES-0443 has offsets 0.01K smaller
+
 
 HIRS_count_to_temp["NOAA14"]["iwtcnttmp"] = numpy.array([
     [28.23795+K, 6.52106e-03,8.27531e-08,4.65675e-11,1.45893E-15],
@@ -596,7 +665,7 @@ HIRS_count_to_temp["NOAA14"]["iwtcnttmp"] = numpy.array([
 
 # Fill what's missing with dummies
 dummy = numpy.ma.array([numpy.ma.masked])
-for sat in {"NOAA6", "NOAA7", "NOAA8", "NOAA9", "NOAA10", "NOAA11",
+for sat in {"TIROSN", "NOAA06", "NOAA07", "NOAA08", "NOAA09", "NOAA10", "NOAA11",
             "NOAA12", "NOAA14", "NOAA15", "NOAA16", "NOAA17"}:
     for field in {"fwcnttmp", "patchexpcnttmp", "fsradcnttmp",
                   "scmircnttmp", "pttcnttmp", "sttcnttmp", "bpcnttmp",
@@ -836,13 +905,14 @@ HIRS_ids = {
 
 HIRS_names = {
     2: {
-        4: "NOAA7",
-        6: "NOAA8",
-        7: "NOAA9",
+        4: "NOAA07",
+        6: "NOAA08",
+        7: "NOAA09",
         8: "NOAA10",
         1: "NOAA11",
         5: "NOAA12",
-        2: "NOAA13",
+        #2: "NOAA13", # Does not exist
+        2: "NOAA06",
         3: "NOAA14"
     },
     # NOAA KLM User's Guide, page 8-100
@@ -856,7 +926,7 @@ HIRS_names = {
         8: "NOAA19",
         11: "METOPA", # MetOp-A
         12: "METOPB", # MetOp-B
-        13: "METOPC"}
+        13: "METOPC"} # Does not exist
 }
 
 

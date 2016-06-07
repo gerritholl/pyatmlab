@@ -111,10 +111,11 @@ class HIRS(typhon.datasets.dataset.MultiSatelliteDataset, Radiometer,
             opener = open
         with opener(str(path), 'rb') as f:
             self.seekhead(f)
-            header_bytes = f.read(self.header_dtype.itemsize)
-            header = numpy.frombuffer(header_bytes, self.header_dtype)
+            (header_dtype, line_dtype) = self.get_dtypes(f)
+            header_bytes = f.read(header_dtype.itemsize)
+            header = numpy.frombuffer(header_bytes, header_dtype)
             scanlines_bytes = f.read()
-            scanlines = numpy.frombuffer(scanlines_bytes, self.line_dtype)
+            scanlines = numpy.frombuffer(scanlines_bytes, line_dtype)
         n_lines = header["hrs_h_scnlin"][0]
         if scanlines.shape[0] != n_lines:
             raise typhon.datasets.dataset.InvalidFileError(
@@ -394,12 +395,13 @@ class HIRS(typhon.datasets.dataset.MultiSatelliteDataset, Radiometer,
         return (head_dtype, line_dtype)
 
     def _apply_scale_factors(self, header, scanlines):
-        new_head_dtype = self.header_dtype.descr.copy()
-        new_line_dtype = self.line_dtype.descr.copy()
-        for (i, dt) in enumerate(self.header_dtype.descr):
+        #new_head_dtype = self.header_dtype.descr.copy()
+        new_head_dtype = header.dtype.descr.copy()
+        new_line_dtype = scanlines.dtype.descr.copy()
+        for (i, dt) in enumerate(header.dtype.descr):
             if dt[0] in _tovs_defs.HIRS_scale_factors[self.version]:
                 new_head_dtype[i] = (dt[0], ">f8") + dt[2:]
-        for (i, dt) in enumerate(self.line_dtype.descr):
+        for (i, dt) in enumerate(scanlines.dtype.descr):
             if dt[0] in _tovs_defs.HIRS_scale_factors[self.version]:
                 new_line_dtype[i] = (dt[0], ">f8") + dt[2:]
         new_head = numpy.empty(shape=header.shape, dtype=new_head_dtype)
@@ -484,6 +486,10 @@ class HIRS(typhon.datasets.dataset.MultiSatelliteDataset, Radiometer,
 
     @abc.abstractmethod
     def get_cc(self, scanlines):
+        ...
+
+    @abc.abstractmethod
+    def get_dtypes(self, fp):
         ...
 
     def get_temp(self, header, elem, anwrd):
@@ -632,16 +638,41 @@ class HIRSPOD(HIRS):
     def extract_from_qualind(scanlines):
         scantype = (scanlines["hrs_qualind"] & 0x03000000)>>24
 
+    def get_dtypes(self, f):
+        """Get dtypes for header and lines
+
+        Takes as argument fp to open granule file.
+
+        Before 1995, a record was 4256 bytes.
+        After 1995, it became 4253 bytes.
+        This change appears undocumented but can be find in the AAPP
+        source code at AAPP/src/tools/bin/hirs2_class_to_aapp.F
+        """
+        pos = f.tell()
+        # check starting year
+        self.seekhead(f)
+        f.seek(2, io.SEEK_SET)
+        year = 1900 + ((numpy.frombuffer(f.peek(2), "<u2", count=1) & 0xfe) >> 1)
+        if year < 1995:
+            hd =  _tovs_defs.HIRS_header_dtypes[2][4256]
+            ln =  _tovs_defs.HIRS_line_dtypes[2][4256]
+        else:
+            hd = _tovs_defs.HIRS_header_dtypes[2][4253]
+            ln = _tovs_defs.HIRS_line_dtypes[2][4253]
+        f.seek(pos, io.SEEK_SET)
+        return (hd, ln)
+
 class HIRS2(HIRSPOD):
     #satellites = {"tirosn", "noaa06", "noaa07", "noaa08", "noaa09", "noaa10",
     # NOAA-6 and TIROS-N currently not supported due to duplicate ids.  To
     # fix this, would need to improve HIRSPOD.id2no.
-    satellites = {"noaa07", "noaa08", "noaa09", "noaa10",
+    satellites = {"tirosn", "noaa06", "noaa07", "noaa08", "noaa09", "noaa10",
                   "noaa11", "noaa12", "noaa14"}
     version = 2
 
-    header_dtype = _tovs_defs.HIRS_header_dtypes[2]
-    line_dtype = _tovs_defs.HIRS_line_dtypes[2]
+    # This unfortunately depends on the date
+    #header_dtype = _tovs_defs.HIRS_header_dtypes[2]
+    #line_dtype = _tovs_defs.HIRS_line_dtypes[2]
     channel_order = numpy.asarray(_tovs_defs.HIRS_channel_order[2])
 
     start_date = datetime.datetime(1978, 10, 29)
@@ -728,7 +759,7 @@ class HIRSKLM(HIRS):
 
     def get_cc(self, scanlines):
         cc = scanlines["hrs_calcof"].reshape(scanlines.shape[0], self.n_channels, 
-                self.line_dtype["hrs_calcof"].shape[0]//self.n_channels)
+                scanlines.dtype["hrs_calcof"].shape[0]//self.n_channels)
         return cc
 
     def get_temp(self, header, elem, anwrd):
@@ -847,6 +878,8 @@ class HIRSKLM(HIRS):
                 (scanlines["hrs_scnlindy"]-1).astype("m8[D]") +
                  scanlines["hrs_scnlintime"].astype("m8[ms]"))
 
+    def get_dtypes(self, f):
+        return (self.header_dtype, self.line_dtype)
 
 class HIRS3(HIRSKLM):
     pdf_definition_pages = (26, 37)
