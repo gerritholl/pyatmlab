@@ -24,6 +24,7 @@ except ImportError:
     logging.warn("Unable to import coda, won't read IASI EPS L1C")
     
 import typhon.datasets.dataset
+import typhon.utils.metaclass
 
 from .. import dataset
 from .. import tools
@@ -35,7 +36,7 @@ from .. import config
 
 from . import _tovs_defs
 
-class Radiometer:
+class Radiometer(metaclass=typhon.utils.metaclass.AbstractDocStringInheritor):
     srf_dir = ""
     srf_backend_response = ""
     srf_backend_f = ""
@@ -610,8 +611,19 @@ class HIRSPOD(HIRS):
         return numpy.vstack([h[i] for i in range(1, 20)]).T
 
     def get_mask_from_flags(self, lines):
-        bad = (lines["hrs_qualind"].data & ((1<<32)-(1<<8))) != 0
-        lines["bt"].mask[bad] = True
+        # for flag bits, see POD User's Guide, page 4-4 and 4-5.
+        bad_bt = (lines["hrs_qualind"] & 0xcffffe00) != 0
+        earthcounts = lines["hrs_qualind"] & 0x03000000 == 0
+        calibcounts = ~earthcounts
+        # treat earth and calib counts separately; a stuck mirror is not a
+        # problem in calibration mode, and some mirror repositioning etc.
+        # may even be on purpose
+        bad_earthcounts = earthcounts & ((lines["hrs_qualind"] & 0xccfbfe00) != 0)
+        bad_calibcounts = calibcounts & ((lines["hrs_qualind"] & 0xccdbfe00) != 0)
+        # different for non-earth-views
+
+        lines["bt"].mask[bad_bt, :, :] = True
+        lines["counts"].mask[bad_earthcounts|bad_calibcounts, :, :] = True
         return lines
 
     def process_elem(self):
@@ -679,9 +691,6 @@ class HIRSPOD(HIRS):
                 ])
         M["scantype"] = (scanlines["hrs_qualind"] & 0x03000000)>>24
         return M
-
-    def extract_from_qualind(scanlines):
-        scantype = (scanlines["hrs_qualind"] & 0x03000000)>>24
 
     def get_dtypes(self, f):
         """Get dtypes for header and lines
