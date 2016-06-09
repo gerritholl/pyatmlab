@@ -29,8 +29,9 @@ from typhon.utils.metaclass import (DocStringInheritor,
 from typhon.utils.cache import mutable_cache
 
 my_pb_widget = [progressbar.Bar("=", "[", "]"), " ",
-                progressbar.Percentage(),
-                ' (', progressbar.ETA(), ') ']
+                progressbar.Percentage(), " (",
+                progressbar.AdaptiveETA(), " -> ",
+                progressbar.AbsoluteETA(), ') ']
 
 class switch(object):
     """Simulate a switch-case statement.
