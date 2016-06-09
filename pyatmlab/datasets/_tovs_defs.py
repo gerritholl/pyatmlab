@@ -39,8 +39,9 @@ from ..constants import K
 # to automatically map the NWPsaf document to the KLM User's Guide.
 # Values are obtained from NOAA KLM User's Guide, April 2014 revision.
 #
-# Note that scale factors are defined in powers of 10, so a scale factor
-# of 1 still means a multiplication factor of 10.
+# Note that scale factors are mostly defined in powers of 10, so a scale factor
+# of 1 still means a multiplication factor of 10.  Some scale factors are
+# defined as factors of 2.
 #
 # Scale factor should either be scalar, or match the size of one line of
 # data.
