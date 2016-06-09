@@ -127,8 +127,8 @@ class HIRS(typhon.datasets.dataset.MultiSatelliteDataset, Radiometer,
             if not apply_scale_factors:
                 raise ValueError("Can't calibrate if not also applying"
                                  " scale factors!")
-            lat = scanlines["hrs_pos"][:, ::2]
-            lon = scanlines["hrs_pos"][:, 1::2]
+            (lat, lon) = self.get_pos(scanlines)
+            other = self.get_other(scanlines)
 
 #            cc = scanlines["hrs_calcof"].reshape(n_lines, self.n_channels, 
 #                    self.line_dtype["hrs_calcof"].shape[0]//self.n_channels)
@@ -166,19 +166,21 @@ class HIRS(typhon.datasets.dataset.MultiSatelliteDataset, Radiometer,
                      ("lon", "f8", (self.n_perline,)),
                      ("calcof_sorted", "f8", cc.shape[1:])] +
                     [("temp_"+k, "f4", temp[k].squeeze().shape[1:])
-                        for k in temp.keys()]))
+                        for k in temp.keys()] +
+                    other.dtype.descr))
             for f in scanlines.dtype.names:
                 scanlines_new[f] = scanlines[f]
             for f in temp.keys():
                 scanlines_new["temp_" + f] = temp[f].squeeze()
+            for f in other.dtype.names:
+                scanlines_new[f] = other[f]
             if radiance_units == "si":
                 scanlines_new["radiance"] = physics.specrad_wavenumber2frequency(rad_wn)
             elif radiance_units == "classic":
                 # earlier, I converted to base units: W / (m^2 sr m^-1).
                 scanlines_new["radiance"] = (rad_wn *
                     ureg.W  / (ureg.sr * ureg.m**2 * (1/ureg.m) )).to(
-                    ureg.mW / (ureg.sr * ureg.m**2 * (1/ureg.cm)),
-                        "radiance").m
+                    ureg.mW / (ureg.sr * ureg.m**2 * (1/ureg.cm))).m
             else:
                 raise ValueError("Invalid value for radiance_units. "
                     "Expected 'si' or 'classic'.  Got "
@@ -190,9 +192,19 @@ class HIRS(typhon.datasets.dataset.MultiSatelliteDataset, Radiometer,
             scanlines_new["time"] = self._get_time(scanlines)
             scanlines_new["calcof_sorted"] = cc
             scanlines = scanlines_new
+
+            header_new = numpy.empty(shape=header.shape,
+                dtype=(header.dtype.descr +
+                    [("dataname", "<U42")]))
+            for f in header.dtype.names:
+                header_new[f] = header[f]
+            header_new["dataname"] = self.get_dataname(header)
+            header = header_new
             if apply_flags:
                 #scanlines = numpy.ma.masked_array(scanlines)
                 scanlines = self.get_mask_from_flags(scanlines)
+            else:
+                scanlines = scanlines.data # no ma when no flags
         elif apply_flags:
             raise ValueError("I refuse to apply flags when not calibrating ☹")
         if fields != "all":
@@ -492,6 +504,14 @@ class HIRS(typhon.datasets.dataset.MultiSatelliteDataset, Radiometer,
     def get_dtypes(self, fp):
         ...
 
+    @abc.abstractmethod
+    def get_pos(scanlines):
+        ...
+
+    @abc.abstractmethod
+    def get_other(scanlines):
+        ...
+
     def get_temp(self, header, elem, anwrd):
         # note: subclasses should still expand this
         N = elem.shape[0]
@@ -538,6 +558,10 @@ class HIRS(typhon.datasets.dataset.MultiSatelliteDataset, Radiometer,
         ict_fact = self._get_temp_factor(head, "hrs_h_ictcnttmp")
         return (ict_fact, ict_counts)
 
+    @abc.abstractmethod
+    def get_dataname(self, header):
+        ...
+
 
 class HIRSPOD(HIRS):
     n_wordperframe = 22
@@ -548,6 +572,8 @@ class HIRSPOD(HIRS):
 
     def calibrate(self, cc, counts):
         """Apply the standard calibration from NOAA POD Guide
+
+        Returns radiance in SI units (W m^-2 sr^-1 Hz^-1).
 
         POD Guide, section 4.5
         """
@@ -566,7 +592,9 @@ class HIRSPOD(HIRS):
         rad = ac[..., 2] + ac[..., 1] * counts + ac[..., 0] * counts**2
 
         if not (cc[:, :, 0, :]==0).all():
-            raise ValueError("Found non-zero values for manual coefficient!")
+            raise typhon.datasets.dataset.InvalidDataError("Found non-zero values for manual coefficient! "
+                "Usually those are zero but when they aren't, I don't know "
+                "which ones to use.  Giving up ☹. ")
 
         # This is apparently calibrated in units of mW/m2-sr-cm-1.
         rad = rad * ureg.mW / (ureg.m**2 * ureg.sr * (1/ureg.cm))
@@ -635,6 +663,23 @@ class HIRSPOD(HIRS):
                 (doy-1).astype("m8[D]") +
                  time_ms.astype("m8[ms]").squeeze())
 
+    @staticmethod
+    def get_pos(scanlines):
+        # See POD User's Guide, page 4-7
+        lat = scanlines["hrs_pos"][:, ::2] / 128
+        lon = scanlines["hrs_pos"][:, 1::2] / 128
+        return (lat, lon)
+
+    def get_other(self, scanlines):
+        # See POD User's Guide, page 4-7
+        # not actually available for HIRS/2
+        M = numpy.empty(shape=scanlines.shape,
+            dtype=[
+                ("scantype", "i1"),
+                ])
+        M["scantype"] = (scanlines["hrs_qualind"] & 0x03000000)>>24
+        return M
+
     def extract_from_qualind(scanlines):
         scantype = (scanlines["hrs_qualind"] & 0x03000000)>>24
 
@@ -661,6 +706,10 @@ class HIRSPOD(HIRS):
             ln = _tovs_defs.HIRS_line_dtypes[2][4253]
         f.seek(pos, io.SEEK_SET)
         return (hd, ln)
+
+    def get_dataname(self, header):
+        # See POD User's Guide, page 2-6; this is in EBCDIC
+        return header["hrs_h_dataname"][0].decode("EBCDIC-CP-BE")
 
 class HIRS2(HIRSPOD):
     #satellites = {"tirosn", "noaa06", "noaa07", "noaa08", "noaa09", "noaa10",
@@ -723,6 +772,7 @@ class HIRSKLM(HIRS):
         # Table 8.3.1.5.3.2-1., 
         badline = (lines["hrs_qualind"] | lines["hrs_linqualflgs"]) != 0
         badchan = lines["hrs_chqualflg"] != 0
+        # Does this sometimes mask too much?
         badmnrframe = lines["hrs_mnfrqual"] != 0
         # NOAA KLM User's Guide, page 8-154: Table 8.3.1.5.3.1-1.
         # consider flag for “valid”
@@ -878,8 +928,28 @@ class HIRSKLM(HIRS):
                 (scanlines["hrs_scnlindy"]-1).astype("m8[D]") +
                  scanlines["hrs_scnlintime"].astype("m8[ms]"))
 
+    @staticmethod
+    def get_pos(scanlines):
+        lat = scanlines["hrs_pos"][:, ::2]
+        lon = scanlines["hrs_pos"][:, 1::2]
+        return (lat, lon)
+
+    def get_other(self, scanlines):
+        M = numpy.empty(shape=(scanlines.shape[0],),
+            dtype=[
+                ("sol_za", "f4", self.n_perline),
+                ("sat_za", "f4", self.n_perline),
+                ("loc_aa", "f4", self.n_perline)])
+        M["sol_za"] = scanlines["hrs_ang"][:, ::3]
+        M["sat_za"] = scanlines["hrs_ang"][:, 1::3]
+        M["loc_aa"] = scanlines["hrs_ang"][:, 2::3]
+        return M
+
     def get_dtypes(self, f):
         return (self.header_dtype, self.line_dtype)
+
+    def get_dataname(self, header):
+        return header["hrs_h_dataname"][0].decode("US-ASCII")
 
 class HIRS3(HIRSKLM):
     pdf_definition_pages = (26, 37)
