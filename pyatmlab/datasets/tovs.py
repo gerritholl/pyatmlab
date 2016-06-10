@@ -568,6 +568,19 @@ class HIRSPOD(HIRS):
     n_wordperframe = 22
     counts_offset = 0
 
+    # HIRS/2 has LZA only for the edge of the scan.  Linear interpolation
+    # is not good enough; scale with a single reference array for other
+    # positions.  Reference array taken from
+    # NSS.HIRX.M2.D06325.S1200.E1340.B0046667.SV
+    ref_lza = (
+        numpy.array([ 59.19,  56.66,  54.21,  51.82,  49.48,  47.19,  44.93,  42.7 ,
+        40.5 ,  38.33,  36.17,  34.03,  31.91,  29.8 ,  27.7 ,  25.61,
+        23.53,  21.46,  19.4 ,  17.34,  15.29,  13.24,  11.2 ,   9.16,
+         7.12,   5.09,   3.05,   1.02,   1.01,   3.05,   5.08,   7.12,
+         9.15,  11.19,  13.24,  15.28,  17.34,  19.39,  21.46,  23.53,
+        25.6 ,  27.69,  29.79,  31.9 ,  34.02,  36.16,  38.32,  40.49,
+        42.69,  44.92,  47.18,  49.47,  51.81,  54.2 ,  56.65,  59.18]))
+
     def seekhead(self, f):
         f.seek(0, io.SEEK_SET)
 
@@ -685,11 +698,16 @@ class HIRSPOD(HIRS):
     def get_other(self, scanlines):
         # See POD User's Guide, page 4-7
         # not actually available for HIRS/2
+        # Use reference from HIRS/4 (MetOp-A) along with single lza value
+        # given for HIRS/2 to “scale up” full array
         M = numpy.empty(shape=scanlines.shape,
             dtype=[
                 ("scantype", "i1"),
+                ("lza_approx", "f4", self.n_perline),
                 ])
         M["scantype"] = (scanlines["hrs_qualind"] & 0x03000000)>>24
+        M["lza_approx"] = ((scanlines["hrs_satloc"][:, 1]/128)
+            / self.ref_lza[0])[:, numpy.newaxis] * self.ref_lza[numpy.newaxis, :]
         return M
 
     def get_dtypes(self, f):
