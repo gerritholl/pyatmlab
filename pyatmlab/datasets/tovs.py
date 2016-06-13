@@ -668,9 +668,12 @@ class HIRSPOD(HIRS):
     def _get_time(scanlines):
         # NOAA POD User's Guide, page 4-4
         # year is "contained in first 7 bits of first 2 bytes"
-        year = ((numpy.ascontiguousarray(
+        # But despite having 7 bits it only uses 2 digits and resets from
+        # 99 to 0 after 2000
+        year02 = ((numpy.ascontiguousarray(
             scanlines["hrs_scnlintime"]).view(">u2").reshape(
-                -1, 3)[:, 0] & 0xfe00) >> 9) + 1900
+                -1, 3)[:, 0] & 0xfe00) >> 9)
+        year = numpy.where(year02<70, year02+2000, year02+1900) 
         # doy is "right-justified in first two bytes"
         doy = (numpy.ascontiguousarray(
             scanlines["hrs_scnlintime"]).view(">u2").reshape(
@@ -724,7 +727,9 @@ class HIRSPOD(HIRS):
         # check starting year
         self.seekhead(f)
         f.seek(2, io.SEEK_SET)
-        year = 1900 + ((numpy.frombuffer(f.peek(2), "<u2", count=1) & 0xfe) >> 1)
+        year = ((numpy.frombuffer(f.peek(2), "<u2", count=1)[0] 
+                            & 0xfe) >> 1)
+        year += (2000 if year < 70 else 1900)
         if year < 1995:
             hd =  _tovs_defs.HIRS_header_dtypes[2][4256]
             ln =  _tovs_defs.HIRS_line_dtypes[2][4256]
