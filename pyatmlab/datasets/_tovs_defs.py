@@ -1,6 +1,8 @@
 """Relevant definitions for TOVS
 """
 
+import datetime
+
 import numpy
 import collections
 from ..constants import K
@@ -929,6 +931,42 @@ HIRS_names = {
         12: "METOPB", # MetOp-B
         13: "METOPC"} # Does not exist
 }
+
+# from
+# http://www.nsof.class.noaa.gov/release/data_available/tovs_atovs/index.htm#hirs2
+HIRS_periods = dict(
+    tirosn =    (datetime.datetime(1978, 10, 21),
+                 datetime.datetime(1981, 2, 27)),
+    noaa6 =     (datetime.datetime(1979, 6, 30),
+                 datetime.datetime(1986, 11, 17)),
+    noaa7 =     (datetime.datetime(1981, 6, 24),
+                 datetime.datetime(1985, 2, 18)),
+    noaa8 =     (datetime.datetime(1983, 4, 25),
+                 datetime.datetime(1985, 10, 14)),
+    noaa9 =     (datetime.datetime(1984, 12, 13),
+                 datetime.datetime(1988, 11, 7)),
+    noaa10 =    (datetime.datetime(1986, 11, 25),
+                 datetime.datetime(1991, 9, 16)),
+    noaa11 =    (datetime.datetime(1988, 9, 24),
+                 datetime.datetime(2000, 4, 26)),
+    noaa12 =    (datetime.datetime(1991, 5, 14),
+                 datetime.datetime(1998, 12, 14)),
+    noaa14 =    (datetime.datetime(1994, 12, 30),
+                 datetime.datetime(2006, 10, 10)),
+    noaa15 =    (datetime.datetime(1998, 10, 26),
+                 datetime.datetime.now()),
+    noaa16 =    (datetime.datetime(2001, 2, 26),
+                 datetime.datetime(2014, 6, 5)),
+    noaa17 =    (datetime.datetime(2002, 8, 24),
+                 datetime.datetime(2013, 4, 9)),
+    noaa18 =    (datetime.datetime(2005, 6, 5),
+                 datetime.datetime.now()),
+    noaa19 =    (datetime.datetime(2009, 4, 21),
+                 datetime.datetime.now()),
+    metopa =    (datetime.datetime(2007, 5, 21),
+                 datetime.datetime.now()),
+    metopb =    (datetime.datetime(2013, 1, 15),
+                 datetime.datetime.now()))
 
 
 # http://noaasis.noaa.gov/NOAASIS/pubs/CAL/cal11.asc
