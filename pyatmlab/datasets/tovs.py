@@ -220,7 +220,7 @@ class HIRS(typhon.datasets.dataset.MultiSatelliteDataset, Radiometer,
     def filter_firstline(self, header, scanlines):
         """Filter out any scanlines that existed in the previous granule.
         """
-        dataname = header["hrs_h_dataname"][0].decode("ascii")
+        dataname = self.get_dataname(header)
         with dbm.open(str(self.granules_firstline_file), "r") as gfd:
             firstline = int(gfd[dataname])
         if firstline > scanlines.shape[0]:
@@ -263,7 +263,7 @@ class HIRS(typhon.datasets.dataset.MultiSatelliteDataset, Radiometer,
                         typhon.datasets.dataset.InvalidDataError) as exc:
                     logging.error("Could not read {!s}: {!s}".format(gran, exc))
                     continue
-                lab = cur_head["hrs_h_dataname"][0].decode("ascii")
+                lab = self.get_dataname(cur_head)
                 if lab in gfd:
                     logging.debug("Already present: {:s}".format(lab))
                 elif prev_line is not None:
@@ -276,7 +276,7 @@ class HIRS(typhon.datasets.dataset.MultiSatelliteDataset, Radiometer,
                     else:
                         first = cur_line.shape[0]+1
                         logging.info("{:s}: Fully contained in {:s}!".format(
-                            lab, prev_head["hrs_h_dataname"][0].decode("ascii")))
+                            lab, self.get_dataname(prev_head)))
                     gfd[lab] = str(first)
                     count_updated += 1
                 prev_line = cur_line.copy()
