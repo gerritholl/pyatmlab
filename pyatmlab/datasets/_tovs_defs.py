@@ -7,6 +7,8 @@ import numpy
 import collections
 from ..constants import K
 
+from numpy import (float32, array)
+
 # Sources:
 #
 # For HIRS/2:
@@ -530,6 +532,13 @@ HIRS_count_to_temp = {}
 for sat in {"TIROSN", "NOAA06", "NOAA07", "NOAA08", "NOAA09", "NOAA10", "NOAA11", "NOAA12", "NOAA14", "NOAA15", "NOAA16", "NOAA17"}:
     HIRS_count_to_temp[sat] = {}
 
+
+##########
+#
+# NOAA-15
+#
+##########
+
 # Table D.1-2.
 
 HIRS_count_to_temp["NOAA15"]["iwtcnttmp"] = numpy.array([
@@ -542,6 +551,102 @@ HIRS_count_to_temp["NOAA15"]["iwtcnttmp"] = numpy.array([
 
 HIRS_count_to_temp["NOAA15"]["sttcnttmp"] = numpy.array([
     260.29119, 1.693469E-02, -2.413170E-06, 4.019185E-10, 1.175655E-14])
+
+# From CPIDS.  Read with read_cpids static method in HIRS3 class.
+
+HIRS_count_to_temp["NOAA15"].update(
+{'an_bptemp': array([  3.70377594e+02,  -3.21026192e+01,  -5.87326813e+00,
+         6.28739882e+00,  -1.59110904e+00,   1.30866602e-01], dtype=float32),
+ 'an_eltemp': array([  2.60250488e+02,   1.47315903e+01,  -2.95523500e+00,
+         9.69779789e-01,  -1.68153003e-01,   1.41547797e-02], dtype=float32),
+ 'an_fhcc': array([ 0. ,  0.1,  0. ,  0. ,  0. ,  0. ], dtype=float32),
+ 'an_fwmcur': array([ 0. ,  0.1,  0. ,  0. ,  0. ,  0. ], dtype=float32),
+ 'an_fwmtemp': array([  2.60262512e+02,   1.45856800e+01,  -2.77048612e+00,
+         8.75885010e-01,  -1.47869006e-01,   1.25750499e-02], dtype=float32),
+ 'an_m15v': array([ 0., -4.,  0.,  0.,  0.,  0.], dtype=float32),
+ 'an_m75v': array([ 0., -2.,  0.,  0.,  0.,  0.], dtype=float32),
+ 'an_p10v': array([ 0. ,  2.5,  0. ,  0. ,  0. ,  0. ], dtype=float32),
+ 'an_p15v': array([ 0.,  4.,  0.,  0.,  0.,  0.], dtype=float32),
+ 'an_p5v': array([ 0.        ,  1.33299994,  0.        ,  0.        ,  0.        ,  0.        ], dtype=float32),
+ 'an_p75v': array([ 0.,  2.,  0.,  0.,  0.,  0.], dtype=float32),
+ 'an_pchcpow': array([ 0.        ,  0.        ,  0.00353787,  0.        ,  0.        ,  0.        ], dtype=float32),
+ 'an_pchtemp': array([  8.91846008e+01,   2.72437401e+01,   3.57790589e+00,
+        -6.08588517e-01,   1.96566701e-01,  -1.35194296e-02], dtype=float32),
+ 'an_rdtemp': array([  1.48442703e+02,   2.30715199e+01,   1.26176703e+00,
+         2.44658798e-01,  -2.82212403e-02,   3.67786898e-03], dtype=float32),
+ 'an_scmcur': array([ 0.        ,  0.40000001,  0.        ,  0.        ,  0.        ,  0.        ], dtype=float32),
+ 'an_scnmtemp': array([  3.62926605e+02,  -1.27381601e+01,  -2.45753994e+01,
+         1.46874399e+01,  -3.36056089e+00,   2.71880895e-01], dtype=float32),
+ 'bpcnttmp': array([  2.60152802e+02,   1.80009194e-02,  -4.33221521e-06,
+         1.68535097e-09,  -3.45452806e-13,   3.51498589e-17], dtype=float32),
+ 'ecdac': 128.0,
+ 'electcnttmp': array([  2.60212402e+02,   1.77217592e-02,  -3.88480112e-06,
+         1.41277201e-09,  -2.76174103e-13,   2.88728088e-17], dtype=float32),
+ 'fmccc': 0.000122047,
+ 'fsradcnttmp': array([  2.17415100e+02,  -2.01619808e-02,   9.72466296e-07,
+        -3.61915012e-11,   2.48054594e-15,  -6.65384085e-19], dtype=float32),
+ 'fwcnttemp': array([[  3.01380798e+02,   6.56869682e-03,   8.46994226e-08,
+          3.52145500e-11,   1.40276798e-15,   6.76365786e-19],
+       [  3.01428406e+02,   6.56327698e-03,   8.66939374e-08,
+          3.59567411e-11,   1.19012904e-15,   6.00155982e-19],
+       [  3.01398712e+02,   6.56972593e-03,   8.74942998e-08,
+          3.62973610e-11,   1.15142302e-15,   5.87443819e-19],
+       [  3.01429901e+02,   6.56631822e-03,   8.76398190e-08,
+          3.65978393e-11,   1.18029001e-15,   5.73580323e-19]], dtype=float32),
+ 'fwmcnttmp': array([  2.60237213e+02,   1.76968705e-02,  -3.89413617e-06,
+         1.42785705e-09,  -2.81459806e-13,   2.94360890e-17], dtype=float32),
+ 'fwthc': 0.000122047,
+ 'ictcnttmp': array([[  2.71597900e+02,   6.15457585e-03,   7.42702824e-08,
+          4.62459203e-11,   1.39593200e-15,   1.44500202e-18],
+       [  2.71544708e+02,   6.15644921e-03,   7.42007273e-08,
+          4.64201108e-11,   1.36701504e-15,   1.43162796e-18],
+       [  2.71588196e+02,   6.15480589e-03,   7.44043973e-08,
+          4.62681803e-11,   1.39534596e-15,   1.43814097e-18],
+       [  2.71556610e+02,   6.15352299e-03,   7.34121102e-08,
+          4.62263491e-11,   1.40123803e-15,   1.43649798e-18]], dtype=float32),
+ 'iwtcnttmp': array([[  3.01413513e+02,   6.57448499e-03,   9.35651769e-08,
+          3.83247288e-11,   1.02939596e-15,   5.15902725e-19],
+       [  3.01425201e+02,   6.57052314e-03,   9.14469567e-08,
+          3.63838404e-11,   1.08132904e-15,   5.94124078e-19],
+       [  3.01416504e+02,   6.57331385e-03,   8.69622383e-08,
+          3.62765408e-11,   1.23284597e-15,   5.94438510e-19],
+       [  3.01382385e+02,   6.56480715e-03,   8.50495780e-08,
+          3.59759514e-11,   1.30361801e-15,   5.99368506e-19],
+#       [ -1.40129846e-45,  -1.40129846e-45,  -1.40129846e-45,
+#         -1.40129846e-45,  -1.40129846e-45,  -1.40129846e-45]
+        ], dtype=float32),
+ 'm15vdccc': 0.00488187,
+ 'm7.5vdccc': 0.0024409399,
+ 'p10vdccc': 0.0030511699,
+ 'p15vdccc': 0.00488187,
+ 'p5vdccc': array(0.0016272900393232703, dtype=float32),
+ 'p7.5vdccc': 0.0024409399,
+ 'patchexpcnttmp': array([  1.17874496e+02,   7.54731707e-03,   1.55108907e-07,
+         2.97717406e-12,  -3.03142901e-16,   6.03511015e-21], dtype=float32),
+ 'patchfcnttmp': array([  1.77005096e+02,  -2.67255604e-02,   1.57804095e-06,
+        -8.83819684e-11,   4.43753107e-15,  -9.92087275e-20], dtype=float32),
+ 'pcp': 5.2717999e-09,
+ 'pttcnttmp': array([  2.60183594e+02,   1.77792292e-02,  -3.99376586e-06,
+         1.48313695e-09,  -2.94619391e-13,   3.05483491e-17], dtype=float32),
+ 'scmircnttmp': array([  2.60212494e+02,   1.77891403e-02,  -4.05322498e-06,
+         1.53413604e-09,  -3.11199010e-13,   3.23719085e-17], dtype=float32),
+ 'scmotcnttmp': array([  2.60174805e+02,   1.80763397e-02,  -4.64382219e-06,
+         1.98685890e-09,  -4.52424610e-13,   4.75908704e-17], dtype=float32),
+ 'smccc': 0.00048818701,
+ 'sttcnttmp': array([  2.60218597e+02,   1.76680405e-02,  -3.80478809e-06,
+         1.35795697e-09,  -2.59891907e-13,   2.71867897e-17], dtype=float32),
+ 'tttcnttmp': array([ -1.40129846e-45,  -1.40129846e-45,  -1.40129846e-45,
+        -1.40129846e-45,  -1.40129846e-45,  -1.40129846e-45], dtype=float32)})
+
+
+###########
+#
+# NOAA-16
+#
+###########
+
+
+
 
 # Table D.2-2.
 
@@ -670,6 +775,7 @@ HIRS_count_to_temp["NOAA14"]["iwtcnttmp"] = numpy.array([
 dummy = numpy.ma.array([numpy.ma.masked])
 for sat in {"TIROSN", "NOAA06", "NOAA07", "NOAA08", "NOAA09", "NOAA10", "NOAA11",
             "NOAA12", "NOAA14", "NOAA15", "NOAA16", "NOAA17"}:
+    # first one is filter wheel housing
     for field in {"fwcnttmp", "patchexpcnttmp", "fsradcnttmp",
                   "scmircnttmp", "pttcnttmp", "sttcnttmp", "bpcnttmp",
                   "electcnttmp", "patchfcnttmp", "scmotcnttmp",
@@ -937,13 +1043,13 @@ HIRS_names = {
 HIRS_periods = dict(
     tirosn =    (datetime.datetime(1978, 10, 21),
                  datetime.datetime(1981, 2, 27)),
-    noaa6 =     (datetime.datetime(1979, 6, 30),
+    noaa06 =     (datetime.datetime(1979, 6, 30),
                  datetime.datetime(1986, 11, 17)),
-    noaa7 =     (datetime.datetime(1981, 6, 24),
+    noaa07 =     (datetime.datetime(1981, 6, 24),
                  datetime.datetime(1985, 2, 18)),
-    noaa8 =     (datetime.datetime(1983, 4, 25),
+    noaa08 =     (datetime.datetime(1983, 4, 25),
                  datetime.datetime(1985, 10, 14)),
-    noaa9 =     (datetime.datetime(1984, 12, 13),
+    noaa09 =     (datetime.datetime(1984, 12, 13),
                  datetime.datetime(1988, 11, 7)),
     noaa10 =    (datetime.datetime(1986, 11, 25),
                  datetime.datetime(1991, 9, 16)),
