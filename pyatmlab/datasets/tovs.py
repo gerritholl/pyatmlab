@@ -105,7 +105,9 @@ class HIRS(typhon.datasets.dataset.MultiSatelliteDataset, Radiometer,
                     apply_scale_factors=True, calibrate=True,
                     apply_flags=True,
                     radiance_units="si",
-                    filter_firstline=True):
+                    filter_firstline=True,
+                    apply_filter=True,
+                    max_flagged=0.5):
         if path.endswith(".gz"):
             opener = gzip.open
         else:
@@ -122,6 +124,11 @@ class HIRS(typhon.datasets.dataset.MultiSatelliteDataset, Radiometer,
             raise typhon.datasets.dataset.InvalidFileError(
                 "Problem reading {!s}.  Header promises {:d} scanlines, but I found only {:d} — "
                 "corrupted file? ".format(path, n_lines, scanlines.shape[0]))
+        if n_lines < 2:
+            raise typhon.datasets.dataset.InvalidFileError(
+                "Problem reading {!s}.  File contains only {:d} scanlines. "
+                "My reading routine cannot currently handle that.".format(
+                    path, n_lines))
         if apply_scale_factors:
             (header, scanlines) = self._apply_scale_factors(header, scanlines)
         if calibrate:
@@ -204,7 +211,9 @@ class HIRS(typhon.datasets.dataset.MultiSatelliteDataset, Radiometer,
             if apply_flags:
                 #scanlines = numpy.ma.masked_array(scanlines)
                 scanlines = self.get_mask_from_flags(scanlines)
-            else:
+            if apply_filter:
+                scanlines = self.apply_calibcount_filter(scanlines)
+            if not (apply_flags or apply_filter):
                 scanlines = scanlines.data # no ma when no flags
         elif apply_flags:
             raise ValueError("I refuse to apply flags when not calibrating ☹")
@@ -258,7 +267,11 @@ class HIRS(typhon.datasets.dataset.MultiSatelliteDataset, Radiometer,
             for (g_start, gran) in self.find_granules_sorted(start_date, end_date,
                             return_time=True, satname=satname):
                 try:
-                    (cur_head, cur_line) = self.read(gran, return_header=True, filter_firstline=False)
+                    (cur_head, cur_line) = self.read(gran,
+                        return_header=True, filter_firstline=False,
+                        apply_scale_factors=False, calibrate=False,
+                        apply_flags=False)
+                    cur_time = self._get_time(cur_line)
                 except (typhon.datasets.dataset.InvalidFileError,
                         typhon.datasets.dataset.InvalidDataError) as exc:
                     logging.error("Could not read {!s}: {!s}".format(gran, exc))
@@ -270,8 +283,8 @@ class HIRS(typhon.datasets.dataset.MultiSatelliteDataset, Radiometer,
                     # what if prev_line is None?  We don't want to define any
                     # value for the very first granule we process, as we might
                     # be starting to process in the middle...
-                    if cur_line["time"][-1] > prev_line["time"][-1]:
-                        first = (cur_line["time"] > prev_line["time"][-1]).nonzero()[0][0]
+                    if cur_time[-1] > prev_time[-1]:
+                        first = (cur_time > prev_time[-1]).nonzero()[0][0]
                         logging.debug("{:s}: {:d}".format(lab, first))
                     else:
                         first = cur_line.shape[0]+1
@@ -281,6 +294,7 @@ class HIRS(typhon.datasets.dataset.MultiSatelliteDataset, Radiometer,
                     count_updated += 1
                 prev_line = cur_line.copy()
                 prev_head = cur_head.copy()
+                prev_time = cur_time.copy()
                 bar.update((g_start-start_date)/(end_date-start_date))
                 count_all += 1
             bar.update(1)
@@ -433,6 +447,22 @@ class HIRS(typhon.datasets.dataset.MultiSatelliteDataset, Radiometer,
                     targ[f] = src[f]
         return (new_head, new_line)
 
+    def apply_calibcount_filter(self, lines, cutoff=10):
+        views_space = lines["hrs_scntyp"] == self.typ_space
+        views_ict = lines["hrs_scntyp"] == self.typ_ict
+        views_iwt = lines["hrs_scntyp"] == self.typ_iwt
+
+        for x in (views_space, views_ict, views_iwt):
+            C = lines["counts"][x, 8:, :]
+            med_per_ch = numpy.ma.median(C.reshape(-1, self.n_channels), 0)
+            mad_per_ch = numpy.ma.median(abs(C - med_per_ch).reshape(-1, self.n_channels), 0)
+            fracdev = (C - med_per_ch)/mad_per_ch
+            mix = numpy.ones(dtype=bool, shape=lines["counts"].shape)
+            lines.mask["counts"][x, 8:, :] |= abs(fracdev)>cutoff
+
+        return lines
+
+
     def get_iwt(self, header, elem):
         """Get temperature of internal warm target
         """
@@ -523,10 +553,10 @@ class HIRS(typhon.datasets.dataset.MultiSatelliteDataset, Radiometer,
                     self._get_temp_factor(header, "hrs_h_fwcnttmp"),
                     elem[:, 60, 2:22].reshape(N, 4, 5)),
             patch_exp = self._convert_temp(
-                    self._get_temp_factor(header, "hrs_h_patchexpcnttmp"),
+                    self._get_temp_factor(header, "hrs_h_patchexpcnttmp").reshape(1, 6),
                     elem[:, 61, 2:7].reshape(N, 1, 5)),
             fsr = self._convert_temp(
-                    self._get_temp_factor(header, "hrs_h_fsradcnttmp"),
+                    self._get_temp_factor(header, "hrs_h_fsradcnttmp").reshape(1, 6),
                     elem[:, 61, 7:12].reshape(N, 1, 5)))
 
     def _reshape_fact(self, name, fact, robust=False):
@@ -798,34 +828,122 @@ class HIRSKLM(HIRS):
     def get_wn_c1_c2(self, header):
         return header["hrs_h_tempradcnv"].reshape(self.n_calibchannels, 3).T
 
-    def get_mask_from_flags(self, lines):
+    def get_mask_from_flags(self, lines, max_flagged=0.5):
         # These four entries are contained in each data frame and consider
         # the quality of the entire frame.  See Table 8.3.1.5.3.1-1. and
         # Table 8.3.1.5.3.2-1., 
-        badline = (lines["hrs_qualind"] | lines["hrs_linqualflgs"]) != 0
-        badchan = lines["hrs_chqualflg"] != 0
+        # However, it is too drastic to reject everything, because some
+        # flags mean "some channel uncalibrated", for example.  This does
+        # not affect counts.
+        #
+        # In practice, the usefulness of these indicators depends a lot on
+        # the satellite.  For example, for NOAA-15, a lot of useful data
+        # is flagged and a lot of outliers are unflagged.
+
+        # FIXME!  Those have changed between HIRS/3 and HIRS/4 — FIXME!
+        #
+        # On second thought — these flags have so many false negatives and
+        # false positives, that it is difficult to use them in practice.
+
+        # quality indicators
+        qi = lines["hrs_qualind"]
+        qidonotuse =    qi & (1<<31)
+        qitimeseqerr =  qi & (1<<30)
+        qidatagap =     qi & (1<<29)
+        qinofullcalib = qi & (1<<28)
+        qinoearthloc =  qi & (1<<27)
+        qifirstgood =   qi & (1<<26)
+        qistatchng =    qi & (1<<25)
+
+        lq = lines["hrs_linqualflgs"]
+        # time problems
+        tmbadcanfix =   lq & (1<<23)
+        tmbadnofix =    lq & (1<<22)
+        tmnotcnstnt =   lq & (1<<21)
+        tmrpt =         lq & (1<<20)
+
+        # calibration anomalies
+        cabadtime =     lq & (1<<15)
+        cafewer =       lq & (1<<14)
+        cabadprt =      lq & (1<<13)
+        camargprt =     lq & (1<<12)
+        cachmiss =      lq & (1<<11)
+        cainstmode =    lq & (1<<10)
+        camoon =        lq & (1<<9)
+
+        # earth location problems
+        elbadtime =     lq & (1<<7)
+        elquestime =    lq & (1<<6)
+        elmargreason =  lq & (1<<5)
+        elunreason =    lq & (1<<4)
+
+        # channel quality indicators
+        cq = lines["hrs_chqualflg"]
+        cqbadbb =       cq & (1<<5)
+        cqbadsv =       cq & (1<<4)
+        cqbadprt =      cq & (1<<3)
+        cqmargbb =      cq & (1<<2)
+        cqmargsv =      cq & (1<<1)
+        cqmargprt =     cq & 1
+
+        # minor frame
+        mf = lines["hrs_mnfrqual"]
+        mfsusptime =    mf & (1<<7)
+        mfhasfill =     mf & (1<<6)
+        mfhastipdwell = mf & (1<<5)
+        mfsusppacsqc =  mf & (1<<4)
+        mfmirlock =     mf & (1<<3)
+        mfmirposerr =   mf & (1<<2)
+        mfmirmoved =    mf & (1<<1)
+        # last bit is parity, but I can't seem to figure out how to use
+        # it.  It doesn't seem to work at all, so I'll ignore it.
+
+        
+        # which ones imply bad BT?
+        # which ones imply bad counts?
+
+        #badline = (lines["hrs_qualind"] | lines["hrs_linqualflgs"]) != 0
+        #badchan = lines["hrs_chqualflg"] != 0
         # Does this sometimes mask too much?
-        badmnrframe = lines["hrs_mnfrqual"] != 0
+        #badmnrframe = lines["hrs_mnfrqual"] != 0
         # NOAA KLM User's Guide, page 8-154: Table 8.3.1.5.3.1-1.
         # consider flag for “valid”
         elem = lines["hrs_elem"].reshape(lines.shape[0], 64, 24)
         cnt_flags = elem[:, :, 22]
-        valid = (cnt_flags & (1<<15)) != 0
-        badmnrframe |= (~valid)
-        # should consider parity flag... but how?
+        mfvalid = ((cnt_flags & 0x8000) >> 15) == 1
+        #badmnrframe |= (~valid)
+        # When I assume that HIRS's "odd parity bit" is really an "even
+        # parity bit", I get bad parity for ~0.2% of cases.  If I assume
+        # the documentation is correct, I get bad parity for 99.8% of
+        # cases.  The parity bit is the second bit (i.e. 0x4000).
+        badparity = (((cnt_flags & 0x8000) >> 15) ^
+                     ((cnt_flags & 0x4000) >> 14)) == 1
         #return (badline, badchannel, badmnrframe)
+
+    
+        for fld in lines.dtype.names:
+            # only for the most serious offences
+
+            lines[fld].mask |= qidonotuse.reshape(([lines.shape[0]] +
+                    [1]*(lines[fld].ndim-1)))!=0
 
         for fld in ("counts", "bt"):
             # Where a channel is bad, mask the entire scanline
             # NB: BT has only 19 channels
-            lines[fld].mask |= badchan.mask[:, numpy.newaxis, :lines[fld].shape[2]]
+            #lines[fld].mask |= badchan[:, numpy.newaxis, :lines[fld].shape[2]]
 
-            # Where a minor frame is bad, mask all channels
-            lines[fld].mask |= badmnrframe[:, :56, numpy.newaxis]
+            # Where a minor frame is bad or parity fails, mask all channels
+            #lines[fld].mask |= badmnrframe[:, :56, numpy.newaxis]
+            #lines[fld].mask |= badparity[:, :56, numpy.newaxis]
 
             # Where an entire line is bad, mask all channels at entire
             # scanline
-            lines[fld].mask |= badline[:, numpy.newaxis, numpy.newaxis]
+            #lines[fld].mask |= badline[:, numpy.newaxis, numpy.newaxis]
+            lines[fld].mask |= camoon[:, numpy.newaxis, numpy.newaxis]!=0
+
+            # mirror moved, position error, or locked
+            lines[fld].mask |= (mf & 0xfe)[:, :self.n_perline, numpy.newaxis]!=0
+            (mf & 0xfe)
 
         # Some lines are marked as space view or black body view
         lines["bt"].mask |= (lines["hrs_scntyp"] != self.typ_Earth)[:, numpy.newaxis, numpy.newaxis]
@@ -836,6 +954,11 @@ class HIRSKLM(HIRS):
         # Where counts==0, mask individual values
         # WARNING: counts==0 is within the valid range for some channels!
         lines["bt"].mask |= (elem[:, :56, 2:21]==0)
+
+        if lines["counts"].mask.sum() > lines["counts"].size*max_flagged:
+            raise typhon.datasets.dataset.InvalidDataError(
+                "Excessive amount of flagged data ({:%})".format(
+                    lines["counts"].mask.sum()/lines["counts"].size))
 
         return lines
 
@@ -923,16 +1046,17 @@ class HIRSKLM(HIRS):
             digalc2 = numpy.genfromtxt(fp, max_rows=1, dtype="f4")
             fp.readline()
             fp.readline()
-            D["fwprtcc"] = numpy.genfromtxt(fp, max_rows=4, dtype="f4")
+            # filter wheel housing
+            D["fwcnttemp"] = numpy.genfromtxt(fp, max_rows=4, dtype="f4")
             fp.readline()
             fp.readline()
-            D["ictprtcc"] = numpy.genfromtxt(fp, max_rows=4, dtype="f4")
+            D["ictcnttmp"] = numpy.genfromtxt(fp, max_rows=4, dtype="f4")
             fp.readline()
             fp.readline()
-            D["iwtprtcc"] = numpy.genfromtxt(fp, max_rows=5, dtype="f4")
+            D["iwtcnttmp"] = numpy.genfromtxt(fp, max_rows=5, dtype="f4")
             fp.readline()
             fp.readline()
-            D["secmircc"] = numpy.genfromtxt(fp, max_rows=1, dtype="f4")
+            D["sttcnttmp"] = numpy.genfromtxt(fp, max_rows=1, dtype="f4")
 
 
         D.update(zip(
