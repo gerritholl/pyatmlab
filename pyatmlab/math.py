@@ -8,6 +8,7 @@
 import logging
 
 import numpy
+import numpy.ma
 import numpy.linalg
 import scipy
 import scipy.optimize
@@ -232,11 +233,13 @@ def smooth_profile(xh, ak, xa):
     xs[OK] = xa[OK] + ak[numpy.ix_(OK,OK)].dot(xh[OK] - xa[OK])
     return xs
 
-def mad(x):
+def mad(x, masked=False):
     """Median absolute deviation
     """
 
-    return numpy.median(numpy.abs(x - numpy.median(x)))
+    med = numpy.ma.median if masked else numpy.median
+
+    return med(numpy.abs(x - med(x)))
 
 def get_transformation_matrix(f, n):
     """Obtain standard matrix for the linear transformaton
@@ -497,3 +500,22 @@ def estimate_srf_shift(bt_master, bt_target, srf_master, y_spectral_db, f_spectr
 #            method="brent",
 #            args=(ureg.um,))
     return res
+
+def filter_outliers(x, cut=5.0):
+    """Empirical removal of outliers
+
+    Masks values that are more than *n* times the MAD from the median.
+
+    Arguments:
+        
+        x (ndarray)
+            Array to process
+
+        cut (float)
+            Cutoff beyond which to mask.  Defaults to 5.0.
+    """
+
+    norm_dist = abs(x - numpy.ma.median(x))/mad(x, masked=True)
+    x.mask[norm_dist>=cut] = True
+
+    return x
