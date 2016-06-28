@@ -12,6 +12,8 @@ import logging
 import subprocess
 import sys
 import pickle
+import lzma
+import pathlib
 
 import numpy
 import matplotlib
@@ -64,39 +66,35 @@ def print_or_show(fig, show, outfile, in_plotdir=True, tikz=None,
 
     if outfile is not None:
         outfiles = [outfile] if isinstance(outfile, str) else outfile
+        
+        bs = pathlib.Path(plotdir())
         if isinstance(outfile, str):
             if outfile.endswith("."):
-                outfiles = [outfile+ext for ext in ("png", "pdf")]
-                infofile = outfile + "info"
-                figfile = outfile + "pkl"
+                outfiles = [bs / pathlib.Path(outfile+ext) for ext in ("png", "pdf")]
+                infofile = bs / pathlib.Path(outfile + "info")
+                figfile = bs / pathlib.Path(outfile + "pkl.xz")
             else:
-                outfiles = [outfile]
+                outfiles = [bs / pathlib.Path(outfile)]
                 infofile = None
                 figfile = None
 
         pr = subprocess.run(["pip", "freeze"], stdout=subprocess.PIPE) 
         info = " ".join(sys.argv) + "\n" + pr.stdout.decode("utf-8") + "\n"
         info += tools.get_verbose_stack_description()
+
+        infofile.parent.mkdir(parents=True, exist_ok=True)
         if infofile is not None and info:
-            if in_plotdir and not "/" in infofile:
-                infofile = os.path.join(plotdir(), infofile)
-            logging.info("Writing info to {:s}".format(infofile))
-            with open(infofile, "w", encoding="utf-8") as fp:
+            logging.info("Writing info to {!s}".format(infofile))
+            with infofile.open("w", encoding="utf-8") as fp:
                 fp.write(info)
         if figfile is not None:
-            if in_plotdir and not "/" in figfile:
-                figfile = os.path.join(plotdir(), figfile)
-            logging.info("Writing figure object to {:s}".format(figfile))
-            with open(figfile, "wb") as fp:
+            logging.info("Writing figure object to {!s}".format(figfile))
+            with lzma.open(str(figfile), "wb", preset=lzma.PRESET_DEFAULT) as fp:
                 pickle.dump(fig, fp, protocol=4)
         # interpret as sequence
         for outf in outfiles:
-            if in_plotdir and not '/' in outf:
-                outf = os.path.join(plotdir(), outf)
-            logging.info("Writing to file: {}".format(outf))
-            if not os.path.exists(os.path.dirname(outf)):
-                os.makedirs(os.path.dirname(outf))
-            fig.canvas.print_figure(outf)
+            logging.info("Writing to file: {!s}".format(outf))
+            fig.canvas.print_figure(str(outf))
     if show:
         matplotlib.pyplot.show()
 
