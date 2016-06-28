@@ -664,16 +664,17 @@ def planck_f(f, T):
     :param f: Frequency.  Quantity in [Hz]
     :param T: Temperature.  Quantity in [K]
     """
-    try:
-        f = f.astype(numpy.float64)
-    except AttributeError:
-        pass
+#    try:
+#        f = f.astype(numpy.float64)
+#    except AttributeError:
+#        pass
     if (f.size * T.size) > 1e5:
         return numexpr.evaluate("(2 * h * f**3) / (c**2) * "
                                 "1 / (exp((h*f)/(k*T)) - 1)") * (
                                     _specrad_freq)
     return ((2 * ureg.h * f**3) / (ureg.c ** 2) *
-            1 / (numpy.exp((ureg.h*f)/(ureg.k*T)) - 1))
+            1 / (numpy.exp(((ureg.h*f)/(ureg.k*T)).to("1")) - 1)).to(
+                ureg.W/(ureg.m**2 * ureg.sr * ureg.Hz))
         
 def mixingratio2density(mixingratio, p, T):
     """Converts mixing ratio (e.g. kg/kg) to density (kg/m^3) for dry air.
