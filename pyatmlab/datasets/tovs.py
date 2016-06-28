@@ -69,9 +69,9 @@ class HIRS(typhon.datasets.dataset.MultiSatelliteDataset, Radiometer,
       apply it.
     - If datasets like MHS or AVHRR are added that could probably move to
       some class between HIRS and MultiFileDataset.
-    - Optionally allow radiances to switch between SI units [W/m²·sr·Hz]
-      and “conventional” units [mW/m²·sr·cm^{-1}]
-    - Remove duplicates between subsequent granules.
+    - Better handling of duplicates between subsequent granules.
+      Currently it takes all lines from the older granule and none from
+      the newer, but this should be decided on a case-by-case basis.
     """
 
     name = "hirs"
@@ -87,8 +87,8 @@ class HIRS(typhon.datasets.dataset.MultiSatelliteDataset, Radiometer,
     # For convenience, define scan type codes.  Stores in hrs_scntyp.
     typ_Earth = 0
     typ_space = 1
-    typ_ict = 2 # internal cold target; not used on recent HIRS
-    typ_iwt = 3 # internal warm target
+    #typ_ict = 2 # internal cold calibration target; only used on HIRS/2
+    typ_iwt = 3 # internal warm calibration target
 
     _fact_shapes = {"hrs_h_fwcnttmp": (4, 5)}
     
@@ -117,9 +117,17 @@ class HIRS(typhon.datasets.dataset.MultiSatelliteDataset, Radiometer,
             (header_dtype, line_dtype) = self.get_dtypes(f)
             header_bytes = f.read(header_dtype.itemsize)
             header = numpy.frombuffer(header_bytes, header_dtype)
+            n_lines = header["hrs_h_scnlin"][0]
             scanlines_bytes = f.read()
-            scanlines = numpy.frombuffer(scanlines_bytes, line_dtype)
-        n_lines = header["hrs_h_scnlin"][0]
+            try:
+                scanlines = numpy.frombuffer(scanlines_bytes, line_dtype)
+            except ValueError as v:
+                raise typhon.datasets.dataset.InvalidFileError("Can not read "
+                    "whole number of records.  Expected {:d} scanlines, "
+                    "but found {:d} lines with a remainder of {:d} "
+                    "bytes.  File appears truncated.".format(
+                        n_lines, *divmod(len(scanlines_bytes),
+                                         line_dtype.itemsize))) from v
         if scanlines.shape[0] != n_lines:
             raise typhon.datasets.dataset.InvalidFileError(
                 "Problem reading {!s}.  Header promises {:d} scanlines, but I found only {:d} — "
@@ -448,11 +456,9 @@ class HIRS(typhon.datasets.dataset.MultiSatelliteDataset, Radiometer,
         return (new_head, new_line)
 
     def apply_calibcount_filter(self, lines, cutoff=10):
-        views_space = lines["hrs_scntyp"] == self.typ_space
-        views_ict = lines["hrs_scntyp"] == self.typ_ict
-        views_iwt = lines["hrs_scntyp"] == self.typ_iwt
-
-        for x in (views_space, views_ict, views_iwt):
+        for v in self.views:
+            x = lines[self.scantype_fieldname] == getattr(self,
+                    "typ_{:s}".format(v))
             C = lines["counts"][x, 8:, :]
             med_per_ch = numpy.ma.median(C.reshape(-1, self.n_channels), 0)
             mad_per_ch = numpy.ma.median(abs(C - med_per_ch).reshape(-1, self.n_channels), 0)
@@ -593,10 +599,13 @@ class HIRS(typhon.datasets.dataset.MultiSatelliteDataset, Radiometer,
     def get_dataname(self, header):
         ...
 
-
 class HIRSPOD(HIRS):
     n_wordperframe = 22
     counts_offset = 0
+
+    typ_ict = 2 # internal cold calibration target; only used on HIRS/2
+    views = ("ict", "iwt", "space", "Earth")
+    scantype_fieldname = "scantype"
 
     # HIRS/2 has LZA only for the edge of the scan.  Linear interpolation
     # is not good enough; scale with a single reference array for other
@@ -796,6 +805,8 @@ class HIRS2I(HIRS2):
 class HIRSKLM(HIRS):
     counts_offset = 4096
     n_wordperframe = 24
+    views = ("iwt", "space", "Earth")
+    scantype_fieldname = "hrs_scntyp"
     def seekhead(self, f):
         f.seek(0, io.SEEK_SET)
         if f.peek(3)[:3] in {b"NSS", b"CMS", b"DSS", b"UKM"}:
@@ -1107,6 +1118,59 @@ class HIRSKLM(HIRS):
     def get_dataname(self, header):
         return header["hrs_h_dataname"][0].decode("US-ASCII")
 
+    # various calculation methods that are not strictly part of the
+    # reader.  Could be moved elsewhere.
+    def calculate_offset_and_slope(self, M, srf):
+        """Calculate offset and slope.
+
+        Arguments:
+
+            M [ndarray]
+            
+                ndarray with dtype such as returned by self.read.  Must
+                contain enough fields.
+
+            srf [pyatmlab.physics.SRF]
+
+                SRF used to estimate slope.  Needs to implement the
+                `blackbody_radiance` method such as `pyatmlab.physics.SRF`
+                does.
+
+        """
+
+        views_space = M["hrs_scntyp"] == self.typ_space
+        views_iwct = M["hrs_scntyp"] == self.typ_iwt
+
+        # select instances where I have both in succession.  Should be
+        # always, unless one of the two is missing or the start or end of
+        # series is in the middle of a calibration.
+        space_followed_by_iwct = (views_space[:-1] & views_iwct[1:])
+        #M15[1:][views_space[:-1]]["hrs_scntyp"]
+
+        M_space = M[:-1][space_followed_by_iwct]
+        M_iwct = M[1:][space_followed_by_iwct]
+
+        counts_space = M_space["counts"][:, 8:, :] * ureg.count
+        counts_iwct = M_iwct["counts"][:, 8:, :] * ureg.count
+
+        T_iwct = M_space["temp_iwt"].mean(-1).mean(-1) * ureg.K
+        T_space = numpy.zeros_like(T_iwct) * ureg.K
+
+        L_iwct = srf.blackbody_radiance(T_iwct)
+        L_space = numpy.zeros_like(L_iwct) * L_iwct.u
+
+        slope = (
+            (L_iwct - L_space)[:, numpy.newaxis, numpy.newaxis] /
+            (counts_iwct - counts_space))
+
+        offset = -slope * counts_space
+
+        return (M_space["time"],
+                offset,
+                slope)
+
+
+
 class HIRS3(HIRSKLM):
     pdf_definition_pages = (26, 37)
     version = 3
@@ -1348,3 +1412,46 @@ class IASISub(dataset.HomemadeDataset, dataset.HyperSpectral):
         # FIXME: this isn't accurate, there may be some in the next day...
         end = datetime.datetime(year, month, day, 23, 59, 59)
         return (start, end)
+
+
+
+class HIRSFCDR:
+    # FIXME, should this derive from HIRS?  From a shared FCDR class?
+    """Produce, write, study, and read HIRS FCDR.
+
+    Work in progress.
+    """
+
+    realisations = 100
+    srfs = None
+
+    # Read in some HIRS data, including nominal calibration
+    # Estimate noise levels from space and IWCT views
+    # Use noise levels to propagate through calibration and BT conversion
+    #
+    # TODO: Calculate own calibration coefficients and propagate those
+    # uncertainties through as well
+
+    def __init__(self, srfs):
+        self.srfs = srfs
+
+
+    def process(self, start_date, end_date):
+        M = self.hirs.read(start_date, end_date,
+            fields=["time", "counts", "bt", "calcof_sorted"])
+        (noise_level_space_counts,
+         noise_level_iwct_counts) = self.estimate_noise(M)
+        rad_wn = numpy.zeros(shape=M["counts"].shape + (self.realisations,))
+        bt = numpy.zeros_like(rad_wn)
+        for i in range(self.realisations):
+            for ch in range(12):
+                rad_wn[:, :, ch, i] = self.hirs.calibrate(
+                    M["calcof_sorted"], # FIXME: Calculate and add error!
+                    M["counts"] + numpy.random.randn(*M["counts"].shape[:-1]))
+        
+                bt[:, :, ch, i] = self.srfs[ch].channel_radiance2bt(rad_wn[:, :, ch, i])
+
+        # now I have an ensemble of both rad_wn and bt... should write it
+        # out per orbit, but I lost orbit count information in reader.
+        # Need to pass header information from .read...
+
