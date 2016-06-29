@@ -60,6 +60,10 @@ class HIRS(typhon.datasets.dataset.MultiSatelliteDataset, Radiometer,
         radiance_units.  Defaults to "si", by which I annoyingly mean
         W/(m²·sr·Hz).  Set to "classic" if you want mW/(m²·sr·cm^{-1}).
 
+    Note that this class only reads in the standard HIRS data with its
+    standard calibration.  Innovative calibrations including uncertainties
+    are implemented in HIRSFCDR.
+
     Work in progress.
 
     TODO/FIXME:
@@ -218,7 +222,7 @@ class HIRS(typhon.datasets.dataset.MultiSatelliteDataset, Radiometer,
             header = header_new
             if apply_flags:
                 #scanlines = numpy.ma.masked_array(scanlines)
-                scanlines = self.get_mask_from_flags(scanlines)
+                scanlines = self.get_mask_from_flags(header, scanlines)
             if apply_filter:
                 scanlines = self.apply_calibcount_filter(scanlines)
             if not (apply_flags or apply_filter):
@@ -530,7 +534,7 @@ class HIRS(typhon.datasets.dataset.MultiSatelliteDataset, Radiometer,
         ...
             
     @abc.abstractmethod
-    def get_mask_from_flags(self, lines):
+    def get_mask_from_flags(self, header, lines):
         ...
 
     @abc.abstractmethod
@@ -662,7 +666,7 @@ class HIRSPOD(HIRS):
         h =  _tovs_defs.HIRS_coeffs[self.version][self.id2no(header["hrs_h_satid"][0])]
         return numpy.vstack([h[i] for i in range(1, 20)]).T
 
-    def get_mask_from_flags(self, lines):
+    def get_mask_from_flags(self, header, lines):
         # for flag bits, see POD User's Guide, page 4-4 and 4-5.
         bad_bt = (lines["hrs_qualind"] & 0xcffffe00) != 0
         earthcounts = lines["hrs_qualind"] & 0x03000000 == 0
@@ -839,7 +843,7 @@ class HIRSKLM(HIRS):
     def get_wn_c1_c2(self, header):
         return header["hrs_h_tempradcnv"].reshape(self.n_calibchannels, 3).T
 
-    def get_mask_from_flags(self, lines, max_flagged=0.5):
+    def get_mask_from_flags(self, header, lines, max_flagged=0.5):
         # These four entries are contained in each data frame and consider
         # the quality of the entire frame.  See Table 8.3.1.5.3.1-1. and
         # Table 8.3.1.5.3.2-1., 
@@ -952,9 +956,15 @@ class HIRSKLM(HIRS):
             #lines[fld].mask |= badline[:, numpy.newaxis, numpy.newaxis]
             lines[fld].mask |= camoon[:, numpy.newaxis, numpy.newaxis]!=0
 
-            # mirror moved, position error, or locked
-            lines[fld].mask |= (mf & 0xfe)[:, :self.n_perline, numpy.newaxis]!=0
-            (mf & 0xfe)
+            if header["hrs_h_instid"][0] in {306, 307}:
+                # MetOp seems to always have "mirror position error"!  I
+                # can't afford to reject data.
+                bm = 0xfa
+            else:
+                # mirror moved, position error, or locked
+                bm = 0xfe
+            lines[fld].mask |= (mf & bm)[:, :self.n_perline, numpy.newaxis]!=0
+            
 
         # Some lines are marked as space view or black body view
         lines["bt"].mask |= (lines["hrs_scntyp"] != self.typ_Earth)[:, numpy.newaxis, numpy.newaxis]
@@ -968,8 +978,15 @@ class HIRSKLM(HIRS):
 
         if lines["counts"].mask.sum() > lines["counts"].size*max_flagged:
             raise typhon.datasets.dataset.InvalidDataError(
-                "Excessive amount of flagged data ({:%})".format(
-                    lines["counts"].mask.sum()/lines["counts"].size))
+                "Excessive amount of flagged data ({:.2%}). "
+                "Moon ({:.2%}), mirror position error ({:.2%}), "
+                "mirror moved ({:.2%}).".format(
+                    lines["counts"].mask.sum()/lines["counts"].size,
+                    (camoon!=0).sum()/camoon.size,
+                    (mfmirposerr[:, :self.n_perline]!=0).sum()/
+                     mfmirposerr[:, :self.n_perline].size,
+                    (mfmirmoved[:, :self.n_perline]!=0).sum()/
+                     mfmirmoved[:, :self.n_perline].size))
 
         return lines
 
@@ -1120,7 +1137,7 @@ class HIRSKLM(HIRS):
 
     # various calculation methods that are not strictly part of the
     # reader.  Could be moved elsewhere.
-    def calculate_offset_and_slope(self, M, srf):
+    def calculate_offset_and_slope(self, M, srf, ch):
         """Calculate offset and slope.
 
         Arguments:
@@ -1136,6 +1153,20 @@ class HIRSKLM(HIRS):
                 `blackbody_radiance` method such as `pyatmlab.physics.SRF`
                 does.
 
+            ch [int]
+
+                Channel that the SRF relates to.
+        
+        Returns:
+
+            tuple with:
+
+            time [ndarray] corresponding to offset and slope
+
+            offset [ndarray] offset calculated at each calibration cycle
+
+            slope [ndarray] slope calculated at each calibration cycle
+
         """
 
         views_space = M["hrs_scntyp"] == self.typ_space
@@ -1150,8 +1181,8 @@ class HIRSKLM(HIRS):
         M_space = M[:-1][space_followed_by_iwct]
         M_iwct = M[1:][space_followed_by_iwct]
 
-        counts_space = M_space["counts"][:, 8:, :] * ureg.count
-        counts_iwct = M_iwct["counts"][:, 8:, :] * ureg.count
+        counts_space = M_space["counts"][:, 8:, ch-1] * ureg.count
+        counts_iwct = M_iwct["counts"][:, 8:, ch-1] * ureg.count
 
         T_iwct = M_space["temp_iwt"].mean(-1).mean(-1) * ureg.K
         T_space = numpy.zeros_like(T_iwct) * ureg.K
@@ -1160,7 +1191,7 @@ class HIRSKLM(HIRS):
         L_space = numpy.zeros_like(L_iwct) * L_iwct.u
 
         slope = (
-            (L_iwct - L_space)[:, numpy.newaxis, numpy.newaxis] /
+            (L_iwct - L_space)[:, numpy.newaxis] /
             (counts_iwct - counts_space))
 
         offset = -slope * counts_space
@@ -1229,6 +1260,114 @@ class HIRS4(HIRSKLM):
             elem[:, 59, 17:22].reshape(elem.shape[0], 1, 5))
         return D
 
+class HIRSFCDR:
+    """Produce, write, study, and read HIRS FCDR.
+
+    Mixin for kiddies HIRS?FCDR
+    """
+
+    realisations = 100
+    srfs = None
+
+    # Read in some HIRS data, including nominal calibration
+    # Estimate noise levels from space and IWCT views
+    # Use noise levels to propagate through calibration and BT conversion
+    #
+    # TODO: Calculate own calibration coefficients and propagate those
+    # uncertainties through as well
+
+    def __init__(self, hirs, srfs):
+        self.hirs = hirs
+        self.srfs = srfs
+
+    def interpolate_offset_slope(self, M, calib_time, offset, slope):
+        """Interpolate calibration parameters between calibration cycles
+
+        This method is just beginning and likely to improve considerably
+        in the upcoming time.
+
+        Arguments:
+        
+            M [ndarray]
+            
+                ndarray with dtype such as returned by self.read.  Must
+                contain enough fields.
+
+            calib_time [ndarray, dtype time]
+
+                times corresponding to offset and slope, such as returned
+                by HIRS.calculate_offset_and_slope.
+
+            slope [ndarray]
+
+                slopes estimated from calibration cycle at those points
+
+            offset [ndarray]
+
+                offsets estimated from calibration cycles at those points
+        
+        Returns:
+
+            tuple with:
+
+                [ndarray] slopes interpolated to all times in M
+
+                [ndarray] offsets interpolated to all times in M
+        """
+
+        interp_offset = numpy.interp(M["time"], calib_time, offset)
+        interp_slope = numpy.interp(M["time"], calib_time, slope)
+
+        return (interp_slope, interp_offset)
+
+        
+    def custom_calibrate(self, counts, slope, offset):
+        """Calibrate with my own slope and offset!
+        """
+        return offset + slope * counts
+
+
+
+    def recalibrate(self, M):
+        (noise_level_space_counts,
+         noise_level_iwct_counts) = self.estimate_noise(M)
+        rad_wn = numpy.zeros(shape=M["counts"].shape + (self.realisations,))
+        # note, this can't be vectorised easily anyway because of the SRF
+        # integration bit
+        (time, offset, slope) = self.calculate_offset_and_slope(self, M, srf, 1)
+        (interp_offset, interp_slope) = self.interpolate_offset_slope(M,
+            time, offset, slope)
+        bt = numpy.zeros_like(rad_wn)
+        for i in range(self.realisations):
+            for ch in range(12):
+                rad_wn[:, :, ch, i] = self.hirs.custom_calibrate(
+                    M["counts"] + numpy.random.randn(*M["counts"].shape[:-1]),
+                    interp_slope, interp_offset)
+#                rad_wn[:, :, ch, i] = self.hirs.calibrate(
+#                    M["calcof_sorted"], # FIXME: Calculate and add error!
+#                    M["counts"] + numpy.random.randn(*M["counts"].shape[:-1]))
+        
+                bt[:, :, ch, i] = self.srfs[ch].channel_radiance2bt(rad_wn[:, :, ch, i])
+
+        # now I have an ensemble of both rad_wn and bt... should write it
+        # out per orbit, but I lost orbit count information in reader.
+        # Need to pass header information from .read...
+        raise NotImplementedError()
+
+    def read_and_recalibrate_period(self, start_date, end_date):
+        M = self.hirs.read(start_date, end_date,
+                fields=["time", "counts", "bt", "calcof_sorted"])
+        return self.recalibrate(M)
+
+
+class HIRS2FCDR(HIRS, HIRSFCDR):
+    pass
+
+class HIRS3FCDR(HIRS, HIRSFCDR):
+    pass
+
+class HIRS4FCDR(HIRS, HIRSFCDR):
+    pass
 class IASINC(dataset.MultiFileDataset, dataset.HyperSpectral):
     """Read IASI from NetCDF
     """
@@ -1414,44 +1553,4 @@ class IASISub(dataset.HomemadeDataset, dataset.HyperSpectral):
         return (start, end)
 
 
-
-class HIRSFCDR:
-    # FIXME, should this derive from HIRS?  From a shared FCDR class?
-    """Produce, write, study, and read HIRS FCDR.
-
-    Work in progress.
-    """
-
-    realisations = 100
-    srfs = None
-
-    # Read in some HIRS data, including nominal calibration
-    # Estimate noise levels from space and IWCT views
-    # Use noise levels to propagate through calibration and BT conversion
-    #
-    # TODO: Calculate own calibration coefficients and propagate those
-    # uncertainties through as well
-
-    def __init__(self, srfs):
-        self.srfs = srfs
-
-
-    def process(self, start_date, end_date):
-        M = self.hirs.read(start_date, end_date,
-            fields=["time", "counts", "bt", "calcof_sorted"])
-        (noise_level_space_counts,
-         noise_level_iwct_counts) = self.estimate_noise(M)
-        rad_wn = numpy.zeros(shape=M["counts"].shape + (self.realisations,))
-        bt = numpy.zeros_like(rad_wn)
-        for i in range(self.realisations):
-            for ch in range(12):
-                rad_wn[:, :, ch, i] = self.hirs.calibrate(
-                    M["calcof_sorted"], # FIXME: Calculate and add error!
-                    M["counts"] + numpy.random.randn(*M["counts"].shape[:-1]))
-        
-                bt[:, :, ch, i] = self.srfs[ch].channel_radiance2bt(rad_wn[:, :, ch, i])
-
-        # now I have an ensemble of both rad_wn and bt... should write it
-        # out per orbit, but I lost orbit count information in reader.
-        # Need to pass header information from .read...
 
