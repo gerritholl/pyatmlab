@@ -23,6 +23,62 @@ from . import io
 from . import meta
 from . import tools
 
+def pcolor_on_map(m, lon, lat, C, **kwargs):
+    """Wrapper around pcolor on a map, in case we cross the IDL
+
+    preventing spurious lines
+    """
+
+    # Need to investigate why and how to solve:
+    # -175 - minor polar problems (5° missing)
+    # -178 - polar problems (2° missing)
+    # -179 - some problems (1° missing)
+    # -179.9 - many problems
+    # perhaps I need to mask neighbours or so?
+    C1 = numpy.ma.masked_where(lon<-175, C, copy=True)
+    p1 = m.pcolor(lon, lat, C1, latlon=True, **kwargs)
+#    C2 = numpy.ma.masked_where(lon<0, C.data)
+#    p2 = m.pcolor(lon, lat, C2, latlon=True, **kwargs)
+#    mixed = lon.ptp(1)>300
+#    homog = ~mixed
+#    homognum = homog.nonzero()[0]
+#
+#    breaks = numpy.diff(homognum) > 5
+#    breakedge = numpy.r_[-1, breaks.nonzero()[0], homog.sum()-1]
+#
+#    for (l, e) in zip(breakedge, breakedge[1:]):
+#        p1 = m.pcolor(lon[homognum[(l+1):(e+1)], :],
+#                      lat[homognum[(l+1):(e+1)], :],
+#                      C[homognum[(l+1):(e+1)], :],
+#                      latlon=True, **kwargs)
+#    lon.mask = lat.mask = C.mask = west
+#    p2 = m.pcolor(lon, lat, C, latlon=True, **kwargs)
+    # remaining lines manually
+#    for mix in mixed.nonzero()[0]:
+#        west = lon[mix, :] <= 0
+#        east = lon[mix, :] > 0
+#        for h in (west, east):
+#            m.pcolor(lon[mix, h],
+#                     lat[mix, h],
+#                     C[mix, h],
+#                     latlon=True, **kwargs)
+            # For some reason, if I don't include ascontiguousarray here,
+            # I run into a SystemError in proj4.  I haven't been able to
+            # find a minimum example that reproduces the bug :(
+            #
+            # And another bug: I can't pcolor a single line when using
+            # latlon=True, as shiftdata will fail...
+            #
+            # But even when I can, it still goes wrong because pcolor
+            # doesn't show the single line... :( why is masking not
+            # working?
+
+#            (x, y) = m(numpy.ascontiguousarray(lon[mix:(mix+1), h]),
+#                       numpy.ascontiguousarray(lat[mix:(mix+1), h]))
+#            m.pcolor(x, y, C[mix:(mix+1), h], latlon=False, **kwargs)
+    return p1
+
+
 def plotdir():
     """Returns todays plotdir.
 
@@ -78,6 +134,7 @@ def print_or_show(fig, show, outfile, in_plotdir=True, tikz=None,
                 infofile = None
                 figfile = None
 
+        logging.debug("Obtaining verbose stack info")
         pr = subprocess.run(["pip", "freeze"], stdout=subprocess.PIPE) 
         info = " ".join(sys.argv) + "\n" + pr.stdout.decode("utf-8") + "\n"
         info += tools.get_verbose_stack_description()
