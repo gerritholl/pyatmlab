@@ -33,6 +33,7 @@ from .. import physics
 from .. import math as pamath
 from ..units import ureg
 from .. import config
+from .. import units
 
 from . import _tovs_defs
 
@@ -198,7 +199,7 @@ class HIRS(typhon.datasets.dataset.MultiSatelliteDataset, Radiometer,
                 scanlines_new["radiance"] = physics.specrad_wavenumber2frequency(rad_wn)
             elif radiance_units == "classic":
                 # earlier, I converted to base units: W / (m^2 sr m^-1).
-                scanlines_new["radiance"] = (rad_wn *
+                scanlines_new["radiance"] = ureg.Quantity(rad_wn,
                     ureg.W  / (ureg.sr * ureg.m**2 * (1/ureg.m) )).to(
                     ureg.mW / (ureg.sr * ureg.m**2 * (1/ureg.cm))).m
             else:
@@ -654,7 +655,8 @@ class HIRSPOD(HIRS):
                 "which ones to use.  Giving up ☹. ")
 
         # This is apparently calibrated in units of mW/m2-sr-cm-1.
-        rad = rad * ureg.mW / (ureg.m**2 * ureg.sr * (1/ureg.cm))
+        rad = ureg.Quantity(rad,
+            ureg.mW / (ureg.m**2 * ureg.sr * (1/ureg.cm)))
         # Convert to SI base units.
         rad = rad.to(ureg. W / (ureg.m**2 * ureg.sr * (1/ureg.m)))
         #rad *= constants.milli
@@ -1181,14 +1183,18 @@ class HIRSKLM(HIRS):
         M_space = M[:-1][space_followed_by_iwct]
         M_iwct = M[1:][space_followed_by_iwct]
 
-        counts_space = M_space["counts"][:, 8:, ch-1] * ureg.count
-        counts_iwct = M_iwct["counts"][:, 8:, ch-1] * ureg.count
+        counts_space = ureg.Quantity(M_space["counts"][:, 8:, ch-1],
+                                     ureg.count)
+        counts_iwct = ureg.Quantity(M_iwct["counts"][:, 8:, ch-1],
+                                    ureg.count)
 
-        T_iwct = M_space["temp_iwt"].mean(-1).mean(-1) * ureg.K
-        T_space = numpy.zeros_like(T_iwct) * ureg.K
+        T_iwct = ureg.Quantity(
+            M_space["temp_iwt"].mean(-1).mean(-1).astype("f4"), ureg.K)
+        T_space = ureg.Quantity(numpy.zeros_like(T_iwct), ureg.K)
 
         L_iwct = srf.blackbody_radiance(T_iwct)
-        L_space = numpy.zeros_like(L_iwct) * L_iwct.u
+        L_iwct = ureg.Quantity(L_iwct.astype("f4"), L_iwct.u)
+        L_space = ureg.Quantity(numpy.zeros_like(L_iwct), L_iwct.u)
 
         slope = (
             (L_iwct - L_space)[:, numpy.newaxis] /
@@ -1315,59 +1321,120 @@ class HIRSFCDR:
                 [ndarray] offsets interpolated to all times in M
         """
 
-        interp_offset = numpy.interp(M["time"], calib_time, offset)
-        interp_slope = numpy.interp(M["time"], calib_time, slope)
+        interp_offset = ureg.Quantity(numpy.interp(M["time"].astype("u8"),
+            calib_time.astype("u8"), offset).astype("f4"), offset.u)
+        interp_slope = ureg.Quantity(numpy.interp(M["time"].astype("u8"),
+            calib_time.astype("u8"), slope).astype("f4"), slope.u)
 
-        return (interp_slope, interp_offset)
+        return (interp_offset, interp_slope)
 
         
     def custom_calibrate(self, counts, slope, offset):
-        """Calibrate with my own slope and offset!
+        """Calibrate with my own slope and offset
+
+        Currently linear.  Uncertainties currently considered upstream in
+        MC sense, to be amended.
         """
-        return offset + slope * counts
+        return offset[:, numpy.newaxis] + slope[:, numpy.newaxis] * counts
+
+    
+    def estimate_noise(self, M, ch):
+        """Calculate noise level at each calibration line.
+
+        Currently implemented to return noise level for IWCT and space
+        views.
+        """
+        calib = M[self.scantype_fieldname] != self.typ_Earth
+        calibcounts = M["counts"][calib, 8:, ch-1]
+        return (M["time"][calib], typhon.math.stats.adev(calibcounts, 1))
 
 
 
-    def recalibrate(self, M):
-        (noise_level_space_counts,
-         noise_level_iwct_counts) = self.estimate_noise(M)
-        rad_wn = numpy.zeros(shape=M["counts"].shape + (self.realisations,))
+    def recalibrate(self, M, ch, srf):
+        """Recalibrate counts to radiances with uncertainties
+
+        Arguments:
+
+            M [ndarray]
+
+                Structured array such as returned by self.read.  Should
+                have at least fields "hrs_scntyp", "counts", "time", and
+                "temp_iwt".
+
+            ch [int]
+
+                Channel to calibrate.
+
+            srf [pyatmlab.physics.SRF]
+
+                SRF to use for calibrating the channel and converting
+                radiances to units of BT
+
+        TODO: incorporate SRF-induced uncertainties --- how?
+        """
+        logging.info("Estimating noise")
+        (t_noise_level, noise_level) = self.estimate_noise(M, ch)
         # note, this can't be vectorised easily anyway because of the SRF
         # integration bit
-        (time, offset, slope) = self.calculate_offset_and_slope(self, M, srf, 1)
+        logging.info("Calibrating")
+        (time, offset, slope) = self.calculate_offset_and_slope(M, srf, ch)
+        # NOTE:
+        # See https://github.com/numpy/numpy/issues/7787 on numpy.median
+        # losing the unit
+        logging.info("Interpolating") 
         (interp_offset, interp_slope) = self.interpolate_offset_slope(M,
-            time, offset, slope)
-        bt = numpy.zeros_like(rad_wn)
+            time, 
+            ureg.Quantity(numpy.median(offset, 1), offset.u),
+            ureg.Quantity(numpy.median(slope, 1), slope.u))
+        interp_noise_level = numpy.interp(M["time"].view("u8"),
+                    t_noise_level.view("u8")[~noise_level.mask],
+                    noise_level[~noise_level.mask])
+        logging.info("Allocating")
+        rad_wn = ureg.Quantity(numpy.empty(
+            shape=M["counts"].shape[:2] + (self.realisations,),
+            dtype="f4"), units.radiance_units["ir"])
+        bt = ureg.Quantity(numpy.empty_like(rad_wn), ureg.K)
+        logging.info("Estimating {:d} realisations for "
+            "{:,} radiances".format(self.realisations,
+               rad_wn.size))
+        bar = progressbar.ProgressBar(maxval=self.realisations,
+                widgets = tools.my_pb_widget)
+        bar.start()
         for i in range(self.realisations):
-            for ch in range(12):
-                rad_wn[:, :, ch, i] = self.hirs.custom_calibrate(
-                    M["counts"] + numpy.random.randn(*M["counts"].shape[:-1]),
-                    interp_slope, interp_offset)
-#                rad_wn[:, :, ch, i] = self.hirs.calibrate(
-#                    M["calcof_sorted"], # FIXME: Calculate and add error!
-#                    M["counts"] + numpy.random.randn(*M["counts"].shape[:-1]))
-        
-                bt[:, :, ch, i] = self.srfs[ch].channel_radiance2bt(rad_wn[:, :, ch, i])
+            with ureg.context("radiance"):
+                # need to explicitly convert .to(rad_wn.u),
+                # see https://github.com/hgrecco/pint/issues/394
+                rad_wn[:, :, i] = self.custom_calibrate(
+                    ureg.Quantity(M["counts"][:, :, ch-1].astype("f4")
+                        + numpy.random.randn(*M["counts"].shape[:-1]).astype("f4")
+                            * interp_noise_level[:, numpy.newaxis],
+                                 ureg.count).astype("f4"),
+                    interp_slope, interp_offset).to(rad_wn.u)
+                    
+    
+            bt[:, :, i] = ureg.Quantity(
+                srf.channel_radiance2bt(rad_wn[:, :, i]).astype("f4"),
+                ureg.K)
+            bar.update(i)
+        bar.finish()
+        logging.info("Done")
 
-        # now I have an ensemble of both rad_wn and bt... should write it
-        # out per orbit, but I lost orbit count information in reader.
-        # Need to pass header information from .read...
-        raise NotImplementedError()
+        return (rad_wn, bt)
 
     def read_and_recalibrate_period(self, start_date, end_date):
-        M = self.hirs.read(start_date, end_date,
+        M = self.read(start_date, end_date,
                 fields=["time", "counts", "bt", "calcof_sorted"])
         return self.recalibrate(M)
 
-
-class HIRS2FCDR(HIRS, HIRSFCDR):
+class HIRS2FCDR(HIRS2, HIRSFCDR):
     pass
 
-class HIRS3FCDR(HIRS, HIRSFCDR):
+class HIRS3FCDR(HIRS3, HIRSFCDR):
     pass
 
-class HIRS4FCDR(HIRS, HIRSFCDR):
+class HIRS4FCDR(HIRS4, HIRSFCDR):
     pass
+
 class IASINC(dataset.MultiFileDataset, dataset.HyperSpectral):
     """Read IASI from NetCDF
     """
@@ -1398,7 +1465,8 @@ class IASINC(dataset.MultiFileDataset, dataset.HyperSpectral):
         with netCDF4.Dataset(str(path), 'r', clobber=False) as ds:
             scale = ds["scale_factor"][:]
             scale_valid = numpy.isfinite(scale) & (scale > 0)
-            wavenumber = ds["wavenumber"][:] * ureg.parse_expression(ds["wavenumber"].units.replace("m-1", "m^-1"))
+            wavenumber = ureg.Quantity(ds["wavenumber"][:],
+                ureg.parse_expression(ds["wavenumber"].units.replace("m-1", "m^-1")))
             wavenumber_valid = numpy.isfinite(wavenumber) & (wavenumber.m > 0)
             if not numpy.array_equal(scale_valid, wavenumber_valid):
                 raise ValueError("Scale and wavenumber inconsistently valid")
@@ -1554,3 +1622,12 @@ class IASISub(dataset.HomemadeDataset, dataset.HyperSpectral):
 
 
 
+def which_hirs_fcdr(satname):
+    """Given a satellite, return right HIRS object
+    """
+    for h in {HIRS2FCDR, HIRS3FCDR, HIRS4FCDR}:
+        if satname in h.satellites:
+            return h()
+            break
+    else:
+        raise ValueError("Unknown HIRS satellite: {:s}".format(satname))
