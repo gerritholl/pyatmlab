@@ -30,6 +30,7 @@ from . import time as pytime
 from . import tools
 from . import graphics
 from . import stats
+from . import config
 from . import io as pyio
 from .units import ureg
 
@@ -557,6 +558,33 @@ class SRF(FwmuMixin):
             s = cf.to(ureg.GHz, "sp")
         return "<{:s}: {:.4~}>".format(self.__class__.__name__, s)
 
+    @classmethod
+    def fromfile(cls, sat, instr, ch):
+        """Read from file.
+
+        Such as stored in .pyatmlabrc.
+
+        Arguments:
+
+            sat [str]
+
+                Satellite name, such as 'NOAA15'
+
+            instr [str]
+
+                Instrument name, such as 'hirs'.
+
+            ch [int]
+
+                Channel number (start counting at 1).
+        """
+        cf = config.conf[instr]
+        (centres, srf) = pyio.read_arts_srf(
+            cf["srf_backend_f"].format(sat=sat),
+            cf["srf_backend_response"].format(sat=sat))
+
+        return cls(*srf[ch-1])
+
     def centroid(self):
         """Calculate centre frequency
         """
@@ -638,11 +666,12 @@ class SRF(FwmuMixin):
         Using the lookup table, convert channel radiance to brightness
         temperature.  Will construct lookup table on first call.
 
-        :param L: Radiance [W m^-2 sr^-1]
+        :param L: Radiance [W m^-2 sr^-1 Hz^-1] or compatible
         """
         if self.lookup_table is None:
             self.make_lookup_table()
-        return self.L_to_T(L.to(ureg.W/(ureg.m**2*ureg.sr))) * ureg.K
+        return self.L_to_T(
+            L.to(ureg.W/(ureg.m**2*ureg.sr*ureg.Hz), "radiance")) * ureg.K
 
     # Methods returning new SRFs with some changes
     def shift(self, amount):
