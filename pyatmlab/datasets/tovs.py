@@ -13,6 +13,7 @@ import pathlib
 import dbm
 
 import numpy
+import scipy.interpolate
 
 import netCDF4
 import dateutil
@@ -1139,38 +1140,8 @@ class HIRSKLM(HIRS):
 
     # various calculation methods that are not strictly part of the
     # reader.  Could be moved elsewhere.
-    def calculate_offset_and_slope(self, M, srf, ch):
-        """Calculate offset and slope.
 
-        Arguments:
-
-            M [ndarray]
-            
-                ndarray with dtype such as returned by self.read.  Must
-                contain enough fields.
-
-            srf [pyatmlab.physics.SRF]
-
-                SRF used to estimate slope.  Needs to implement the
-                `blackbody_radiance` method such as `pyatmlab.physics.SRF`
-                does.
-
-            ch [int]
-
-                Channel that the SRF relates to.
-        
-        Returns:
-
-            tuple with:
-
-            time [ndarray] corresponding to offset and slope
-
-            offset [ndarray] offset calculated at each calibration cycle
-
-            slope [ndarray] slope calculated at each calibration cycle
-
-        """
-
+    def extract_calibcounts_and_temp(self, M, srf, ch):
         views_space = M["hrs_scntyp"] == self.typ_space
         views_iwct = M["hrs_scntyp"] == self.typ_iwt
 
@@ -1190,10 +1161,66 @@ class HIRSKLM(HIRS):
 
         T_iwct = ureg.Quantity(
             M_space["temp_iwt"].mean(-1).mean(-1).astype("f4"), ureg.K)
-        T_space = ureg.Quantity(numpy.zeros_like(T_iwct), ureg.K)
 
         L_iwct = srf.blackbody_radiance(T_iwct)
         L_iwct = ureg.Quantity(L_iwct.astype("f4"), L_iwct.u)
+
+        return (M_space["time"], L_iwct, counts_iwct, counts_space)
+
+
+    def calculate_offset_and_slope(self, M, srf, ch):
+        """Calculate offset and slope.
+
+        Arguments:
+
+            M [ndarray]
+            
+                ndarray with dtype such as returned by self.read.  Must
+                contain enough fields.
+
+            srf [pyatmlab.physics.SRF]
+
+                SRF used to estimate slope.  Needs to implement the
+                `blackbody_radiance` method such as `pyatmlab.physics.SRF`
+                does.
+
+            ch [int]
+
+                Channel that the SRF relates to.
+
+            tuple with:
+
+            time [ndarray] corresponding to offset and slope
+
+            offset [ndarray] offset calculated at each calibration cycle
+
+            slope [ndarray] slope calculated at each calibration cycle
+
+        """
+
+#         views_space = M["hrs_scntyp"] == self.typ_space
+#         views_iwct = M["hrs_scntyp"] == self.typ_iwt
+# 
+#         # select instances where I have both in succession.  Should be
+#         # always, unless one of the two is missing or the start or end of
+#         # series is in the middle of a calibration.
+#         space_followed_by_iwct = (views_space[:-1] & views_iwct[1:])
+#         #M15[1:][views_space[:-1]]["hrs_scntyp"]
+# 
+#         M_space = M[:-1][space_followed_by_iwct]
+#         M_iwct = M[1:][space_followed_by_iwct]
+# 
+#         counts_space = ureg.Quantity(M_space["counts"][:, 8:, ch-1],
+#                                      ureg.count)
+#         counts_iwct = ureg.Quantity(M_iwct["counts"][:, 8:, ch-1],
+#                                     ureg.count)
+# 
+#         T_iwct = ureg.Quantity(
+#             M_space["temp_iwt"].mean(-1).mean(-1).astype("f4"), ureg.K)
+# 
+#         L_iwct = srf.blackbody_radiance(T_iwct)
+#         L_iwct = ureg.Quantity(L_iwct.astype("f4"), L_iwct.u)
+        (time, L_iwct, counts_iwct, counts_space) = self.extract_calibcounts_and_temp(M, srf, ch)
         L_space = ureg.Quantity(numpy.zeros_like(L_iwct), L_iwct.u)
 
         slope = (
@@ -1202,7 +1229,7 @@ class HIRSKLM(HIRS):
 
         offset = -slope * counts_space
 
-        return (M_space["time"],
+        return (time,
                 offset,
                 slope)
 
@@ -1278,19 +1305,18 @@ class HIRSFCDR:
     # Read in some HIRS data, including nominal calibration
     # Estimate noise levels from space and IWCT views
     # Use noise levels to propagate through calibration and BT conversion
-    #
-    # TODO: Calculate own calibration coefficients and propagate those
-    # uncertainties through as well
 
     def __init__(self, hirs, srfs):
         self.hirs = hirs
         self.srfs = srfs
 
-    def interpolate_offset_slope(self, M, calib_time, offset, slope):
+    def interpolate_between_calibs(self, M, calib_time, *args):
         """Interpolate calibration parameters between calibration cycles
 
         This method is just beginning and likely to improve considerably
         in the upcoming time.
+
+        FIXME: Currently implementing linear interpolation.
 
         Arguments:
         
@@ -1304,29 +1330,38 @@ class HIRSFCDR:
                 times corresponding to offset and slope, such as returned
                 by HIRS.calculate_offset_and_slope.
 
-            slope [ndarray]
-
-                slopes estimated from calibration cycle at those points
-
-            offset [ndarray]
-
-                offsets estimated from calibration cycles at those points
+            *args
+                
+                anything defined only at calib_time, such as slope,
+                offset, or noise_level
         
         Returns:
 
-            tuple with:
-
-                [ndarray] slopes interpolated to all times in M
-
-                [ndarray] offsets interpolated to all times in M
+            list, corresponding to args, interpolated to all times in M
         """
 
-        interp_offset = ureg.Quantity(numpy.interp(M["time"].astype("u8"),
-            calib_time.astype("u8"), offset).astype("f4"), offset.u)
-        interp_slope = ureg.Quantity(numpy.interp(M["time"].astype("u8"),
-            calib_time.astype("u8"), slope).astype("f4"), slope.u)
+        x = numpy.asarray(calib_time.astype("u8"))
+        xx = numpy.asarray(M["time"].astype("u8"))
+        out = []
+        for y in args:
+            try:
+                u = y.u
+            except AttributeError:
+                u = None
+            y = numpy.asarray(y)
+            fnc = scipy.interpolate.interp1d(
+                x, y,
+                kind="nearest",
+                fill_value="extrapolate",
+                axis=0)
 
-        return (interp_offset, interp_slope)
+            yy = fnc(xx)
+            if u is None:
+                out.append(yy)
+            else:
+                out.append(ureg.Quantity(yy, u))
+
+        return out
 
         
     def custom_calibrate(self, counts, slope, offset):
@@ -1350,7 +1385,7 @@ class HIRSFCDR:
 
 
 
-    def recalibrate(self, M, ch, srf):
+    def recalibrate(self, M, ch, srf, realisations=None):
         """Recalibrate counts to radiances with uncertainties
 
         Arguments:
@@ -1372,6 +1407,8 @@ class HIRSFCDR:
 
         TODO: incorporate SRF-induced uncertainties --- how?
         """
+        if realisations is None:
+            realisations = self.realisations
         logging.info("Estimating noise")
         (t_noise_level, noise_level) = self.estimate_noise(M, ch)
         # note, this can't be vectorised easily anyway because of the SRF
@@ -1382,7 +1419,7 @@ class HIRSFCDR:
         # See https://github.com/numpy/numpy/issues/7787 on numpy.median
         # losing the unit
         logging.info("Interpolating") 
-        (interp_offset, interp_slope) = self.interpolate_offset_slope(M,
+        (interp_offset, interp_slope) = self.interpolate_between_calibs(M,
             time, 
             ureg.Quantity(numpy.median(offset, 1), offset.u),
             ureg.Quantity(numpy.median(slope, 1), slope.u))
@@ -1391,16 +1428,16 @@ class HIRSFCDR:
                     noise_level[~noise_level.mask])
         logging.info("Allocating")
         rad_wn = ureg.Quantity(numpy.empty(
-            shape=M["counts"].shape[:2] + (self.realisations,),
+            shape=M["counts"].shape[:2] + (realisations,),
             dtype="f4"), units.radiance_units["ir"])
         bt = ureg.Quantity(numpy.empty_like(rad_wn), ureg.K)
         logging.info("Estimating {:d} realisations for "
-            "{:,} radiances".format(self.realisations,
+            "{:,} radiances".format(realisations,
                rad_wn.size))
-        bar = progressbar.ProgressBar(maxval=self.realisations,
+        bar = progressbar.ProgressBar(maxval=realisations,
                 widgets = tools.my_pb_widget)
         bar.start()
-        for i in range(self.realisations):
+        for i in range(realisations):
             with ureg.context("radiance"):
                 # need to explicitly convert .to(rad_wn.u),
                 # see https://github.com/hgrecco/pint/issues/394
@@ -1425,6 +1462,39 @@ class HIRSFCDR:
         M = self.read(start_date, end_date,
                 fields=["time", "counts", "bt", "calcof_sorted"])
         return self.recalibrate(M)
+
+    def calc_sens_coef(self, typ, M, srf, ch): 
+        """Calculate sensitivity coefficient.
+
+        Actual work is delegated to calc_sens_coef_{name}
+
+        Arguments:
+
+            typ
+            M
+            SRF
+            ch
+        """
+
+        f = getattr(self, "calc_sens_coef_{:s}".format(typ))
+        (time, L_iwct, C_iwct, C_space) = self.extract_calibcounts_and_temp(M, srf, ch)
+        views_Earth = M[self.scantype_fieldname] == self.typ_Earth
+        C_Earth = M["counts"][views_Earth, :, ch-1]
+        # interpolate all of those to cover entire time period
+        (L_iwct, C_iwct, C_space) = self.interpolate_between_calibs(
+            M, time, L_iwct, C_iwct, C_space)
+        (C_Earth,) = self.interpolate_between_calibs(
+            M, M["time"][views_Earth], C_Earth)
+        C_space = ureg.Quantity(numpy.median(C_space, 1), C_space.u)
+        C_iwct = ureg.Quantity(numpy.median(C_iwct, 1), C_iwct.u)
+        return f(L_iwct[:, numpy.newaxis], C_iwct[:, numpy.newaxis],
+                 C_space[:, numpy.newaxis], C_Earth)
+    
+    def calc_sens_coef_C_Earth(self, L_iwct, C_iwct, C_space, C_Earth):
+        return L_iwct / (C_iwct - C_space)
+
+    def calc_sens_coef_C_iwct(self, L_iwct, C_iwct, C_space, C_Earth):
+        return - L_iwct * (C_Earth - C_space) / (C_iwct - C_space)**2
 
 class HIRS2FCDR(HIRS2, HIRSFCDR):
     pass
