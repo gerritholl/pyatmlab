@@ -18,6 +18,7 @@ import pathlib
 import numpy
 import matplotlib
 import matplotlib.pyplot
+import mpl_toolkits.basemap
 from . import config
 from . import io
 from . import meta
@@ -78,6 +79,55 @@ def pcolor_on_map(m, lon, lat, C, **kwargs):
 #            m.pcolor(x, y, C[mix:(mix+1), h], latlon=False, **kwargs)
     return p1
 
+def map_orbit_double_with_stats(lon, lat, C, U, lab1, lab2,  title, filename):
+    """Map orbit with uncertainty and histograms
+    """
+
+    (f, a_all) = matplotlib.pyplot.subplots(2, 4,
+                gridspec_kw = {'width_ratios':[12, 1, 2, 8],
+                               "hspace": 0.3},
+                figsize=(15, 8))
+
+    # workaround for easy way of creating extra space...
+    for a in a_all[:, 2]:
+        a.set_visible(False)
+
+    m_all = []
+    for a in a_all[:, 0]:
+        m = mpl_toolkits.basemap.Basemap(projection="moll",
+                resolution="c", ax=a, lon_0=0)
+        m.drawcoastlines()
+        m.drawmeridians(numpy.arange(-180, 180, 30))
+        m.drawparallels(numpy.arange(-90, 90, 30))
+        m_all.append(m)
+
+    pcr = pcolor_on_map(
+        m_all[0], lon, lat,
+        C, cmap="viridis")
+
+    pcu = pcolor_on_map(
+        m_all[1], lon, lat,
+        U, cmap="inferno_r")
+
+    cb1 = f.colorbar(pcr, cax=a_all[0, 1])
+    cb1.set_label(lab1)#"Counts")
+
+    cb2 = f.colorbar(pcu, cax=a_all[1, 1])
+    cb2.set_label(lab2)#"Random uncertainty [counts]")
+
+    a_all[0, 3].hist(C.ravel(), 50)
+    a_all[0, 3].set_xlabel(lab1)#"Counts")
+    a_all[1, 3].hist(U.ravel(), 50)
+    a_all[1, 3].set_xlabel(lab2)#r"$\Delta$ Counts")
+    for a in a_all[:, 3]:
+        a.grid("on")
+        a.set_ylabel("Number")
+
+    f.suptitle(title)
+
+    #f.subplots_adjust(wspace=0.2, hspace=0.2)
+
+    print_or_show(f, False, filename)
 
 def plotdir():
     """Returns todays plotdir.
