@@ -1373,14 +1373,19 @@ class HIRSFCDR:
         return offset[:, numpy.newaxis] + slope[:, numpy.newaxis] * counts
 
     
-    def estimate_noise(self, M, ch):
+    def estimate_noise(self, M, ch, typ="both"):
         """Calculate noise level at each calibration line.
 
         Currently implemented to return noise level for IWCT and space
         views.
         """
-        calib = M[self.scantype_fieldname] != self.typ_Earth
-        calibcounts = M["counts"][calib, 8:, ch-1]
+        if typ == "both":
+            calib = M[self.scantype_fieldname] != self.typ_Earth
+        else:
+            calib = M[self.scantype_fieldname] == getattr(self, "typ_{:s}".format(typ))
+
+        calibcounts = ureg.Quantity(M["counts"][calib, 8:, ch-1],
+                                    ureg.counts)
         return (M["time"][calib], typhon.math.stats.adev(calibcounts, 1))
 
 
@@ -1463,6 +1468,20 @@ class HIRSFCDR:
                 fields=["time", "counts", "bt", "calcof_sorted"])
         return self.recalibrate(M)
 
+    def extract_and_interp_calibcounts_and_temp(self, M, srf, ch):
+        (time, L_iwct, C_iwct, C_space) = self.extract_calibcounts_and_temp(M, srf, ch)
+        views_Earth = M[self.scantype_fieldname] == self.typ_Earth
+        C_Earth = M["counts"][views_Earth, :, ch-1]
+        # interpolate all of those to cover entire time period
+        (L_iwct, C_iwct, C_space) = self.interpolate_between_calibs(
+            M, time, L_iwct, C_iwct, C_space)
+        (C_Earth,) = self.interpolate_between_calibs(
+            M, M["time"][views_Earth], C_Earth)
+        C_space = ureg.Quantity(numpy.median(C_space, 1), C_space.u)
+        C_iwct = ureg.Quantity(numpy.median(C_iwct, 1), C_iwct.u)
+
+        return (L_iwct, C_iwct, C_space, C_Earth)
+
     def calc_sens_coef(self, typ, M, srf, ch): 
         """Calculate sensitivity coefficient.
 
@@ -1477,16 +1496,10 @@ class HIRSFCDR:
         """
 
         f = getattr(self, "calc_sens_coef_{:s}".format(typ))
-        (time, L_iwct, C_iwct, C_space) = self.extract_calibcounts_and_temp(M, srf, ch)
-        views_Earth = M[self.scantype_fieldname] == self.typ_Earth
-        C_Earth = M["counts"][views_Earth, :, ch-1]
-        # interpolate all of those to cover entire time period
-        (L_iwct, C_iwct, C_space) = self.interpolate_between_calibs(
-            M, time, L_iwct, C_iwct, C_space)
-        (C_Earth,) = self.interpolate_between_calibs(
-            M, M["time"][views_Earth], C_Earth)
-        C_space = ureg.Quantity(numpy.median(C_space, 1), C_space.u)
-        C_iwct = ureg.Quantity(numpy.median(C_iwct, 1), C_iwct.u)
+
+        (L_iwct, C_iwct, C_space, C_Earth) = (
+            self.extract_and_interp_calibcounts_and_temp(M, srf, ch))
+
         return f(L_iwct[:, numpy.newaxis], C_iwct[:, numpy.newaxis],
                  C_space[:, numpy.newaxis], C_Earth)
     
@@ -1495,6 +1508,54 @@ class HIRSFCDR:
 
     def calc_sens_coef_C_iwct(self, L_iwct, C_iwct, C_space, C_Earth):
         return - L_iwct * (C_Earth - C_space) / (C_iwct - C_space)**2
+
+    def calc_sens_coef_C_space(self, L_iwct, C_iwct, C_space, C_Earth):
+        return L_iwct * (C_Earth - C_iwct) / (C_iwct - C_space)**2
+
+    def calc_urad(self, typ, M, srf, ch, *args):
+        """Calculate uncertainty
+
+        Arguments:
+
+            typ [str]
+            
+                Sort of uncertainty.  Currently implemented: "noise" and
+                "calib".
+
+            M
+            srf
+            ch
+
+            *args
+
+                Depends on the sort of uncertainty, but should pass all
+                the "base" uncertainties needed for propagation.  For
+                example, for calib, must be u_C_iwct and u_C_space.
+        """
+
+        f = getattr(self, "calc_urad_{:s}".format(typ))
+        (L_iwct, C_iwct, C_space, C_Earth) = (
+            self.extract_and_interp_calibcounts_and_temp(M, srf, ch))
+        return f(L_iwct[:, numpy.newaxis],
+                 C_iwct[:, numpy.newaxis],
+                 C_space[:, numpy.newaxis], C_Earth, *args)
+
+    def calc_urad_noise(self, L_iwct, C_iwct, C_space, C_Earth, u_C_Earth):
+        """Calculate uncertainty due to random noise
+        """
+
+        s = self.calc_sens_coef_C_Earth(L_iwct, C_iwct, C_space, C_Earth)
+        return abs(s) * u_C_Earth
+
+    def calc_urad_calib(self, L_iwct, C_iwct, C_space, C_Earth,
+                              u_C_iwct, u_C_space):
+        s_iwct = self.calc_sens_coef_C_iwct(
+                    L_iwct, C_iwct, C_space, C_Earth)
+        s_space = self.calc_sens_coef_C_space(
+                    L_iwct, C_iwct, C_space, C_Earth)
+        return numpy.sqrt((s_iwct * u_C_iwct)**2 +
+                    (s_space * u_C_space)**2)
+
 
 class HIRS2FCDR(HIRS2, HIRSFCDR):
     pass
