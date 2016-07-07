@@ -1479,6 +1479,7 @@ class HIRSFCDR:
             M, M["time"][views_Earth], C_Earth)
         C_space = ureg.Quantity(numpy.median(C_space, 1), C_space.u)
         C_iwct = ureg.Quantity(numpy.median(C_iwct, 1), C_iwct.u)
+        C_Earth = ureg.Quantity(C_Earth, ureg.counts)
 
         return (L_iwct, C_iwct, C_space, C_Earth)
 
@@ -1556,6 +1557,48 @@ class HIRSFCDR:
         return numpy.sqrt((s_iwct * u_C_iwct)**2 +
                     (s_space * u_C_space)**2)
 
+    def calc_S_noise(self, u):
+        """Calculate covariance matrix between two uncertainty vectors
+
+        Random noise component, so result is a diagonal
+        """
+        return numpy.diag(u**2)
+
+    def calc_S_calib(self, u, c_id):
+        """Calculate covariance matrix between two uncertainty vectors
+
+        Calibration (structured random) component.
+
+        For initial version of my own calibration implementation, where
+        only one calibartion propagates into each uncertainty.
+
+        FIXME: make this vectorisable
+
+        Arguments:
+            
+            u [ndarray]
+
+                Vector of uncertainties.  Last dimension must be the
+                dimension to estimate covariance matrix for.
+
+            c_id [ndarray]
+
+                Vector with identifier for what calibration cycle was used
+                in each.  Most commonly, the time.  Shape must match u.
+        """
+
+        u = ureg.Quantity(numpy.atleast_2d(u), u.u)
+        u_cross = u[..., numpy.newaxis] * u[..., numpy.newaxis].swapaxes(-1, -2)
+
+        # r = 1 when using same calib, 0 otherwise...
+        c_id = numpy.atleast_2d(c_id)
+        r = (c_id[..., numpy.newaxis] == c_id[..., numpy.newaxis].swapaxes(-1, -2)).astype("f4")
+
+        S = u_cross * r
+
+        #S.mask |= (u[:, numpy.newaxis].mask | u[numpy.newaxis, :].mask) # redundant
+
+        return S.squeeze()
 
 class HIRS2FCDR(HIRS2, HIRSFCDR):
     pass
