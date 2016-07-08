@@ -84,7 +84,7 @@ def map_orbit_double_with_stats(lon, lat, C, U, lab1, lab2,  title, filename):
     """
 
     (f, a_all) = matplotlib.pyplot.subplots(2, 4,
-                gridspec_kw = {'width_ratios':[12, 1, 2, 8],
+                gridspec_kw = {'width_ratios':[12, 1, 3, 8],
                                "hspace": 0.3},
                 figsize=(15, 8))
 

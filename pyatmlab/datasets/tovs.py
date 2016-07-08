@@ -1562,7 +1562,18 @@ class HIRSFCDR:
 
         Random noise component, so result is a diagonal
         """
-        return numpy.diag(u**2)
+
+        if u.ndim == 1:
+            return ureg.Quantity(numpy.diag(u**2), u.u)
+        elif u.ndim == 2:
+            # FIXME: if this is slow, I will need to vectorise it
+            return ureg.Quantity(
+                numpy.rollaxis(numpy.dstack(
+                    [numpy.diag(u[i, :]) for i in range(u.shape[0])]),
+                    2, 0),
+                u.u)
+        else:
+            raise ValueError("u must have 1 or 2 dims, found {:d}".format(u.ndim))
 
     def calc_S_calib(self, u, c_id):
         """Calculate covariance matrix between two uncertainty vectors
@@ -1599,6 +1610,14 @@ class HIRSFCDR:
         #S.mask |= (u[:, numpy.newaxis].mask | u[numpy.newaxis, :].mask) # redundant
 
         return S.squeeze()
+
+    def calc_S_srf(self, u):
+        """Calculate covariance matrix between two uncertainty vectors
+
+        Component due to uncertainty due to SRF
+        """
+        
+        raise NotImplementedError("Not implemented yet!")
 
 class HIRS2FCDR(HIRS2, HIRSFCDR):
     pass
