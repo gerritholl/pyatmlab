@@ -26,6 +26,8 @@ except ImportError:
     
 import typhon.datasets.dataset
 import typhon.utils.metaclass
+from typhon.datasets.tovs import (Radiometer, HIRS, HIRSPOD, HIRS2,
+    HIRSKLM, HIRS3, HIRS4)
 
 from .. import dataset
 from .. import tools
@@ -1564,14 +1566,14 @@ class HIRSFCDR:
         """
 
         if u.ndim == 1:
-            return ureg.Quantity(numpy.diag(u**2), u.u)
+            return ureg.Quantity(numpy.diag(u**2), u.u**2)
         elif u.ndim == 2:
             # FIXME: if this is slow, I will need to vectorise it
             return ureg.Quantity(
                 numpy.rollaxis(numpy.dstack(
-                    [numpy.diag(u[i, :]) for i in range(u.shape[0])]),
+                    [numpy.diag(u[i, :]**2) for i in range(u.shape[0])]),
                     2, 0),
-                u.u)
+                u.u**2)
         else:
             raise ValueError("u must have 1 or 2 dims, found {:d}".format(u.ndim))
 
@@ -1628,7 +1630,7 @@ class HIRS3FCDR(HIRS3, HIRSFCDR):
 class HIRS4FCDR(HIRS4, HIRSFCDR):
     pass
 
-class IASINC(dataset.MultiFileDataset, dataset.HyperSpectral):
+class IASINC(dataset.MultiFileDataset, typhon.datasets.dataset.HyperSpectral):
     """Read IASI from NetCDF
     """
     _dtype = numpy.dtype([
@@ -1691,7 +1693,7 @@ class IASINC(dataset.MultiFileDataset, dataset.HyperSpectral):
 
         return M
 
-class IASIEPS(dataset.MultiFileDataset, dataset.HyperSpectral):
+class IASIEPS(dataset.MultiFileDataset, typhon.datasets.dataset.HyperSpectral):
     """Read IASI from EUMETSAT EPS L1C
     """
 
@@ -1790,7 +1792,7 @@ class IASIEPS(dataset.MultiFileDataset, dataset.HyperSpectral):
                 raise ValueError("Inconsistent wavenumbers")
             return M
 
-class IASISub(dataset.HomemadeDataset, dataset.HyperSpectral):
+class IASISub(dataset.HomemadeDataset, typhon.datasets.dataset.HyperSpectral):
     name = "iasisub"
     subdir = "{month}"
     stored_name = "IASI_1C_selection_{year}_{month}_{day}.npz"

@@ -232,4 +232,3 @@ def print_or_show(fig, show, outfile, in_plotdir=True, tikz=None,
             else:
                 raise ValueError("Cannot write {:d}-dim ndarray to textfile".format(
                     len(dat.shape)))
-

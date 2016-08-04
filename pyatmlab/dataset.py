@@ -170,8 +170,3 @@ class StationaryDataset(Dataset):
     """
 
     unique_fields = {"time"}
-
-class HyperSpectral(Dataset, physics.FwmuMixin):
-    """Superclass for any hyperspectral instrument
-    """
-    freqfile = None

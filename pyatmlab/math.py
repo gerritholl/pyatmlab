@@ -279,7 +279,7 @@ def calc_bts_for_srf_shift(x, bt_master, srf_master,
     then applies the regression to bt_master.
 
     This function is designed to be called by
-    `:func:calc_rmse_for_srf_shift`, which in turn is designed
+    `:func:calc_cost_for_srf_shift`, which in turn is designed
     to be called repeatedly within an optimisation framework (see
     `:func:estimate_srf_shift`).  Therefore, as much as possible is
     precalculated before calling this.  Hence, you also need to pass
@@ -358,12 +358,13 @@ def calc_bts_for_srf_shift(x, bt_master, srf_master,
 #    
 #    return intercept*L_spectral_db.u + slope*bt_master
 
-def calc_rmse_for_srf_shift(x, bt_master, bt_target, srf_master,
+def calc_cost_for_srf_shift(x, bt_master, bt_target, srf_master,
                             y_spectral_db, f_spectra, L_spectral_db,
                             unit=ureg.um,
                             regression_type=sklearn.linear_model.LinearRegression,
-                            regression_args={"fit_intercept": True}):
-    """Calculate RMSE estimating bt_target from bt_master assuming srf_master shifts by x
+                            regression_args={"fit_intercept": True},
+                            cost_mode="total"):
+    """Calculate cost function estimating bt_target from bt_master assuming srf_master shifts by x
 
     Try to estimate how well we can estimate bt_target from bt_master,
     assuming that bt_master are radiances
@@ -374,7 +375,8 @@ def calc_rmse_for_srf_shift(x, bt_master, bt_target, srf_master,
     optimisation framework (see `:func:estimate_srf_shift`).  Therefore,
     as much as possible is precalculated before calling this.  Hence, you
     also need to pass L_spectral_db, which equals integrated radiances for the
-    reference satellite, corresponding to f_spectra and y_spectral_db.
+    reference satellite, corresponding to f_spectra and y_spectral_db,
+    even though L_spectral_db is redundant information.
 
     This estimate considers one channel at a time.  It may be more optimal
     to estimate multiple channels at a time.  This is to be done.
@@ -383,11 +385,16 @@ def calc_rmse_for_srf_shift(x, bt_master, bt_target, srf_master,
     on MetOp-A, srf_master the SRF for channel 1 on MetOp-A.  bt_target
     could be radiances for NOAA-19, suspected to be approximated by
     shifting srf_master by an unknown amount.  x would be a shift amount
-    to attempt, such as +30 nm.  We could then continue tring different
-    values for x until we minimise the RMSE.
+    to attempt, such as +30 nm.  We could then continue trying different
+    values for x until we minimise the cost.
 
-    FIXME: We should be shifting from an a priori NOAA-19 SRF, not from an
-    a priori MetOp-A SRF.
+    The two alternative cost functions are:
+
+        C₁ = \sum_{i=1}^N (y_est,i - y_ref,i)^2
+
+    and
+
+        C₂ = \sum_{i=1}^N (y_est,i - y_ref,i - <y_est,i - y_ref,i>)^2
 
     Arguments:
         
@@ -414,25 +421,32 @@ def calc_rmse_for_srf_shift(x, bt_master, bt_target, srf_master,
             sklearn.cross_decomposition.PLSRegression you might use
             `{"n_components": 9, "scale": False}`.  Please refer to
             scikit-learn documentation.
-
+        cost_mode (str): How to estimate the cost.  Can be "total"
+            (default), which calculates C₁, or "anomalies", which
+            calculates C₂.
 
     Returns:
         
-        rmse (float): Root mean square error between brightness
-            temperatures estimated by taking bt_master (which should correspond
-            to srf_master) shifted by x, minus bt_target.
+        cost (float): Value of estimated cost function.
     """
     bt_estimate = calc_bts_for_srf_shift(x, bt_master, srf_master,
             y_spectral_db, f_spectra, L_spectral_db, unit,
             regression_type=regression_type,
             regression_args=regression_args)
-    rmse = numpy.sqrt(((bt_target - bt_estimate)**2).mean())
-    return rmse
+    diffs = bt_target - bt_estimate
+    if cost_mode.lower() == "anomalies":
+        diffs -= (bt_target - bt_estimate).mean()
+    elif cost_mode.lower() != "total":
+        raise ValueError("Invalid cost mode: {:s}.  I understand 'total' "
+                         "and 'anomalies'".format(cost_mode))
+    cost = (diffs**2).sum() / (diffs.size * bt_target.mean()**2)
+    return cost
 
 def estimate_srf_shift(bt_master, bt_target, srf_master, y_spectral_db, f_spectra,
         L_spectral_db,
         regression_type, regression_args,
         optimiser_func, optimiser_args,
+        cost_mode,
         **solver_args):
     """Estimate shift in SRF from pairs of brightness temperatures
 
@@ -449,9 +463,9 @@ def estimate_srf_shift(bt_master, bt_target, srf_master, y_spectral_db, f_spectr
         f_spectra (ndarray N): spectrum describing frequencies
             corresponding to `y_spectral_db`.  In Hz.
         regression_type (scikit-learn regressor): As for
-            `:func:calc_rmse_for_srf_shift`.
+            `:func:calc_cost_for_srf_shift`.
         regression_args (scikit-learn regressor): As for
-            `:func:calc_rmse_for_srf_shift`.
+            `:func:calc_cost_for_srf_shift`.
         optimiser_func (function): Function implementing optimising.
             Should take as a first argument a function to be optimised,
             remaining arguments taken from optimiser_args.
@@ -463,6 +477,7 @@ def estimate_srf_shift(bt_master, bt_target, srf_master, y_spectral_db, f_spectr
             when you expect only one.
         optimiser_args (dict): Keyword arguments to pass on to
             `optimiser_func`.
+        cost_mode (str): As for `:func_calc_cost_for_srf_shift`.
     Returns:
 
         float: shift in SRF
@@ -481,14 +496,15 @@ def estimate_srf_shift(bt_master, bt_target, srf_master, y_spectral_db, f_spectr
                 raise ValueError("x must be scalar.  Found "
                     "x.size=={:d}".format(x.size))
             x = x.ravel()[0]
-        rmse = calc_rmse_for_srf_shift(x,
+        cost = calc_cost_for_srf_shift(x,
             bt_master=bt_master, bt_target=bt_target, srf_master=srf_master, y_spectral_db=y_spectral_db,
             f_spectra=f_spectra, L_spectral_db=L_spectral_db, unit=unit,
             regression_type=regression_type,
-            regression_args=regression_args)
-        logging.debug("Shifting {:0<13.7~}: rmse {:0<12.8~}".format(
-            x*unit, rmse))
-        return rmse.to(ureg.K).m
+            regression_args=regression_args,
+            cost_mode=cost_mode)
+        logging.debug("Shifting {:0<13.7~}: cost {:0<12.8~}".format(
+            x*unit, cost))
+        return cost.to("1").m
 
     res = optimiser_func(fun, **optimiser_args)
 
