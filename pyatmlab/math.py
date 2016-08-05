@@ -363,7 +363,8 @@ def calc_cost_for_srf_shift(x, bt_master, bt_target, srf_master,
                             unit=ureg.um,
                             regression_type=sklearn.linear_model.LinearRegression,
                             regression_args={"fit_intercept": True},
-                            cost_mode="total"):
+                            cost_mode="total",
+                            predict_quantity="bt"):
     """Calculate cost function estimating bt_target from bt_master assuming srf_master shifts by x
 
     Try to estimate how well we can estimate bt_target from bt_master,
@@ -424,11 +425,14 @@ def calc_cost_for_srf_shift(x, bt_master, bt_target, srf_master,
         cost_mode (str): How to estimate the cost.  Can be "total"
             (default), which calculates C₁, or "anomalies", which
             calculates C₂.
+        predict_quantity (str): "bt" (default) or "radiance"
 
     Returns:
         
         cost (float): Value of estimated cost function.
     """
+    if predict_quantity == "radiance":
+        raise NotImplementedError("Predictions in radiance not implemented yet!")
     bt_estimate = calc_bts_for_srf_shift(x, bt_master, srf_master,
             y_spectral_db, f_spectra, L_spectral_db, unit,
             regression_type=regression_type,
@@ -447,6 +451,7 @@ def estimate_srf_shift(bt_master, bt_target, srf_master, y_spectral_db, f_spectr
         regression_type, regression_args,
         optimiser_func, optimiser_args,
         cost_mode,
+        predict_quantity="bt",
         **solver_args):
     """Estimate shift in SRF from pairs of brightness temperatures
 
@@ -477,6 +482,8 @@ def estimate_srf_shift(bt_master, bt_target, srf_master, y_spectral_db, f_spectr
             when you expect only one.
         optimiser_args (dict): Keyword arguments to pass on to
             `optimiser_func`.
+        predict_quantity (str): Whether to perform prediction in
+            "radiance" or in "bt".
         cost_mode (str): As for `:func_calc_cost_for_srf_shift`.
     Returns:
 
@@ -501,7 +508,8 @@ def estimate_srf_shift(bt_master, bt_target, srf_master, y_spectral_db, f_spectr
             f_spectra=f_spectra, L_spectral_db=L_spectral_db, unit=unit,
             regression_type=regression_type,
             regression_args=regression_args,
-            cost_mode=cost_mode)
+            cost_mode=cost_mode,
+            predict_quantity=predict_quantity)
         logging.debug("Shifting {:0<13.7~}: cost {:0<12.8~}".format(
             x*unit, cost))
         return cost.to("1").m
