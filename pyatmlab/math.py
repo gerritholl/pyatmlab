@@ -13,6 +13,7 @@ import numpy.linalg
 import scipy
 import scipy.optimize
 import scipy.stats
+import scipy.odr
 
 import sklearn.linear_model
 
@@ -26,6 +27,11 @@ inputs = """:param z: Height
     :type q: ndarray
     :param ignore_negative: Set negative values to 0
     :type ignore_negative: bool"""
+
+# Make my own exception because scipy ODR doesn't raise, just gives a
+# message in a list…
+class ODRFitError(ArithmeticError):
+    pass
 
 @expanddoc
 def layer2level(z, q, ignore_negative=False):
@@ -266,7 +272,9 @@ def calc_y_for_srf_shift(Δλ, y_master, srf_master, L_spectral_db, f_spectra, y
                            unit=ureg.um,
                            regression_type=sklearn.linear_model.LinearRegression,
                            regression_args={"fit_intercept": True},
-                           predict_quantity="bt"):
+                           predict_quantity="bt",
+                           u_y_ref=None,
+                           u_y_target=None):
     """Calculate radiances or BTs estimating y_target from y_master assuming srf_master shifts by Δλ
 
     Try to estimate y_target from y_master, assuming that y_master are
@@ -360,9 +368,24 @@ def calc_y_for_srf_shift(Δλ, y_master, srf_master, L_spectral_db, f_spectra, y
         y_ref = y_ref[:, numpy.newaxis]
 
     #clf = sklearn.linear_model.LinearRegression(fit_intercept=True)
-    clf = regression_type(**regression_args)
-    clf.fit(y_ref.m, y_target.m)
-    return ureg.Quantity(clf.predict(y_master.m).squeeze(), y_master.u)
+    if issubclass(regression_type, sklearn.base.RegressorMixin):
+        clf = regression_type(**regression_args)
+        clf.fit(y_ref.m, y_target.m)
+        return ureg.Quantity(clf.predict(y_master.m).squeeze(), y_master.u)
+    elif issubclass(regression_type, scipy.odr.odrpack.ODR):
+        mydata = scipy.odr.RealData(y_ref.m.T, y_target.m,
+            sx=u_y_ref.to(y_ref.u, "radiance").m.squeeze(), 
+            sy=u_y_target.to(u_y_target.u, "radiance").m.squeeze())
+        myodr = scipy.odr.ODR(mydata, scipy.odr.multilinear)
+        myout = myodr.run()
+        if not any(x in myout.stopreason for x in
+            {"Sum of squares convergence",
+             "Iteration limit reached"}):
+            raise ODRFitError("ODR fitting did not converge")
+        return ureg.Quantity(myout.beta[0], y_master.u) + (
+            myout.beta[numpy.newaxis, 1:] * y_master).sum(1)
+    else:
+        raise ValueError("Unknown type of regression!")
 #    (slope, intercept, r_value, p_value, stderr) = scipy.stats.linregress(
 #            bt_ref, bt_target)
 #    
@@ -374,7 +397,9 @@ def calc_cost_for_srf_shift(Δλ, y_master, y_target, srf_master,
                             regression_type=sklearn.linear_model.LinearRegression,
                             regression_args={"fit_intercept": True},
                             cost_mode="total",
-                            predict_quantity="bt"):
+                            predict_quantity="bt",
+                            u_y_ref=None,
+                            u_y_target=None):
     """Calculate cost function estimating y_target from y_master assuming srf_master shifts by Δλ
 
     Try to estimate how well we can estimate y_target from y_master,
@@ -437,6 +462,9 @@ def calc_cost_for_srf_shift(Δλ, y_master, y_target, srf_master,
             (default), which calculates C₁, or "anomalies", which
             calculates C₂.
         predict_quantity (str): "bt" (default) or "radiance"
+        u_y_ref (ndarray): Uncertainties on y_ref.  Used by some
+            regression types.
+        u_y_target (ndarray): Uncertainties on y_target.
 
     Returns:
         
@@ -446,7 +474,9 @@ def calc_cost_for_srf_shift(Δλ, y_master, y_target, srf_master,
             L_spectral_db, f_spectra, y_ref, unit,
             regression_type=regression_type,
             regression_args=regression_args,
-            predict_quantity=predict_quantity)
+            predict_quantity=predict_quantity,
+            u_y_ref=u_y_ref,
+            u_y_target=u_y_target)
     diffs = y_target - y_estimate
     if cost_mode.lower() == "anomalies":
         diffs -= (y_target - y_estimate).mean()
@@ -462,6 +492,8 @@ def estimate_srf_shift(y_master, y_target, srf_master, L_spectral_db, f_spectra,
         optimiser_func, optimiser_args,
         cost_mode,
         predict_quantity="bt",
+        u_y_ref=None,
+        u_y_target=None,
         **solver_args):
     """Estimate shift in SRF from pairs of brightness temperatures
 
@@ -496,10 +528,12 @@ def estimate_srf_shift(y_master, y_target, srf_master, L_spectral_db, f_spectra,
             when you expect only one.
         optimiser_args (dict): Keyword arguments to pass on to
             `optimiser_func`.
+        cost_mode (str): As for `:func_calc_cost_for_srf_shift`.
         predict_quantity (str): Whether to perform prediction in
             "radiance" or in "bt".  y_master and y_target should be in
             units corresponding to this quantity.
-        cost_mode (str): As for `:func_calc_cost_for_srf_shift`.
+        u_y_ref (ndarray):
+        u_y_target (ndarray):
     Returns:
 
         float: shift in SRF
@@ -524,7 +558,9 @@ def estimate_srf_shift(y_master, y_target, srf_master, L_spectral_db, f_spectra,
             regression_type=regression_type,
             regression_args=regression_args,
             cost_mode=cost_mode,
-            predict_quantity=predict_quantity)
+            predict_quantity=predict_quantity,
+            u_y_ref=u_y_ref,
+            u_y_target=u_y_target)
         logging.debug("Shifting {:0<13.7~}: cost {:0<12.8~}".format(
             Δλ*unit, cost))
         return cost.to("1").m
