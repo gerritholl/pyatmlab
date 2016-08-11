@@ -306,7 +306,8 @@ def calc_y_for_srf_shift(Δλ, y_master, srf_master, L_spectral_db, f_spectra, y
         y_master (Quantity ndarray, N×k): Brightness temperatures [K] or
             radiances [radiance units] for reference satellite.  N
             samples, k channels.  Quantity must be consistent with the one
-            described by predict_quantity.
+            described by predict_quantity.  These are used in the actual
+            prediction; the training is performed with y_ref.
         srf_master (`:func:pyatmlab.physics.SRF`): Reference SRF from
             where shift is calculated.
         L_spectral_db (ndarray M×l): Database of spectra (such as from IASI)
@@ -314,19 +315,20 @@ def calc_y_for_srf_shift(Δλ, y_master, srf_master, L_spectral_db, f_spectra, y
             / (m^2 sr Hz)].  M spectra with l radiances each.
         f_spectra (Quantity ndarray l): frequencies corresponding to
             L_spectral_db [Hz].  1-D with length l.
-        y_ref (Quantity ndarray M×k): For the database of spectra,
-            brightness temperaturse or radiances corresponding to
-            srf_master.  M spectra, k channels.  For the case where a
-            single channel is used for the prediction (k==1), this should
-            be equal to:
+        y_ref (Quantity ndarray M×k): Predictands used to train regressions.
+            Redundant information as it follows directly from
+            L_spectral_db and SRFs on the reference satellite, but it is
+            an expensive calculation so should be pre-calculated.  If
+            predicting from one satellite, at least one channel will correspond to
+            srf_master, such that
 
                 # in case of radiances
                 L = srf_master.integrate_radiances(f_spectra, L_spectral_db)
                 # in case of BTs
                 bt = srf_master.channel_radiance2bt(L)
 
-            but should still be pre-calculated because it is an expensive
-            calculation and this function needs to be called many times.
+            but this is not the case if one satellite is predicted from
+            another.
         unit (Unit): unit from pint unit registry.  Defaults to ureg.um.
         regression_type (scikit-learn regressor): Type of regression.
             Defaults to sklearn.linear_model.LinearRegression.  Other good
