@@ -16,6 +16,7 @@ import scipy.stats
 import scipy.odr
 
 import sklearn.linear_model
+import pint
 
 from . import tools
 from .meta import expanddoc
@@ -373,15 +374,35 @@ def calc_y_for_srf_shift(Δλ, y_master, srf_master, L_spectral_db, f_spectra, y
         clf.fit(y_ref.m, y_target.m)
         return ureg.Quantity(clf.predict(y_master.m).squeeze(), y_master.u)
     elif issubclass(regression_type, scipy.odr.odrpack.ODR):
-        mydata = scipy.odr.RealData(y_ref.m.T, y_target.m,
-            sx=u_y_ref.to(y_ref.u, "radiance").m.squeeze(), 
-            sy=u_y_target.to(u_y_target.u, "radiance").m.squeeze())
-        myodr = scipy.odr.ODR(mydata, scipy.odr.multilinear)
+        try:
+            sx = u_y_ref.to(y_ref.u, "radiance").m.squeeze()
+            sy = u_y_target.to(u_y_target.u, "radiance").m.squeeze()
+        except pint.DimensionalityError: # probably noise in other unit
+            # here, those are really only used as weights, so same-unit
+            # is not essential?  Otherwise I need to convert them, a
+            # non-trivial step.
+            sx = u_y_ref.m.squeeze()
+            sy = u_y_target.m.squeeze()
+
+        # meaningful initial guess: new value equal to old channel, rest 0
+        # β0 has a offset and then one slope for each channel
+        # don't set to zero, says odrpack guide section 1.E.
+        β0 = numpy.zeros(shape=(y_ref.shape[1]+1,))+0.001
+        samech = abs((y_target[:, numpy.newaxis] - y_ref)).mean(0).argmin()
+        β0[samech+1] = 1
+        if (sx==0).any() or (sy==0).any():
+            mydata = scipy.odr.RealData(y_ref.m.T, y_target.m)
+        else:
+            mydata = scipy.odr.RealData(y_ref.m.T, y_target.m, sx=sx, sy=sy)
+        myodr = scipy.odr.ODR(mydata, scipy.odr.multilinear, beta0=β0)
         myout = myodr.run()
         if not any(x in myout.stopreason for x in
             {"Sum of squares convergence",
-             "Iteration limit reached"}):
-            raise ODRFitError("ODR fitting did not converge")
+             "Iteration limit reached",
+             "Parameter convergence",
+             "Both sum of squares and parameter convergence"}):
+            raise ODRFitError("ODR fitting did not converge.  "
+                "Stop reason: {:s}".format(myout.stopreason[0]))
         return ureg.Quantity(myout.beta[0], y_master.u) + (
             myout.beta[numpy.newaxis, 1:] * y_master).sum(1)
     else:
