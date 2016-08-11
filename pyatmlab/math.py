@@ -269,21 +269,21 @@ def get_transformation_matrix(f, n):
     I = numpy.eye(n)
     return numpy.hstack([f(I[:, i:(i+1)]) for i in range(n)])
 
-def calc_y_for_srf_shift(Δλ, y_master, srf_master, L_spectral_db, f_spectra, y_ref,
+def calc_y_for_srf_shift(Δλ, y_master, srf0, L_spectral_db, f_spectra, y_ref,
                            unit=ureg.um,
                            regression_type=sklearn.linear_model.LinearRegression,
                            regression_args={"fit_intercept": True},
                            predict_quantity="bt",
                            u_y_ref=None,
                            u_y_target=None):
-    """Calculate radiances or BTs estimating y_target from y_master assuming srf_master shifts by Δλ
+    """Calculate radiances or BTs estimating y_target from y_master assuming srf0 shifts by Δλ
 
     Try to estimate y_target from y_master, assuming that y_master are
-    bts or radiances corresponding to spectral response function srf_master.
+    bts or radiances corresponding to spectral response function srf0.
     For the estimate, use a database described by L_spectral_db and
     f_spectra.  This database will be used to train a regression from
-    the original bt (y_master, due to srf_master) to a shifted bt (due to
-    srf_master shited by Δλ).  The regression is trained using the spectral
+    the original bt (y_master, due to srf0) to a shifted bt (due to
+    srf0 shifted by Δλ).  The regression is trained using the spectral
     database (L_spectral_db, f_spectra, bt_ref).  This function
     then applies the regression to y_master.
 
@@ -307,25 +307,30 @@ def calc_y_for_srf_shift(Δλ, y_master, srf_master, L_spectral_db, f_spectra, y
             radiances [radiance units] for reference satellite.  N
             samples, k channels.  Quantity must be consistent with the one
             described by predict_quantity.  These are used in the actual
-            prediction; the training is performed with y_ref.
-        srf_master (`:func:pyatmlab.physics.SRF`): Reference SRF from
-            where shift is calculated.
+            prediction; the training is performed with y_ref.  For
+            example, if we are predicting NOAA18-8 from NOAA19-1-12 in a
+            test setting, y_master would correspond to NOAA19-1-12 test
+            data, and y_ref would be the same for training data.  In the
+            real world, y_ref is still simulated, but y_master are actual
+            measurements.
+        srf0 (`:func:pyatmlab.physics.SRF`): SRF relative to which
+            the shift is to be calculated.
         L_spectral_db (ndarray M×l): Database of spectra (such as from IASI)
             to use.  Should be in spectral radiance per frequency units [W
             / (m^2 sr Hz)].  M spectra with l radiances each.
         f_spectra (Quantity ndarray l): frequencies corresponding to
             L_spectral_db [Hz].  1-D with length l.
-        y_ref (Quantity ndarray M×k): Predictands used to train regressions.
-            Redundant information as it follows directly from
+        y_ref (Quantity ndarray M×k): Predictands used to train regressions,
+            i.e. the training database.  This information follows directly from
             L_spectral_db and SRFs on the reference satellite, but it is
             an expensive calculation so should be pre-calculated.  If
-            predicting from one satellite, at least one channel will correspond to
-            srf_master, such that
+            predicting from the same satellite, at least one channel will
+            correspond to srf0, such that
 
                 # in case of radiances
-                L = srf_master.integrate_radiances(f_spectra, L_spectral_db)
+                L = srf0.integrate_radiances(f_spectra, L_spectral_db)
                 # in case of BTs
-                bt = srf_master.channel_radiance2bt(L)
+                bt = srf0.channel_radiance2bt(L)
 
             but this is not the case if one satellite is predicted from
             another.
@@ -351,7 +356,7 @@ def calc_y_for_srf_shift(Δλ, y_master, srf_master, L_spectral_db, f_spectra, y
         Δλ = Δλ.to(unit)
     except AttributeError:
         Δλ = ureg.Quantity(Δλ, unit)
-    srf_sh = srf_master.shift(Δλ)
+    srf_sh = srf0.shift(Δλ)
     L_target = srf_sh.integrate_radiances(f_spectra, L_spectral_db)
     if predict_quantity == "bt":
         y_target = srf_sh.channel_radiance2bt(L_target)
@@ -414,7 +419,7 @@ def calc_y_for_srf_shift(Δλ, y_master, srf_master, L_spectral_db, f_spectra, y
 #    
 #    return intercept*bt_ref.u + slope*bt_master
 
-def calc_cost_for_srf_shift(Δλ, y_master, y_target, srf_master,
+def calc_cost_for_srf_shift(Δλ, y_master, y_target, srf0,
                             L_spectral_db, f_spectra, y_ref,
                             unit=ureg.um,
                             regression_type=sklearn.linear_model.LinearRegression,
@@ -459,31 +464,40 @@ def calc_cost_for_srf_shift(Δλ, y_master, y_target, srf_master,
         
         Δλ (Quantity): shift in SRF.
         y_master (ndarray): Radiances [radiance units] or BTs [K] for
-            reference satellite.  Quantity must be consistent with what is
+            reference satellite.  This comes from either the testing data,
+            or actual measurements.  Quantity must be consistent with what is
             contained in predict_quantity.
-        y_target (ndarray): Radiances or BTs for other satellite.
-        srf_master (`:func:pyatmlab.physics.SRF`): SRF for reference satellite
+        y_target (ndarray): Radiances or BTs for other satellite.  This
+            comes from either the testing data (calculated by shifting
+            srf0 by an amount you haven't told me, but I mean to recover),
+            or from actual measurements.
+        srf0 (`:func:pyatmlab.physics.SRF`): SRF corresponding to
+            zero shift, relative to which the shift is estimated.
         L_spectral_db (ndarray N×p): Database of spectra (such as from IASI)
-            to use.  Should be in spectral radiance per frequency units [W
+            to use.  Should be in SI spectral radiance per frequency units [W
             / (m^2 sr Hz)], regardless of predict_quantity.
         f_spectra (ndarray N): frequencies corresponding to L_spectral_db [Hz]
-        y_ref: Radiances or brightness temperatures corresponding to
-            L_spectral_db and f_spectra [K]
+        y_ref: Radiances or brightness temperatures corresponding to 
+            L_spectral_db and f_spectra [K], for all channels to be used.
+            This is essential the training database.  It comes from
+            simulations regardless as to we are applying this as a test or
+            in the real world.
         unit (Unit): unit from pint unit registry.  Defaults to ureg.um.
         regression_type (scikit-learn regressor): Type of regression.
             Defaults to sklearn.linear_model.LinearRegression.  Other good
             option would be sklearn.cross_decomposition.PLSRegression.
             As long as regression_type(**regression_args) behaves like
-            those two (with .fit and .predict), it should be OK.
+            those two (with .fit and .predict), it should be OK.  Some
+            other cases are also understood, most notably scipy.odr.ODR.
         regression_args (dict): Keyword arguments to pass on to regressor.
             For example, for sklearn.linear_model.LinearRegression you
             would want to at least pass `{"fit_intercept": True}`.  For
             sklearn.cross_decomposition.PLSRegression you might use
             `{"n_components": 9, "scale": False}`.  Please refer to
-            scikit-learn documentation.
+            scikit-learn documentation for details.
         cost_mode (str): How to estimate the cost.  Can be "total"
             (default), which calculates C₁, or "anomalies", which
-            calculates C₂.
+            calculates C₂, according to their definitions above.
         predict_quantity (str): "bt" (default) or "radiance"
         u_y_ref (ndarray): Uncertainties on y_ref.  Used by some
             regression types.
@@ -491,9 +505,9 @@ def calc_cost_for_srf_shift(Δλ, y_master, y_target, srf_master,
 
     Returns:
         
-        cost (float): Value of estimated cost function.
+        cost (float): Value of estimated cost function.  Unitless.
     """
-    y_estimate = calc_y_for_srf_shift(Δλ, y_master, srf_master,
+    y_estimate = calc_y_for_srf_shift(Δλ, y_master, srf0,
             L_spectral_db, f_spectra, y_ref, unit,
             regression_type=regression_type,
             regression_args=regression_args,
