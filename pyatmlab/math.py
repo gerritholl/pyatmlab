@@ -428,11 +428,12 @@ def calc_cost_for_srf_shift(Δλ, y_master, y_target, srf0,
                             predict_quantity="bt",
                             u_y_ref=None,
                             u_y_target=None):
-    """Calculate cost function estimating y_target from y_master assuming srf_master shifts by Δλ
+    """Calculate cost function estimating y_target from y_master assuming
+    srf0 shifts by Δλ
 
     Try to estimate how well we can estimate y_target from y_master,
     assuming that y_master are radiances or BTs
-    corresponding to spectral response function srf_master.  For the estimate,
+    corresponding to spectral response function srf0.  For the estimate,
     use a database described by L_spectral_db and f_spectra.
 
     This function is designed to be called repeatedly within an
@@ -446,9 +447,9 @@ def calc_cost_for_srf_shift(Δλ, y_master, y_target, srf0,
     to estimate multiple channels at a time.  This is to be done.
 
     For example, y_master could be radiances/BTs corresponding to channel 1
-    on MetOp-A, srf_master the SRF for channel 1 on MetOp-A.  y_target
+    on MetOp-A, srf0 the SRF for channel 1 on MetOp-A.  y_target
     could be radiances or BTs for NOAA-19, suspected to be approximated by
-    shifting srf_master by an unknown amount.  Δλ would be a shift amount
+    shifting srf0 by an unknown amount.  Δλ would be a shift amount
     to attempt, such as +30 nm.  We could then continue trying different
     values for Δλ until we minimise the cost.
 
@@ -523,7 +524,7 @@ def calc_cost_for_srf_shift(Δλ, y_master, y_target, srf0,
     cost = (diffs**2).sum() / (diffs.size * y_target.mean()**2)
     return cost
 
-def estimate_srf_shift(y_master, y_target, srf_master, L_spectral_db, f_spectra,
+def estimate_srf_shift(y_master, y_target, srf0, L_spectral_db, f_spectra,
         y_ref,
         regression_type, regression_args,
         optimiser_func, optimiser_args,
@@ -543,7 +544,7 @@ def estimate_srf_shift(y_master, y_target, srf_master, L_spectral_db, f_spectra,
             Unit must be consistent with what you tell me in
             predict_quantity.
         y_target (ndarray): Radiances or BTs for other satellite
-        srf_master (`:func:pyatmlab.physics.SRF`): SRF for reference satellite
+        srf0 (`:func:pyatmlab.physics.SRF`): SRF for reference satellite
         L_spectral_db (ndarray N×p): Database of spectra (such as from IASI)
             to use.  Should ALWAYS be in spectral radiance per frequency
             units, regardless of what predict_quantity is.
@@ -590,7 +591,7 @@ def estimate_srf_shift(y_master, y_target, srf_master, L_spectral_db, f_spectra,
                     "Δλ.size=={:d}".format(Δλ.size))
             Δλ = Δλ.ravel()[0]
         cost = calc_cost_for_srf_shift(Δλ,
-            y_master=y_master, y_target=y_target, srf_master=srf_master, L_spectral_db=L_spectral_db,
+            y_master=y_master, y_target=y_target, srf0=srf0, L_spectral_db=L_spectral_db,
             f_spectra=f_spectra, y_ref=y_ref, unit=unit,
             regression_type=regression_type,
             regression_args=regression_args,
