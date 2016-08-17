@@ -137,7 +137,8 @@ def plotdir():
     return datetime.date.today().strftime(config.get_config('plotdir'))
 
 def print_or_show(fig, show, outfile, in_plotdir=True, tikz=None,
-                  data=None, store_meta="", close=True):
+                  data=None, store_meta="", close=True,
+                  dump_pickle=True):
     """Either print or save figure, or both, depending on arguments.
 
     Taking a figure, show and/or save figure in the default directory,
@@ -195,7 +196,7 @@ def print_or_show(fig, show, outfile, in_plotdir=True, tikz=None,
             logging.info("Writing info to {!s}".format(infofile))
             with infofile.open("w", encoding="utf-8") as fp:
                 fp.write(info)
-        if figfile is not None:
+        if dump_pickle and figfile is not None:
             logging.info("Writing figure object to {!s}".format(figfile))
             with lzma.open(str(figfile), "wb", preset=lzma.PRESET_DEFAULT) as fp:
                 pickle.dump(fig, fp, protocol=4)
