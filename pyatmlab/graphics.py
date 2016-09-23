@@ -185,14 +185,15 @@ def print_or_show(fig, show, outfile, in_plotdir=True, tikz=None,
                 infofile = None
                 figfile = None
 
-        logging.debug("Obtaining verbose stack info")
-        pr = subprocess.run(["pip", "freeze"], stdout=subprocess.PIPE) 
-        info = " ".join(sys.argv) + "\n" + pr.stdout.decode("utf-8") + "\n"
-        info += tools.get_verbose_stack_description()
-
         if infofile is not None:
             infofile.parent.mkdir(parents=True, exist_ok=True)
-        if infofile is not None and info:
+
+            logging.debug("Obtaining verbose stack info")
+            pr = subprocess.run(["pip", "freeze"], stdout=subprocess.PIPE) 
+            info = " ".join(sys.argv) + "\n" + pr.stdout.decode("utf-8") + "\n"
+            info += tools.get_verbose_stack_description()
+
+#        if infofile is not None and info:
             logging.info("Writing info to {!s}".format(infofile))
             with infofile.open("w", encoding="utf-8") as fp:
                 fp.write(info)
@@ -203,6 +204,7 @@ def print_or_show(fig, show, outfile, in_plotdir=True, tikz=None,
         # interpret as sequence
         for outf in outfiles:
             logging.info("Writing to file: {!s}".format(outf))
+            outf.parent.mkdir(parents=True, exist_ok=True)
             fig.canvas.print_figure(str(outf))
     if show:
         matplotlib.pyplot.show()

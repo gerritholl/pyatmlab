@@ -1,1 +1,1 @@
-from typhon.physics.constants import *
+from typhon.constants import *

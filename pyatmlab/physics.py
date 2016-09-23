@@ -34,7 +34,7 @@ from . import config
 from . import io as pyio
 from .units import ureg
 
-from typhon.physics.em import (FwmuMixin, SRF, planck_f,
+from typhon.physics.units.em import (FwmuMixin, SRF, planck_f,
     specrad_wavenumber2frequency, specrad_frequency_to_planck_bt)
 
 class AKStats:
