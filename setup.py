@@ -41,6 +41,7 @@ setup(
                       "numexpr>=2.4",
                       "h5py>=2.5",
                       "netCDF4>=1.1",
+                      "scikit-learn>=0.17",
                       "typhon>=0.2.7"],
     long_description=read('README'),
     classifiers=[
