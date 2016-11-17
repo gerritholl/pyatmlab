@@ -36,7 +36,7 @@ def pcolor_on_map(m, lon, lat, C, **kwargs):
     # -179 - some problems (1° missing)
     # -179.9 - many problems
     # perhaps I need to mask neighbours or so?
-    C1 = numpy.ma.masked_where(lon<-175, C, copy=True)
+    C1 = numpy.ma.masked_where((lon<-175)|(lon>175), C, copy=True)
     p1 = m.pcolor(lon, lat, C1, latlon=True, **kwargs)
 #    C2 = numpy.ma.masked_where(lon<0, C.data)
 #    p2 = m.pcolor(lon, lat, C2, latlon=True, **kwargs)

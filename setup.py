@@ -18,7 +18,7 @@ def get_version():
         #cp = subprocess.run(["git", "log", "--format=%H", "-n", "1"], stdout=subprocess.PIPE, check=True)
         cp = subprocess.run(["git", "rev-parse", "--short", "HEAD"],
                             stdout=subprocess.PIPE, check=True)
-        v += cp.stdout.decode("ascii".strip())
+        v += cp.stdout.decode("ascii").strip()
     return v
     #return get_v(os.path.join(os.path.dirname(__file__), "ChangeLog"))
 
