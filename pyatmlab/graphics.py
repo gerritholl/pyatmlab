@@ -17,6 +17,7 @@ import pathlib
 
 import numpy
 import matplotlib
+import matplotlib.cbook
 import matplotlib.pyplot
 import mpl_toolkits.basemap
 from . import config
@@ -205,7 +206,17 @@ def print_or_show(fig, show, outfile, in_plotdir=True, tikz=None,
         for outf in outfiles:
             logging.info("Writing to file: {!s}".format(outf))
             outf.parent.mkdir(parents=True, exist_ok=True)
-            fig.canvas.print_figure(str(outf))
+            i = 0
+            while True:
+                i += 1
+                try:
+                    fig.canvas.print_figure(str(outf))
+                except matplotlib.cbook.Locked.TimeoutError:
+                    logging.warning("Failed attempt no. {:d}".format(i))
+                    if i > 100:
+                        raise
+                else:
+                    break
     if show:
         matplotlib.pyplot.show()
 
