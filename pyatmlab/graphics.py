@@ -135,7 +135,7 @@ def plotdir():
 
     Configuration 'plotdir' must be set.  Value is expanded with strftime.
     """
-    return datetime.date.today().strftime(config.get_config('plotdir'))
+    return datetime.date.today().strftime(config.conf["main"]['plotdir'])
 
 def print_or_show(fig, show, outfile, in_plotdir=True, tikz=None,
                   data=None, store_meta="", close=True,
