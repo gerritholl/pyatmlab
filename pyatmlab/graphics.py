@@ -20,7 +20,7 @@ import matplotlib
 import matplotlib.cbook
 import matplotlib.pyplot
 import mpl_toolkits.basemap
-from . import config
+from typhon import config
 from . import io
 from . import meta
 from . import tools
