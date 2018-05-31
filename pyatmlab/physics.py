@@ -36,6 +36,8 @@ from .units import ureg
 
 from typhon.physics.units.em import (FwmuMixin, SRF, planck_f,
     specrad_wavenumber2frequency, specrad_frequency_to_planck_bt)
+from typhon.physics.em import (frequency2wavelength,
+    frequency2wavenumber)
 
 class AKStats:
 

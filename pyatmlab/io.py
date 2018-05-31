@@ -164,7 +164,7 @@ def plotdatadir():
     strftime.
     """
     return datetime.date.today().strftime(
-        config.get_config("plotdatadir"))
+        config.conf["main"]["plotdatadir"])
 
 def write_data_to_files(data, fn):
     """Write data to one or more files.

@@ -23,9 +23,6 @@ import numpy
 
 import progressbar
 
-from typhon.utils.metaclass import (DocStringInheritor,
-    AbstractDocStringInheritor)
-
 from typhon.utils.cache import mutable_cache
 
 my_pb_widget = [progressbar.Bar("=", "[", "]"), " ",
